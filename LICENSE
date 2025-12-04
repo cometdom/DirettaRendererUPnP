@@ -1,0 +1,112 @@
+MIT License
+
+Copyright (c) 2024 Dominique
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+================================================================================
+IMPORTANT ADDITIONAL NOTICES
+================================================================================
+
+1. DIRETTA HOST SDK DEPENDENCY
+
+   This software requires the Diretta Host SDK, which is proprietary software
+   owned by Yu Harada and is NOT included in this repository.
+   
+   - Diretta Host SDK Website: https://www.diretta.link
+   - The SDK can be downloaded from the "Download Preview" section
+   - The Diretta Host SDK is licensed separately by Yu Harada
+   
+   PERSONAL USE ONLY: The Diretta Host SDK is provided for PERSONAL,
+   NON-COMMERCIAL USE ONLY. Commercial use of the Diretta Host SDK requires
+   separate licensing from Yu Harada.
+   
+   This renderer software (excluding the Diretta SDK) is provided under the
+   MIT License above, but its practical use is subject to the Diretta SDK
+   license terms.
+
+2. TRADEMARK NOTICE
+
+   Diretta® is a trademark of Yu Harada. This project is an independent
+   implementation and is not officially endorsed by or affiliated with
+   Yu Harada or Diretta.
+
+3. THIRD-PARTY DEPENDENCIES
+
+   This software also depends on the following third-party libraries,
+   each with their own licenses:
+   
+   - FFmpeg (LGPL 2.1+ or GPL 2+, depending on build configuration)
+     https://www.ffmpeg.org/
+     
+   - libupnp (BSD License)
+     https://github.com/pupnp/pupnp
+   
+   Users must comply with the licenses of these dependencies.
+
+4. NO WARRANTY FOR AUDIO QUALITY
+
+   While this software aims to provide bit-perfect audio streaming, the
+   authors make no guarantees about audio quality, hardware compatibility,
+   or fitness for any particular audiophile setup.
+
+5. USAGE RESTRICTIONS SUMMARY
+
+   - ✓ Personal use: ALLOWED
+   - ✓ Modification and distribution of this renderer code: ALLOWED
+   - ✓ Educational and research purposes: ALLOWED
+   - ✗ Commercial use (due to Diretta SDK restrictions): NOT ALLOWED
+   - ✗ Distribution of the Diretta SDK itself: NOT ALLOWED
+   
+   For commercial licensing, contact Yu Harada at https://www.diretta.link
+
+6. CONTRIBUTION
+
+   By contributing to this project, you agree that your contributions will
+   be licensed under the MIT License and that you have the right to grant
+   this license.
+
+================================================================================
+CREDITS
+================================================================================
+
+- Renderer Development: Dominique (with AI assistance from Claude/Anthropic)
+- Diretta Protocol & SDK: Yu Harada (https://www.diretta.link)
+- FFmpeg Library: FFmpeg team
+- libupnp Library: pupnp project
+
+================================================================================
+DISCLAIMER
+================================================================================
+
+This software is provided "as is" and the author disclaims all warranties
+with regard to this software including all implied warranties of merchantability
+and fitness. In no event shall the author be liable for any special, direct,
+indirect, or consequential damages or any damages whatsoever resulting from
+loss of use, data or profits, whether in an action of contract, negligence
+or other tortious action, arising out of or in connection with the use or
+performance of this software.
+
+The author is not responsible for any hardware damage, data loss, or other
+issues that may arise from the use of this software.
+
+================================================================================
+For questions about this license, please open a GitHub issue.
+For questions about the Diretta SDK license, please contact Yu Harada.
+================================================================================

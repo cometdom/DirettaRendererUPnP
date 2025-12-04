@@ -1,0 +1,280 @@
+# Diretta UPnP Renderer - .gitignore
+
+# ============================================
+# Build Artifacts
+# ============================================
+
+# Object files
+*.o
+*.obj
+*.lo
+*.slo
+
+# Compiled libraries
+*.so
+*.so.*
+*.dylib
+*.la
+*.a
+*.lib
+
+# Executables
+*.exe
+*.out
+*.app
+bin/
+obj/
+
+# Dependency files
+*.d
+
+# ============================================
+# Diretta SDK (PROPRIETARY - DO NOT COMMIT)
+# ============================================
+
+# Exclude entire SDK directory
+DirettaHostSDK*/
+**/DirettaHost*
+**/ACQUA*
+
+# SDK libraries
+**/libDirettaHost*.so*
+**/libACQUA*.so*
+
+# SDK headers (included with SDK)
+**/Diretta/
+**/ACQUA/
+
+# ============================================
+# Logs and Runtime
+# ============================================
+
+# Log files
+*.log
+logrenderer.log
+/logs/
+
+# Core dumps
+core
+core.*
+vgcore.*
+
+# ============================================
+# IDE and Editor Files
+# ============================================
+
+# Visual Studio Code
+.vscode/
+.vs/
+*.code-workspace
+
+# CLion / IntelliJ
+.idea/
+cmake-build-*/
+
+# Vim
+*.swp
+*.swo
+*~
+.*.swp
+
+# Emacs
+*~
+\#*\#
+.\#*
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Kate
+*.kate-swp
+
+# ============================================
+# Build System
+# ============================================
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile.in
+
+# Autotools
+.deps/
+.libs/
+*.la
+*.lo
+Makefile
+config.h
+config.log
+config.status
+configure
+autom4te.cache/
+
+# ============================================
+# System Files
+# ============================================
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Linux
+*~
+.directory
+.Trash-*
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# ============================================
+# Package Managers
+# ============================================
+
+# npm
+node_modules/
+npm-debug.log*
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+pip-log.txt
+
+# ============================================
+# Documentation Build
+# ============================================
+
+# Doxygen
+docs/html/
+docs/latex/
+
+# ============================================
+# Testing
+# ============================================
+
+# Test outputs
+test_output/
+*.test
+
+# Coverage
+*.gcov
+*.gcda
+*.gcno
+coverage/
+.coverage
+
+# Valgrind
+*.memcheck
+valgrind-out.*
+
+# ============================================
+# Temporary Files
+# ============================================
+
+# Backup files
+*.bak
+*.backup
+*.tmp
+*.temp
+
+# Patch files
+*.orig
+*.rej
+*.patch
+
+# ============================================
+# Personal Configuration
+# ============================================
+
+# User-specific settings
+.user
+local.conf
+personal.conf
+
+# Credentials (should never be committed)
+*.key
+*.pem
+*.p12
+credentials.txt
+secrets.txt
+
+# ============================================
+# Archives
+# ============================================
+
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.tar.bz2
+*.tbz2
+*.tar.xz
+*.txz
+*.rar
+*.7z
+
+# Except release archives in specific directory
+!releases/*.tar.gz
+
+# ============================================
+# Audio Files (for testing - don't commit)
+# ============================================
+
+# Audio test files
+test_audio/
+*.flac
+*.wav
+*.mp3
+*.m4a
+*.dsf
+*.dff
+*.dsd
+
+# ============================================
+# Build Directories
+# ============================================
+
+build/
+Build/
+BUILD/
+debug/
+Debug/
+release/
+Release/
+dist/
+install/
+
+# ============================================
+# Package Files
+# ============================================
+
+*.deb
+*.rpm
+*.pkg
+*.dmg
+
+# ============================================
+# Other
+# ============================================
+
+# Tags files
+tags
+TAGS
+.tags
+.TAGS
+
+# ctags
+.ctags
+
+# ccls / clangd
+compile_commands.json
+.ccls-cache/
+.clangd/

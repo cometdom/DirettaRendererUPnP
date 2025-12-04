@@ -1,0 +1,78 @@
+#pragma once
+
+#include <memory>
+#include <string>
+#include <thread>
+#include <atomic>
+#include <mutex>
+
+// Forward declarations
+class UPnPDevice;
+class AudioEngine;
+class DirettaOutput;
+
+class DirettaRenderer {
+public:
+    struct Config {
+        std::string name;
+        int port;
+        std::string uuid;
+        bool gaplessEnabled;
+        int bufferSeconds;
+        
+        Config();
+    };
+    
+    DirettaRenderer(const Config& config);
+    ~DirettaRenderer();
+    
+    bool start();
+    void stop();
+    
+    bool isRunning() const { return m_running; }
+    
+private:
+    // UPnP Callbacks
+    void onSetURI(const std::string& uri, const std::string& metadata);
+    void onSetNextURI(const std::string& uri, const std::string& metadata);
+    void onPlay();
+    void onPause();
+    void onStop();
+    void onSeek(const std::string& target);
+    
+    // Thread functions
+    void audioThreadFunc();
+    void upnpThreadFunc();
+    void ssdpThreadFunc();
+    void positionThreadFunc();  // → NOUVEAU : mise à jour position pour eventing
+    
+    // Internal methods
+    void updatePosition();
+    void handleEOF();
+    
+    // Configuration
+    Config m_config;
+    uint32_t m_networkMTU = 16128;  // ⭐ MTU hardcodé pour performance maximale
+    
+    // Components
+    std::unique_ptr<UPnPDevice> m_upnp;
+    std::unique_ptr<AudioEngine> m_audioEngine;
+    std::unique_ptr<DirettaOutput> m_direttaOutput;
+    
+    // Threads
+    std::thread m_audioThread;
+    std::thread m_upnpThread;
+    std::thread m_ssdpThread;
+    std::thread m_positionThread;  // → NOUVEAU : eventing de position
+    
+    // State
+    std::atomic<bool> m_running;
+    std::mutex m_mutex;
+    
+    // Gapless
+    // Gapless
+std::string m_currentURI;      // ⭐ AJOUTER
+std::string m_currentMetadata; // ⭐ AJOUTER
+std::string m_nextURI;
+std::string m_nextMetadata;
+};
