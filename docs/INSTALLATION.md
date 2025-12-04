@@ -377,8 +377,8 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=root
-WorkingDirectory=/home/YOUR_USERNAME/audio-projects/DirettaUPnPRenderer/bin
-ExecStart=/home/YOUR_USERNAME/audio-projects/DirettaUPnPRenderer/bin/DirettaRendererUPnP --port 4005 --buffer 2.0
+WorkingDirectory=/home/YOUR_USERNAME/DirettaUPnPRenderer/bin
+ExecStart=/home/YOUR_USERNAME/DirettaUPnPRenderer/bin/DirettaRendererUPnP --port 4005 --buffer 2.0
 Restart=on-failure
 RestartSec=5
 StandardOutput=journal
