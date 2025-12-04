@@ -44,7 +44,7 @@ endif
 # ============================================
 
 # Check if SDK library exists
-SDK_LIB = $(SDK_PATH)/lib/libDirettaHost_x64-linux-15v3.so
+SDK_LIB = $(SDK_PATH)/lib/libDirettaHost_x64-linux-15v3.a
 ifeq (,$(wildcard $(SDK_LIB)))
     $(error ❌ SDK library not found at: $(SDK_LIB). Please check SDK installation)
 endif
