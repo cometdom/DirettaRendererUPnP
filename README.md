@@ -67,18 +67,18 @@ Diretta is a proprietary audio streaming protocol developed by Yu Harada that en
     UPnP Control Point              Diretta Renderer              Diretta Target              DAC
     (JPlay, BubbleUPnP)          (This Application)          (Memory Play, etc.)        (Holo, etc.)
           │                              │                           │                      │
-          │  ① UPnP Commands            │                           │                      │
-          │  (Play/Stop/Seek)           │                           │                      │
+          │  ① UPnP Commands             │                           │                      │
+          │  (Play/Stop/Seek)            │                           │                      │
           ├─────────────────────────────>│                           │                      │
           │                              │                           │                      │
           │  ② HTTP Audio Stream         │                           │                      │
-          │  (FLAC/WAV/DSD from         │                           │                      │
+          │  (FLAC/WAV/DSD from          │                           │                      │
           │   media server)              │                           │                      │
           ├─────────────────────────────>│                           │                      │
           │                              │                           │                      │
           │                              │  ③ Diretta Protocol       │                      │
           │                              │  (Bit-perfect PCM/DSD)    │                      │
-          │                              │  via Ethernet             │                      │
+          │                              │  via Ethernet (IPV6)      │                      │
           │                              ├──────────────────────────>│                      │
           │                              │                           │                      │
           │                              │                           │  ④ Audio Output      │
