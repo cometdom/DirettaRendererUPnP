@@ -15,6 +15,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Systemd service generator script
 
 ---
+## [1.0.1] - 2025-12-05
+
+### Fixed
+- **Gapless playback bug**: Fixed issue where tracks from previous album would play after Stop
+  - Clear next URI queue on Stop action
+  - Clear next URI queue when setting new transport URI
+- **UPnP gapless detection**: Added SetNextAVTransportURI action declaration in SCPD
+  - BubbleUPnP and other control points now properly detect gapless support
+
+### Added
+- Multi-architecture support in Makefile (x64: v2/v3/v4/zen4, ARM64, RISC-V)
+- Automatic CPU capability detection for optimal library selection
+- `make list-variants` command to show available library variants
+- `make arch-info` command for architecture detection details
+
+### Changed
+- Makefile now auto-detects architecture and uses appropriate Diretta library (.a)
+- Improved SCPD completeness (added Seek, GetMediaInfo, Next, Previous actions)
+
+## [1.0.0] - 2025-12-03
+
+### Added
+- Initial release
+- Native UPnP/DLNA renderer with Diretta protocol support
+- Support for high-resolution audio up to DSD1024 and PCM 1536kHz
+- Gapless playback implementation
+- Adaptive packet sizing based on audio format
+- Full transport control (Play, Stop, Pause, Resume, Seek)
 
 ## [1.0.0] - 20225-12-04
 
