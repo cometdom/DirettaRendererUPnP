@@ -183,6 +183,24 @@ The **Diretta Target** acts as a dedicated audio endpoint that receives the pris
 
 ## Requirements
 
+## Supported Architectures
+
+The renderer automatically detects and optimizes for your CPU:
+
+- **x64** (Intel/AMD): v2 (baseline), v3 (AVX2), v4 (AVX512), zen4 (AMD Ryzen 7000+)
+- **ARM64**: Raspberry Pi 4+, Apple Silicon
+- **RISC-V**: Experimental support
+
+Simply run `make` - the Makefile will select the optimal library for your hardware!
+
+### Custom Build Options
+```bash
+make VARIANT=15v4      # Force AVX512 (x64)
+make VARIANT=15zen4    # AMD Zen 4 optimized
+make NOLOG=1           # Production build (no debug logs)
+make list-variants     # Show all available options
+```
+
 ### Hardware
 - **Minimum**: Dual-core CPU, 1GB RAM, Gigabit Ethernet
 - **Recommended**: Quad-core CPU, 2GB RAM, 2.5/10G Ethernet with jumbo frames
@@ -193,7 +211,7 @@ The **Diretta Target** acts as a dedicated audio endpoint that receives the pris
 ### Software
 - **OS**: Linux (Fedora, Ubuntu, Arch, or AudioLinux recommended)
 - **Kernel**: Linux kernel 5.x+ (RT kernel recommended for optimal performance)
-- **Diretta Host SDK**: Version 147 (download from [diretta.link](https://www.diretta.link))
+- **Diretta Host SDK**: Version 147 (download from [diretta.link](https://www.diretta.link/hostsdk.html))
 - **Libraries**: FFmpeg, libupnp, pthread
 
 ### Network
@@ -225,7 +243,7 @@ sudo pacman -S base-devel ffmpeg libupnp
 
 ### 2. Download Diretta Host SDK
 
-1. Visit [diretta.link](https://www.diretta.link)
+1. Visit [diretta.link](https://www.diretta.link/hostsdk.htmlk)
 2. Navigate to "Download Preview" section
 3. Download **DirettaHostSDK_147** (or latest version)
 4. Extract to one of these locations:
@@ -515,4 +533,4 @@ This software is provided "as is" without warranty. While designed for high-qual
 
 **Enjoy bit-perfect, high-resolution audio streaming! 🎵**
 
-*Last updated: January 2025*
+*Last updated: 2025-12-05*
