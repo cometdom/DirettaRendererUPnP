@@ -560,6 +560,33 @@ void DirettaOutput::listAvailableTargets() {
             std::cout << std::endl;
         }
         
+        // Friendly device info from Diretta SDK
+        const auto& info = target.second;
+        if (!info.targetName.empty()) {
+            std::cout << "    Device: " << info.targetName << std::endl;
+        }
+        if (!info.outputName.empty()) {
+            std::cout << "    Output: " << info.outputName << std::endl;
+        }
+        if (!info.config.empty()) {
+            std::cout << "    Config: " << info.config << std::endl;
+        }
+        if (info.productID != 0) {
+            std::cout << "    ProductID: 0x" << std::hex << info.productID << std::dec << std::endl;
+        }
+        if (info.version != 0) {
+            std::cout << "    Protocol: v" << info.version << std::endl;
+        }
+        if (info.multiport) {
+            std::cout << "    Multiport: enabled" << std::endl;
+        }
+        if (info.Sync.isEnable()) {
+            std::cout << "    Sync: hash=" << info.Sync.Hash
+                      << " total=" << info.Sync.Total
+                      << " all=" << info.Sync.All
+                      << " self=" << info.Sync.Self << std::endl;
+        }
+        
         index++;
     }
     
