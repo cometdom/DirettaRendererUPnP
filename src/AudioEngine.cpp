@@ -262,54 +262,88 @@ bool AudioDecoder::open(const std::string& url) {
     
     m_rawDSD = false;  // Not DSD, use normal decoding
     
- // ⭐ CRITICAL FIX: Detect REAL bit depth from source, not FFmpeg's internal format!
-// FFmpeg uses S32 container for 24-bit data, but we need to know the ORIGINAL bit depth
-
-int realBitDepth = 0;
-
-// Method 1: Try bits_per_raw_sample (most reliable for FLAC/ALAC)
-if (codecpar->bits_per_raw_sample > 0) {
-    realBitDepth = codecpar->bits_per_raw_sample;
-    std::cout << "[AudioDecoder] ✓ Real bit depth from bits_per_raw_sample: " 
-              << realBitDepth << " bits" << std::endl;
-}
-// Method 2: Deduce from codec ID (for PCM formats like WAV)
-else if (codecpar->codec_id == AV_CODEC_ID_PCM_S16LE || 
-         codecpar->codec_id == AV_CODEC_ID_PCM_S16BE) {
-    realBitDepth = 16;
-}
-else if (codecpar->codec_id == AV_CODEC_ID_PCM_S24LE || 
-         codecpar->codec_id == AV_CODEC_ID_PCM_S24BE) {
-    realBitDepth = 24;
-}
-else if (codecpar->codec_id == AV_CODEC_ID_PCM_S32LE || 
-         codecpar->codec_id == AV_CODEC_ID_PCM_S32BE) {
-    realBitDepth = 32;
-}
-// Method 3: Fallback to FFmpeg's internal format (old behavior)
-else {
+    // PCM format detection
     switch (codecpar->format) {
         case AV_SAMPLE_FMT_S16:
         case AV_SAMPLE_FMT_S16P:
-            realBitDepth = 16;
+            m_trackInfo.bitDepth = 16;
             break;
         case AV_SAMPLE_FMT_S32:
         case AV_SAMPLE_FMT_S32P:
-            realBitDepth = 32;  // May be 24-bit in 32-bit container
+            m_trackInfo.bitDepth = 32;
             break;
         case AV_SAMPLE_FMT_FLT:
         case AV_SAMPLE_FMT_FLTP:
-            realBitDepth = 32;  // Float
+            m_trackInfo.bitDepth = 32; // Float treated as 32-bit
             break;
         default:
-            realBitDepth = 24;  // Safe default
+            m_trackInfo.bitDepth = 24; // Default assumption
             break;
     }
-    std::cout << "[AudioDecoder] ⚠️  Using format-based bit depth detection: " 
-              << realBitDepth << " bits (may be inaccurate)" << std::endl;
-}
 
-m_trackInfo.bitDepth = realBitDepth;
+PAR:
+----
+    m_rawDSD = false;  // Not DSD, use normal decoding
+    
+    // ⭐ CRITICAL FIX: Detect REAL bit depth from source
+    int realBitDepth = 0;
+    
+    // Method 1: Try bits_per_raw_sample (most reliable for FLAC/ALAC)
+    if (codecpar->bits_per_raw_sample > 0 && codecpar->bits_per_raw_sample <= 32) {
+        realBitDepth = codecpar->bits_per_raw_sample;
+        std::cout << "[AudioDecoder] ✓ Real bit depth from bits_per_raw_sample: " 
+                  << realBitDepth << " bits" << std::endl;
+    }
+    // Method 2: Deduce from codec ID (for PCM formats like WAV)
+    else if (codecpar->codec_id == AV_CODEC_ID_PCM_S16LE || 
+             codecpar->codec_id == AV_CODEC_ID_PCM_S16BE) {
+        realBitDepth = 16;
+        std::cout << "[AudioDecoder] ✓ Bit depth from codec ID (PCM16): 16 bits" << std::endl;
+    }
+    else if (codecpar->codec_id == AV_CODEC_ID_PCM_S24LE || 
+             codecpar->codec_id == AV_CODEC_ID_PCM_S24BE) {
+        realBitDepth = 24;
+        std::cout << "[AudioDecoder] ✓ Bit depth from codec ID (PCM24): 24 bits" << std::endl;
+    }
+    else if (codecpar->codec_id == AV_CODEC_ID_PCM_S32LE || 
+             codecpar->codec_id == AV_CODEC_ID_PCM_S32BE) {
+        realBitDepth = 32;
+        std::cout << "[AudioDecoder] ✓ Bit depth from codec ID (PCM32): 32 bits" << std::endl;
+    }
+    
+    // Method 3: Fallback to FFmpeg's internal format
+    if (realBitDepth == 0) {
+        std::cout << "[AudioDecoder] ⚠️  bits_per_raw_sample not available, using format detection" << std::endl;
+        
+        switch (codecpar->format) {
+            case AV_SAMPLE_FMT_S16:
+            case AV_SAMPLE_FMT_S16P:
+                realBitDepth = 16;
+                break;
+            case AV_SAMPLE_FMT_S32:
+            case AV_SAMPLE_FMT_S32P:
+                realBitDepth = 32;
+                break;
+            case AV_SAMPLE_FMT_FLT:
+            case AV_SAMPLE_FMT_FLTP:
+                realBitDepth = 32;
+                break;
+            default:
+                realBitDepth = 24;
+                std::cout << "[AudioDecoder] ⚠️  Unknown format, defaulting to 24-bit" << std::endl;
+                break;
+        }
+    }
+    
+    // Safety check
+    if (realBitDepth != 16 && realBitDepth != 24 && realBitDepth != 32) {
+        std::cerr << "[AudioDecoder] ❌ Invalid bit depth detected: " << realBitDepth 
+                  << ", falling back to 24-bit" << std::endl;
+        realBitDepth = 24;
+    }
+    
+    m_trackInfo.bitDepth = realBitDepth;
+
 
 std::cout << "[AudioDecoder] 🎵 PCM: " << m_trackInfo.codec 
           << " " << m_trackInfo.sampleRate << "Hz/"
@@ -563,7 +597,15 @@ size_t AudioDecoder::readSamples(AudioBuffer& buffer, size_t numSamples,
     }
     
     size_t totalSamplesRead = 0;
-    size_t bytesPerSample = m_trackInfo.isDSD ? 1 : (outputBits / 8) * m_trackInfo.channels;
+    // ✅ CRITICAL FIX: 24-bit uses S32 container (4 bytes), not 3!
+size_t bytesPerSample;
+if (m_trackInfo.isDSD) {
+    bytesPerSample = 1;
+} else {
+    // For PCM: 16-bit = 2 bytes, 24-bit and 32-bit = 4 bytes
+    bytesPerSample = (outputBits == 16) ? 2 : 4;
+    bytesPerSample *= m_trackInfo.channels;
+}
     
     // Ensure buffer is large enough
     if (buffer.size() < numSamples * bytesPerSample) {
