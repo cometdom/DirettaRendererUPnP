@@ -595,7 +595,7 @@ void DirettaOutput::listAvailableTargets() {
 
 bool DirettaOutput::verifyTargetAvailable() {
     const int MAX_RETRIES = 3;
-    const int RETRY_DELAY_SECONDS = 2;
+    const int RETRY_DELAY_SECONDS = 5;
     
     std::cout << "[DirettaOutput] " << std::endl;
     std::cout << "[DirettaOutput] Scanning for Diretta targets..." << std::endl;
