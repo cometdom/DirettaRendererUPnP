@@ -703,7 +703,7 @@ bool DirettaOutput::verifyTargetAvailable() {
         for (const auto& targetPair : targets) {
             const auto& targetInfo = targetPair.second;
             std::cout << "[DirettaOutput] Target #" << targetNum << ": " 
-                      << targetInfo.Device << std::endl;
+          << targetInfo.targetName << std::endl;
             targetNum++;
         }
         std::cout << "[DirettaOutput] " << std::endl;
@@ -723,7 +723,7 @@ bool DirettaOutput::verifyTargetAvailable() {
             const auto& targetInfo = it->second;
             
             std::cout << "[DirettaOutput] ✓ Will use target #" << (m_targetIndex + 1) 
-                      << " (" << targetInfo.Device << ")" << std::endl;
+          << " (" << targetInfo.targetName << ")" << std::endl;
             std::cout << "[DirettaOutput] " << std::endl;
         } else if (targets.size() > 1) {
             std::cout << "[DirettaOutput] 💡 Multiple targets detected. Interactive selection will be used." << std::endl;
