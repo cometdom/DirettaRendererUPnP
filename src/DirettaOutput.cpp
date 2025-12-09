@@ -878,7 +878,7 @@ bool DirettaOutput::configureDiretta(const AudioFormat& format) {
     // ===== SYNCBUFFER SETUP (SinHost order) =====
     std::cout << "[DirettaOutput] 1. Opening..." << std::endl;
     m_syncBuffer->open(
-        DIRETTA::Sync::THRED_MODE(5),
+        DIRETTA::Sync::THRED_MODE(1)
         ACQUA::Clock::MilliSeconds(100),
         0, "DirettaRenderer", 0, 0, 0, 0,
         DIRETTA::Sync::MSMODE_AUTO
