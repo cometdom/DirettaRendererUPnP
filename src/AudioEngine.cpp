@@ -72,7 +72,11 @@ bool AudioDecoder::open(const std::string& url) {
     
     // Configure FFmpeg options for robust HTTP streaming (Qobuz)
     AVDictionary* options = nullptr;
-    
+
+    // Optimize probe settings for faster startup
+    av_dict_set(&options, "probesize", "1048576", 0);       // 1 MB (default: 5 MB)
+    av_dict_set(&options, "analyzeduration", "1500000", 0); // 1.5 seconds (default: 5s)
+
     // Automatic reconnection on connection loss
     av_dict_set(&options, "reconnect", "1", 0);
     av_dict_set(&options, "reconnect_streamed", "1", 0);
@@ -82,7 +86,7 @@ bool AudioDecoder::open(const std::string& url) {
     av_dict_set(&options, "timeout", "10000000", 0);  // 10 seconds in microseconds
     
     // Improved network buffering
-    av_dict_set(&options, "buffer_size", "32768", 0);  // 32KB buffer
+    av_dict_set(&options, "buffer_size", "524288", 0);  // 512KB buffer
     
     // HTTP persistent connections
     av_dict_set(&options, "http_persistent", "1", 0);
