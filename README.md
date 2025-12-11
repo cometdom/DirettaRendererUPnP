@@ -280,6 +280,13 @@ cd DirettaRendererUPnP
 # Build (Makefile auto-detects SDK location)
 make
 
+# Upgrade from a previous version:
+If you have a previous version installed
+cd DirettaRendererUPnP
+git pull
+make clean
+make  or make NOLOG=1 if you want production version (better SQ has been reported)
+
 # Install service
 cd systemd
 chmod +x install-systemd.sh
