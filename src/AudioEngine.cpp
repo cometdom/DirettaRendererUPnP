@@ -1232,7 +1232,9 @@ bool AudioEngine::process(size_t samplesNeeded) {
     
     // Preload next track as soon as EOF flag is set (for gapless)
     // Check AFTER readSamples() because EOF flag is set during the read
-    if (!m_nextDecoder && !m_nextURI.empty() && m_currentDecoder->isEOF()) {
+    // Also check m_preloadRunning to avoid race with preload thread from play()
+    if (!m_nextDecoder && !m_nextURI.empty() && m_currentDecoder->isEOF()
+        && !m_preloadRunning.load(std::memory_order_acquire)) {
         std::cout << "[AudioEngine] EOF detected, preloading next track for gapless..." << std::endl;
         preloadNextTrack();
     }
