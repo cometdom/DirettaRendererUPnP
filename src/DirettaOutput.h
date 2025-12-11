@@ -162,10 +162,10 @@ public:
     void pause();                           // ⭐ NOUVEAU
     void resume();                          // ⭐ NOUVEAU
     bool isPaused() const { return m_isPaused; }  // ⭐ NOUVEAU
-    bool isPlaying() const { return m_playing; } 
+    bool isPlaying() const { return m_playing; }
     bool seek(int64_t samplePosition);  // ⭐ NOUVEAU
+    void sendSilence(int durationMs);   // Anti-pop: send silence to DAC
 
-    
 private:
     // Network
     std::unique_ptr<ACQUA::UDPV6> m_udp;

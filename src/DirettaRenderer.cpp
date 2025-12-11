@@ -216,12 +216,14 @@ bool DirettaRenderer::start() {
                 std::cerr << "[DirettaRenderer] ❌ Failed to start Diretta playback" << std::endl;
                 return false;
             }
-            
-            // ⭐⭐⭐ CRITICAL FIX: Wait for DAC stabilization to prevent silent playback ⭐⭐⭐
-            // The Diretta connection is established, but the DAC needs time to lock
-            // onto the new format and be ready to receive audio samples.
-            // Without this delay, the first buffers may be lost → silent playback
-            std::cout << "[DirettaRenderer] ⏳ Waiting for DAC stabilization (200ms)..." << std::endl;
+
+            // Anti-pop: pre-fill buffer with silence before audio starts
+            std::cout << "[DirettaRenderer] Anti-pop: sending silence..." << std::endl;
+            m_direttaOutput->sendSilence(200);
+
+            // Wait for DAC stabilization
+            // The DAC needs time to lock onto the new format
+            std::cout << "[DirettaRenderer] Waiting for DAC stabilization (200ms)..." << std::endl;
             std::this_thread::sleep_for(std::chrono::milliseconds(200));
             
             auto totalTime = std::chrono::steady_clock::now();

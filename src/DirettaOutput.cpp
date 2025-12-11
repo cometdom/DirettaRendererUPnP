@@ -343,22 +343,26 @@ bool DirettaOutput::changeFormat(const AudioFormat& newFormat) {
         std::cerr << "[DirettaOutput] ❌ Failed to reconfigure" << std::endl;
         return false;
     }
-    
+
+    // Anti-pop: pre-fill buffer with silence after format change
+    m_currentFormat = newFormat;  // Set format BEFORE sendSilence
+    std::cout << "[DirettaOutput] Anti-pop: sending silence..." << std::endl;
+    sendSilence(200);
+
     // ⭐ STEP 7: RESTART PLAYBACK IF NEEDED
     if (m_playing) {
         std::cout << "[DirettaOutput] 7. Restarting playback..." << std::endl;
         m_syncBuffer->play();
-        
-        // Wait for DAC to lock onto new format
-        std::cout << "[DirettaOutput]    Waiting for DAC lock (200ms)..." << std::endl;
-        std::this_thread::sleep_for(std::chrono::milliseconds(200));
     }
-    
-    m_currentFormat = newFormat;
+
+    // Wait for DAC to stabilize on new format
+    std::cout << "[DirettaOutput] Waiting for DAC stabilization (200ms)..." << std::endl;
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
     m_totalSamplesSent = 0;  // Reset counter for new format
-    
+
     std::cout << "[DirettaOutput] ✅ Format changed successfully" << std::endl;
-    
+
     return true;
 }
 bool DirettaOutput::sendAudio(const uint8_t* data, size_t numSamples) {
@@ -1109,4 +1113,43 @@ bool DirettaOutput::seek(int64_t samplePosition) {
    
     std::cout << "[DirettaOutput] ✓ Seeked to sample " << samplePosition << std::endl;
     return true;
-   }
+}
+
+void DirettaOutput::sendSilence(int durationMs) {
+    if (!m_syncBuffer || !m_connected) {
+        return;
+    }
+
+    // Calculate samples for the given duration
+    int samplesPerMs = m_currentFormat.sampleRate / 1000;
+    int totalSamples = samplesPerMs * durationMs;
+
+    // Calculate data size
+    size_t dataSize;
+    if (m_currentFormat.isDSD) {
+        // DSD: numSamples bits per channel -> bytes
+        dataSize = (static_cast<size_t>(totalSamples) * m_currentFormat.channels) / 8;
+    } else {
+        // PCM: samples * bytesPerSample * channels
+        uint32_t bytesPerSample = m_currentFormat.bitDepth / 8;
+        dataSize = static_cast<size_t>(totalSamples) * bytesPerSample * m_currentFormat.channels;
+    }
+
+    // Create and fill silence buffer
+    DIRETTA::Stream stream;
+    stream.resize(dataSize);
+
+    if (m_currentFormat.isDSD) {
+        // DSD silence pattern: 0x69 (alternating bits)
+        std::memset(stream.get(), 0x69, dataSize);
+    } else {
+        // PCM silence: zeros
+        std::memset(stream.get(), 0, dataSize);
+    }
+
+    // Send silence using setStream
+    m_syncBuffer->setStream(stream);
+
+    std::cout << "[DirettaOutput] Sent " << durationMs << "ms of silence ("
+              << totalSamples << " samples, " << dataSize << " bytes)" << std::endl;
+}
