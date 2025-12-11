@@ -919,6 +919,13 @@ AudioEngine::AudioEngine()
 
 AudioEngine::~AudioEngine() {
     stop();
+    waitForPreloadThread();
+}
+
+void AudioEngine::waitForPreloadThread() {
+    if (m_preloadThread.joinable()) {
+        m_preloadThread.join();
+    }
 }
 
 void AudioEngine::setAudioCallback(const AudioCallback& callback) {
@@ -1037,10 +1044,14 @@ bool AudioEngine::play() {
     m_isDraining = false;
 
     // Preload next track in background if set (for gapless)
-    if (!m_nextURI.empty() && !m_nextDecoder) {
-        std::thread([this]() {
+    // Use joinable thread instead of detached to prevent use-after-free
+    if (!m_nextURI.empty() && !m_nextDecoder && !m_preloadRunning.load(std::memory_order_acquire)) {
+        waitForPreloadThread();  // Ensure previous preload is done
+        m_preloadRunning.store(true, std::memory_order_release);
+        m_preloadThread = std::thread([this]() {
             preloadNextTrack();
-        }).detach();
+            m_preloadRunning.store(false, std::memory_order_release);
+        });
     }
 
     return true;
@@ -1055,6 +1066,10 @@ void AudioEngine::stop() {
     // Clear pending flags to prevent stale data on next play
     m_pendingTrackChange.store(false, std::memory_order_release);
     m_pendingNextTrack.store(false, std::memory_order_release);
+
+    // Wait for preload thread to finish before cleanup
+    // This prevents race conditions on m_nextDecoder
+    waitForPreloadThread();
 
     std::cout << "[AudioEngine] State changed to STOPPED" << std::endl;
 
@@ -1215,10 +1230,10 @@ bool AudioEngine::process(size_t samplesNeeded) {
         outputBits
     );
     
-    // ⚡ CRITICAL: Preload next track as soon as EOF flag is set (for gapless)
+    // Preload next track as soon as EOF flag is set (for gapless)
     // Check AFTER readSamples() because EOF flag is set during the read
     if (!m_nextDecoder && !m_nextURI.empty() && m_currentDecoder->isEOF()) {
-        std::cout << "[AudioEngine] 📀 EOF flag detected, preloading next track for gapless..." << std::endl;
+        std::cout << "[AudioEngine] EOF detected, preloading next track for gapless..." << std::endl;
         preloadNextTrack();
     }
     
