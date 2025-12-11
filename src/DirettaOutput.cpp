@@ -411,9 +411,6 @@ if (!m_currentFormat.isDSD && m_currentFormat.bitDepth == 24) {
     
     size_t totalSamples = numSamples * m_currentFormat.channels;
     
-    // ⭐ ZERO the output buffer first to avoid residual data
-    std::memset(output24, 0, dataSize);
-    
     for (size_t i = 0; i < totalSamples; i++) {
         int32_t sample32 = input32[i];
         
@@ -433,7 +430,6 @@ if (!m_currentFormat.isDSD && m_currentFormat.bitDepth == 24) {
         // For other formats (16-bit, 32-bit, DSD): direct copy
         memcpy(stream.get(), data, dataSize);
     }
-    
     m_syncBuffer->setStream(stream);
     m_totalSamplesSent += numSamples;
 

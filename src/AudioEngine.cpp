@@ -1170,24 +1170,17 @@ bool AudioEngine::process(size_t samplesNeeded) {
         // No next track - drain buffer and stop
         std::cout << "[AudioEngine] 🔇 No next track, draining buffer..." << std::endl;
         
-        // Drain buffer with silence
-        m_buffer.resize(samplesNeeded * (outputBits/8) * outputChannels);
-        std::memset(m_buffer.data(), 0, m_buffer.size());
-        
         if (m_silenceCount == 0) {
-            std::cout << "[AudioEngine] 🔇 Pushing silence to drain Diretta buffer (4s)..." << std::endl;
-        }
-        
-        if (m_audioCallback) {
-            m_audioCallback(m_buffer, samplesNeeded, outputRate, outputBits, outputChannels);
+            std::cout << "[AudioEngine] 🔇 No next track, waiting for Diretta drain..." << std::endl;
         }
         
         m_silenceCount++;
         
-        // Stop after ~5 seconds of silence (enough to drain 4s buffer + margin)
-        if (m_silenceCount > 50) {  // 50 * ~92ms = ~4.6 seconds
-            std::cout << "[AudioEngine] ✓ Buffer drained (" << m_silenceCount 
-                      << " silence frames), stopping" << std::endl;
+        // After a short wait to ensure last samples were sent, signal stop
+        // Diretta has ~2-4s of buffer, but we don't need to send silence
+        // The stop() function will wait for buffer_empty()
+        if (m_silenceCount > 5) {  // 5 * ~92ms = ~500ms safety margin
+            std::cout << "[AudioEngine] ✓ Last samples sent, signaling stop" << std::endl;
             m_silenceCount = 0;
             m_isDraining = false;
             m_state = State::STOPPED;
@@ -1196,15 +1189,15 @@ bool AudioEngine::process(size_t samplesNeeded) {
                 m_trackEndCallback();
             }
             
-            return false;
+            return false;  // Stop processing, let DirettaOutput::stop() drain
         }
         
-        return true;  // Continue pushing silence
+        // Return false to stop sending samples, but keep state as PLAYING briefly
+        return false;
     }
 
      return true;
 }
-
 bool AudioEngine::openCurrentTrack() {
     // Note: This function is called from play() which already holds the mutex
     
