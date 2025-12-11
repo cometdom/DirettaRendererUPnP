@@ -929,46 +929,75 @@ void AudioEngine::setTrackChangeCallback(const TrackChangeCallback& callback) {
     m_trackChangeCallback = callback;
 }
 
-void AudioEngine::setCurrentURI(const std::string& uri, const std::string& metadata, bool forceReopen) {  // ⭐ Ajouter paramètre
+void AudioEngine::setCurrentURI(const std::string& uri, const std::string& metadata, bool forceReopen) {
+    // Thread-safe: Called from UPnP thread while audio thread may be running
+    // Use pending mechanism to defer actual change to audio thread
+
+    if (m_state.load(std::memory_order_acquire) == State::PLAYING) {
+        // Audio thread is running - defer the change
+        std::cout << "[AudioEngine] Queuing track change (pending mechanism)..." << std::endl;
+
+        {
+            // Protect string writes with dedicated mutex (strings are not atomic)
+            std::lock_guard<std::mutex> pendingLock(m_pendingMutex);
+            m_pendingURI = uri;
+            m_pendingMetadata = metadata;
+        }
+        // Set flag AFTER strings are written (release ensures visibility)
+        m_pendingTrackChange.store(true, std::memory_order_release);
+
+        std::cout << "[AudioEngine] Track change queued (will apply in audio thread)" << std::endl;
+        return;
+    }
+
+    // Not playing - safe to modify directly
     std::lock_guard<std::mutex> lock(m_mutex);
-    
+
     // CRITICAL: Si on change d'URI pendant la lecture, fermer les décodeurs
     // pour forcer l'ouverture de la nouvelle piste
     bool uriChanged = (uri != m_currentURI);
-    
+
     m_currentURI = uri;
     m_currentMetadata = metadata;
-    
-    // ⭐ NOUVEAU : Forcer la réouverture même si l'URI est la même (pour Stop)
+
+    // Forcer la réouverture même si l'URI est la même (pour Stop)
     if (uriChanged || forceReopen) {
-        std::cout << "[AudioEngine] ⚠️  " 
-                  << (forceReopen ? "Forced reopen" : "URI changed") 
+        std::cout << "[AudioEngine] "
+                  << (forceReopen ? "Forced reopen" : "URI changed")
                   << " - closing decoders to load new track" << std::endl;
-        
+
         // Fermer les décodeurs pour forcer réouverture
         m_currentDecoder.reset();
         m_nextDecoder.reset();
-        
+
         // Réinitialiser la position
         m_samplesPlayed = 0;
         m_silenceCount = 0;
         m_isDraining = false;
-        
+
         // Si on est en PLAYING, on va automatiquement ouvrir la nouvelle piste
         // au prochain process()
     }
-    
+
     std::cout << "[AudioEngine] Current URI set" << std::endl;
 }
 
 void AudioEngine::setNextURI(const std::string& uri, const std::string& metadata) {
-    // NO MUTEX HERE - would cause deadlock with audio thread!
-    // setNextURI is called from UPnP thread while process() holds the mutex
-    m_nextURI = uri;
-    m_nextMetadata = metadata;
-    std::cout << "[AudioEngine] Next URI set (gapless)" << std::endl;
-    
-    // TODO: Preload next track in background
+    // Thread-safe: Called from UPnP thread while audio thread may be running
+    // Use pending mechanism to defer actual change to audio thread
+
+    std::cout << "[AudioEngine] Queuing next URI (pending mechanism)..." << std::endl;
+
+    {
+        // Protect string writes with dedicated mutex (strings are not atomic)
+        std::lock_guard<std::mutex> pendingLock(m_pendingMutex);
+        m_pendingNextURI = uri;
+        m_pendingNextMetadata = metadata;
+    }
+    // Set flag AFTER strings are written (release ensures visibility)
+    m_pendingNextTrack.store(true, std::memory_order_release);
+
+    std::cout << "[AudioEngine] Next URI queued (gapless preparation)" << std::endl;
 }
 
 void AudioEngine::setTrackEndCallback(const TrackEndCallback& callback) {
@@ -1006,45 +1035,58 @@ bool AudioEngine::play() {
     m_samplesPlayed = 0;
     m_silenceCount = 0;
     m_isDraining = false;
-    
+
     // Preload next track in background if set (for gapless)
     if (!m_nextURI.empty() && !m_nextDecoder) {
         std::thread([this]() {
             preloadNextTrack();
         }).detach();
     }
-    
+
     return true;
 }
 void AudioEngine::stop() {
-    std::cout << "[AudioEngine] stop() called, current state = " 
+    std::cout << "[AudioEngine] stop() called, current state = "
               << (int)m_state.load() << std::endl;
-    
-    // Changer l'état SANS mutex (atomic)
-    m_state.store(State::STOPPED);
-    
-    std::cout << "[AudioEngine] ✓ State changed to STOPPED (without mutex)" << std::endl;
-    
+
+    // Change state atomically (no mutex needed)
+    m_state.store(State::STOPPED, std::memory_order_release);
+
+    // Clear pending flags to prevent stale data on next play
+    m_pendingTrackChange.store(false, std::memory_order_release);
+    m_pendingNextTrack.store(false, std::memory_order_release);
+
+    std::cout << "[AudioEngine] State changed to STOPPED" << std::endl;
+
     // CRITICAL: Nettoyer TOUT pour forcer réouverture au prochain play()
     std::unique_lock<std::mutex> lock(m_mutex, std::try_to_lock);
     if (lock.owns_lock()) {
         std::cout << "[AudioEngine] Cleaning up decoders and state..." << std::endl;
-        
+
         // Fermer les décodeurs
         m_currentDecoder.reset();
         m_nextDecoder.reset();
-        
+
         // Réinitialiser la position
         m_samplesPlayed = 0;
         m_silenceCount = 0;
         m_isDraining = false;
-        
+
+        // Clear pending URIs (protected by pendingMutex)
+        {
+            std::lock_guard<std::mutex> pendingLock(m_pendingMutex);
+            m_pendingURI.clear();
+            m_pendingMetadata.clear();
+            m_pendingNextURI.clear();
+            m_pendingNextMetadata.clear();
+        }
+
         // CRITICAL: NE PAS effacer m_currentURI !
         // On veut pouvoir redémarrer la même piste depuis le début
-        
-        std::cout << "[AudioEngine] ✓ Full cleanup completed" << std::endl;
+
+        std::cout << "[AudioEngine] Full cleanup completed" << std::endl;
     } else {
-        std::cout << "[AudioEngine] ⚠️  Mutex busy, cleanup deferred" << std::endl;
+        std::cout << "[AudioEngine] Mutex busy, cleanup deferred" << std::endl;
         // Le cleanup sera fait au prochain process() qui verra l'état STOPPED
     }
 }
@@ -1070,21 +1112,21 @@ double AudioEngine::getPosition() const {
 }
 
 bool AudioEngine::process(size_t samplesNeeded) {
-    // Vérification rapide sans mutex
-    State currentState = m_state.load();
-    
+    // Quick state check without mutex
+    State currentState = m_state.load(std::memory_order_acquire);
+
     if (currentState != State::PLAYING) {
-        // ⚠️ DISTINCTION CRITIQUE : PAUSED vs STOPPED
+        // DISTINCTION CRITIQUE : PAUSED vs STOPPED
         if (currentState == State::STOPPED) {
             // Cleanup UNIQUEMENT si STOPPED (pas PAUSED)
             std::lock_guard<std::mutex> lock(m_mutex);
-            
+
             if (m_currentDecoder || m_nextDecoder) {
-                std::cout << "[AudioEngine] 🧹 Cleanup after STOP" << std::endl;
+                std::cout << "[AudioEngine] Cleanup after STOP" << std::endl;
                 m_currentDecoder.reset();
                 m_nextDecoder.reset();
                 m_samplesPlayed = 0;
-                // ✅ NE PAS effacer m_currentURI - on veut redémarrer depuis le début
+                // NE PAS effacer m_currentURI - on veut redémarrer depuis le début
                 // Le decoder sera rouvert à position 0 au prochain play()
             }
         } else if (currentState == State::PAUSED) {
@@ -1092,21 +1134,69 @@ bool AudioEngine::process(size_t samplesNeeded) {
             // Le décodeur reste ouvert à sa position actuelle
             // Prêt à reprendre instantanément
         }
-        
+
         return false;
     }
-    
+
     std::lock_guard<std::mutex> lock(m_mutex);
-    
-    // Double vérification avec mutex
-    if (m_state.load() != State::PLAYING) {
+
+    // Double-check with mutex held
+    if (m_state.load(std::memory_order_acquire) != State::PLAYING) {
         return false;
     }
-    
-    // ... reste du code inchangé ...    
+
+    // Process pending track change from UPnP thread (thread-safe with mutex)
+    if (m_pendingTrackChange.load(std::memory_order_acquire)) {
+        std::cout << "[AudioEngine] Processing pending track change..." << std::endl;
+
+        {
+            // Protect string reads with dedicated mutex
+            std::lock_guard<std::mutex> pendingLock(m_pendingMutex);
+            m_currentURI = m_pendingURI;
+            m_currentMetadata = m_pendingMetadata;
+            m_pendingURI.clear();
+            m_pendingMetadata.clear();
+        }
+        m_pendingTrackChange.store(false, std::memory_order_release);
+
+        m_currentDecoder.reset();
+        m_nextDecoder.reset();
+        m_samplesPlayed = 0;
+        m_silenceCount = 0;
+        m_isDraining = false;
+
+        // Open the new track
+        if (!openCurrentTrack()) {
+            std::cerr << "[AudioEngine] Failed to open pending track" << std::endl;
+            m_state = State::STOPPED;
+            return false;
+        }
+
+        std::cout << "[AudioEngine] Pending track change applied" << std::endl;
+    }
+
+    // Process pending next URI for gapless (thread-safe with mutex)
+    if (m_pendingNextTrack.load(std::memory_order_acquire)) {
+        std::cout << "[AudioEngine] Processing pending next URI..." << std::endl;
+
+        {
+            // Protect string reads with dedicated mutex
+            std::lock_guard<std::mutex> pendingLock(m_pendingMutex);
+            m_nextURI = m_pendingNextURI;
+            m_nextMetadata = m_pendingNextMetadata;
+            m_pendingNextURI.clear();
+            m_pendingNextMetadata.clear();
+        }
+        m_pendingNextTrack.store(false, std::memory_order_release);
+
+        std::cout << "[AudioEngine] Pending next URI applied (gapless)" << std::endl;
+    }
+
     if (!m_currentDecoder) {
         return false;
-    }    // ... reste du code ...    // Determine output format
+    }
+
+    // Determine output format
     uint32_t outputRate = m_currentTrackInfo.sampleRate;
     uint32_t outputBits = m_currentTrackInfo.bitDepth;
     uint32_t outputChannels = m_currentTrackInfo.channels;

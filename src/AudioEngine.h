@@ -313,7 +313,18 @@ private:
     bool openCurrentTrack();
     bool preloadNextTrack();
     void transitionToNextTrack();
-    
+
+    // Thread-safe pending track change mechanism
+    // Uses a dedicated mutex to protect string writes/reads (strings are not atomic)
+    // The atomic flags use memory barriers for ARM compatibility
+    mutable std::mutex m_pendingMutex;
+    std::atomic<bool> m_pendingTrackChange{false};
+    std::string m_pendingURI;
+    std::string m_pendingMetadata;
+    std::atomic<bool> m_pendingNextTrack{false};
+    std::string m_pendingNextURI;
+    std::string m_pendingNextMetadata;
+
     // Prevent copying
     AudioEngine(const AudioEngine&) = delete;
     AudioEngine& operator=(const AudioEngine&) = delete;
