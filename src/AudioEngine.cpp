@@ -1263,10 +1263,40 @@ bool AudioEngine::preloadNextTrack() {
         m_nextDecoder.reset();
         return false;
     }
-    
-    std::cout << "[AudioEngine] ✓ Next track preloaded: " 
+
+    // Check format compatibility for gapless playback
+    // Format changes require clean stop/start to avoid audio artifacts
+    TrackInfo nextInfo = m_nextDecoder->getTrackInfo();
+    bool formatWillChange = (
+        nextInfo.sampleRate != m_currentTrackInfo.sampleRate ||
+        nextInfo.bitDepth != m_currentTrackInfo.bitDepth ||
+        nextInfo.channels != m_currentTrackInfo.channels ||
+        nextInfo.isDSD != m_currentTrackInfo.isDSD
+    );
+
+    if (formatWillChange) {
+        std::cout << "[AudioEngine] FORMAT CHANGE DETECTED - Gapless disabled" << std::endl;
+        std::cout << "[AudioEngine] Current: "
+                  << m_currentTrackInfo.sampleRate << "Hz/"
+                  << m_currentTrackInfo.bitDepth << "bit/"
+                  << m_currentTrackInfo.channels << "ch"
+                  << (m_currentTrackInfo.isDSD ? " (DSD)" : "") << std::endl;
+        std::cout << "[AudioEngine] Next: "
+                  << nextInfo.sampleRate << "Hz/"
+                  << nextInfo.bitDepth << "bit/"
+                  << nextInfo.channels << "ch"
+                  << (nextInfo.isDSD ? " (DSD)" : "") << std::endl;
+
+        // Don't keep nextDecoder - force stop/start sequence
+        m_nextDecoder.reset();
+        m_nextURI.clear();
+        m_nextMetadata.clear();
+        return false;
+    }
+
+    std::cout << "[AudioEngine] ✓ Next track preloaded: "
               << m_nextDecoder->getTrackInfo().codec << std::endl;
-    
+
     return true;
 }
 
