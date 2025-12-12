@@ -249,16 +249,21 @@ bool DirettaRenderer::start() {
         }
         
         if (formatChanged) {
-            DEBUG_LOG("[DirettaRenderer] 🔄 Format change detected") << std::endl;
-            
+            DEBUG_LOG("[DirettaRenderer] 🔄 Format change detected - closing and reopening connection") << std::endl;
+
+            // Close current connection
+            m_direttaOutput->stop(true);
+            m_direttaOutput->close();
+
             AudioFormat newFormat(sampleRate, bitDepth, channels);
-            
+            newFormat.isCompressed = trackInfo.isCompressed;
+
             // ⭐ Configure DSD if needed
             if (trackInfo.isDSD) {
                 newFormat.isDSD = true;
                 newFormat.bitDepth = 1;
                 newFormat.sampleRate = sampleRate;
-                
+
                 std::string codec = trackInfo.codec;
                 if (codec.find("lsb") != std::string::npos) {
                     newFormat.dsdFormat = AudioFormat::DSDFormat::DSF;
@@ -266,11 +271,21 @@ bool DirettaRenderer::start() {
                     newFormat.dsdFormat = AudioFormat::DSDFormat::DFF;
                 }
             }
-            
-            if (!m_direttaOutput->changeFormat(newFormat)) {
-                std::cerr << "[DirettaRenderer] ❌ Failed to change format" << std::endl;
+
+            // Reopen with new format
+            if (!m_direttaOutput->open(newFormat, m_config.bufferSeconds)) {
+                DEBUG_LOG("[DirettaRenderer] ❌ Failed to reopen with new format") << std::endl;
                 return false;
             }
+
+            if (!m_direttaOutput->play()) {
+                DEBUG_LOG("[DirettaRenderer] ❌ Failed to restart playback") << std::endl;
+                return false;
+            }
+
+            // Wait for DAC stabilization
+            DEBUG_LOG("[DirettaRenderer] ⏳ Waiting for DAC stabilization (200ms)...") << std::endl;
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
         }
         
         // Send audio to Diretta
