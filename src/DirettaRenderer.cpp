@@ -307,6 +307,7 @@ bool DirettaRenderer::start() {
 UPnPDevice::Callbacks callbacks;
 
 callbacks.onSetURI = [this](const std::string& uri, const std::string& metadata) {
+    std::lock_guard<std::mutex> lock(m_mutex);  // Serialize UPnP actions
     std::cout << "[DirettaRenderer] SetURI: " << uri << std::endl;
     
     // ⭐ Sauvegarder l'URI courante
@@ -318,6 +319,7 @@ callbacks.onSetURI = [this](const std::string& uri, const std::string& metadata)
 
 // CRITICAL: SetNextAVTransportURI pour le gapless
 callbacks.onSetNextURI = [this](const std::string& uri, const std::string& metadata) {
+    std::lock_guard<std::mutex> lock(m_mutex);  // Serialize UPnP actions
     std::cout << "[DirettaRenderer] ✓ SetNextAVTransportURI received for gapless" << std::endl;
     m_audioEngine->setNextURI(uri, metadata);
 };
@@ -325,6 +327,7 @@ callbacks.onSetNextURI = [this](const std::string& uri, const std::string& metad
 callbacks.onPlay = [&lastStopTime, &stopTimeMutex, this]() {
     std::cout << "[DirettaRenderer] ✓ Play command received" << std::endl;
     
+    std::lock_guard<std::mutex> lock(m_mutex);  // Serialize UPnP actions
     // ⭐ NOUVEAU : Gérer Resume si en pause
 if (m_direttaOutput && m_direttaOutput->isPaused()) {
     std::cout << "[DirettaRenderer] 🔄 Resuming from pause..." << std::endl;
@@ -364,6 +367,7 @@ if (m_direttaOutput && m_direttaOutput->isPaused()) {
 };
 
 callbacks.onPause = [this]() {
+    std::lock_guard<std::mutex> lock(m_mutex);  // Serialize UPnP actions
     std::cout << "════════════════════════════════════════" << std::endl;
     std::cout << "[DirettaRenderer] ⏸️  PAUSE REQUESTED" << std::endl;
     std::cout << "════════════════════════════════════════" << std::endl;
@@ -390,6 +394,7 @@ callbacks.onPause = [this]() {
     }
 };
 callbacks.onStop = [&lastStopTime, &stopTimeMutex, this]() {
+    std::lock_guard<std::mutex> lock(m_mutex);  // Serialize UPnP actions
     std::cout << "════════════════════════════════════════" << std::endl;
     std::cout << "[DirettaRenderer] ⛔ STOP REQUESTED" << std::endl;
     std::cout << "════════════════════════════════════════" << std::endl;
@@ -433,6 +438,7 @@ callbacks.onStop = [&lastStopTime, &stopTimeMutex, this]() {
 };
 
 callbacks.onSeek = [this](const std::string& target) {  // ⭐ Enlever unit
+    std::lock_guard<std::mutex> lock(m_mutex);  // Serialize UPnP actions
     std::cout << "════════════════════════════════════════" << std::endl;
     std::cout << "[DirettaRenderer] 🔍 SEEK REQUESTED" << std::endl;
     std::cout << "   Target: " << target << std::endl;
