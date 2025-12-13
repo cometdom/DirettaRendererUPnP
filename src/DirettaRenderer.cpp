@@ -5,7 +5,7 @@
  * CORRECTION MAJEURE:
  * - Ajout de contrôle de débit précis dans audioThreadFunc()
  * - Le timing est basé sur le sample rate du fichier en cours
- * - Utilise sleep_until() pour un timing précis au microseconde près
+ * - Utilise sleep_until() pour un timing précis aà la microseconde près
  */
 
 #include "DirettaRenderer.h"
