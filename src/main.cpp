@@ -95,7 +95,7 @@ DirettaRenderer::Config parseArguments(int argc, char* argv[]) {
              std::cout << "Author: Dominique COMET (with Yu Harada - Diretta protocol)" << std::endl;
              std::cout << "MIT License" << std::endl;
              std::cout << "═══════════════════════════════════════════════════════" << std::endl;
-            return 0;
+            exit(0);
         }       
         else if (arg == "--verbose" || arg == "-v") {
             // ⭐ NOUVEAU: Option verbose
