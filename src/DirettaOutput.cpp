@@ -362,9 +362,10 @@ bool DirettaOutput::changeFormat(const AudioFormat& newFormat) {
         std::cout << "[DirettaOutput] 4. Waiting for hardware stabilization (200ms)..." << std::endl;
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         
-        // ⭐ STEP 5: RESET BUFFER POSITION
-        std::cout << "[DirettaOutput] 5. Resetting buffer position..." << std::endl;
-        m_syncBuffer->seek_front();
+        // ⭐ STEP 5: DESTROY SYNCBUFFER (force recreation in configureDiretta)
+        // After pre_disconnect(), SyncBuffer cannot be reused for a different format
+        std::cout << "[DirettaOutput] 5. Destroying SyncBuffer for clean recreation..." << std::endl;
+        m_syncBuffer.reset();
     }
 
     // ⭐ STEP 6: RECONFIGURE WITH NEW FORMAT
