@@ -73,8 +73,16 @@ sudo ./DirettaRendererUPnP --uuid "uuid:my-custom-id-123"
 ```bash
 sudo ./DirettaRendererUPnP --no-gapless
 ```
+**Use case**: For compatibility with certain control points.
 
-**Use case**: Debugging or compatibility with certain control points.
+#### `--verbose`
+**Default**: no verbose By default, the renderer now displays only essential user-facing messages
+**Description** Technical debug information can be enabled using the --verbose flag for debug operations.
+**Example**:
+```bash
+ sudo ./DirettaRendererUPnP --port 4005 --target 1 --buffer 0.9 --verbose
+```
+**Use case**: Debugging
 
 ### Combined Example
 

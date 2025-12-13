@@ -16,6 +16,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ---
+## [1.0.6]
+### Add
+**Verbose Logging Mode**
+- Added optional --verbose mode to reduce console output verbosity
+By default, the renderer now displays only essential user-facing messages. Technical debug information can be enabled using the --verbose flag.
+- Example:
+sudo ./DirettaRendererUPnP --port 4005 --target 1 --buffer 0.9 --verbose
+Command Line Options
+
+- Added --verbose / -v flag to enable detailed debug output
+- Added --help documentation for the new verbose mode
+
+### Fixed
+- Removed clicks or pink noise bursts at the end of the album or during the transition between tracks in a playlist
+ * Buffers weren't correctly cleared at the en of an album or during a format change.
+- Disable gapless playback on format changes (Many thanks to herisson88)
+When the next track has a different format (sample rate, bit depth,
+channels, or DSD vs PCM), disable gapless transition and force a
+clean stop/start sequence to prevent audio artifacts.
+- Optimize FFmpeg settings for faster streaming startup (Many thanks to herisson88)
+  * Add probesize (1MB) and analyzeduration (1.5s) for faster initial buffering
+  * Increase network buffer from 32KB to 512KB for better stability
+Fix thread-safety issues in AudioEngine (Many thanks to herisson88)
+- Replace unsafe detached preload thread with joinable thread
+  * Add m_preloadThread member and m_preloadRunning atomic flag
+  * Add waitForPreloadThread() helper called in stop() and destructor
+  * Prevents use-after-free when AudioEngine is destroyed during preload
+- Fix race condition in setNextURI()
+  * std::string is not thread-safe for concurrent read/write
+  * Add pending mechanism with m_pendingMutex protection
+  * UPnP thread queues URI, audio thread applies it safely in process()
+  * Use memory_order_acquire/release for proper synchronization
+- Update stop() to clear pending state and wait for preload thread
+- Update process() to apply pending next URI before processing
+Serialize UPnP action callbacks to prevent race conditions
+- When multiple UPnP commands arrive in quick succession (e.g., rapid track
+skipping), they can execute concurrently and cause race conditions leading
+to silent playback or segmentation faults.
+- Add std::lock_guard<std::mutex> at the entry of each UPnP
+callback to ensure only one action executes at a time:
+ * onSetURI
+ * onSetNextURI
+ * onPlay
+ * onPause
+ * onStop
+ * onSeek
+
 ## [1.0.5]
 ### Fixed
 **Audio Player**
