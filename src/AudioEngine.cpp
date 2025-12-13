@@ -407,7 +407,7 @@ size_t AudioDecoder::readSamples(AudioBuffer& buffer, size_t numSamples,
         if (callCount <= 20 || callCount % 100 == 0) {
             DEBUG_LOG("[AudioDecoder::readSamples] Call #" << callCount 
                       << ", requested=" << numSamples << " samples"
-                      << ", remaining=" << m_remainingCount << " bytes" << std::endl;
+                      << ", remaining=" << m_remainingCount << " bytes");
         }
         
         if (m_eof) {
