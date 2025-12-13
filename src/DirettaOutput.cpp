@@ -102,7 +102,7 @@ bool DirettaOutput::open(const AudioFormat& format, int bufferSeconds) {
     
     DEBUG_LOG("[DirettaOutput] ✓ Found Diretta target");
     
-cpp// Configure and connect (with retry for slow DACs)
+// Configure and connect (with retry for slow DACs)
 const int CONFIG_MAX_RETRIES = 3;
 bool configured = false;
 int attempt = 1;
