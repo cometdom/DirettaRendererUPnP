@@ -716,7 +716,7 @@ bool DirettaOutput::verifyTargetAvailable() {
         // Create new Find object for each attempt (important!)
         DIRETTA::Find find(findSetting);
         
-        DEBUG_LOG("[DirettaOutput] Opening Diretta Find on all network interfaces";
+        DEBUG_LOG("[DirettaOutput] Opening Diretta Find on all network interfaces");
         std::cout.flush();
         
         if (!find.open()) {
