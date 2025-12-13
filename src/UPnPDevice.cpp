@@ -11,7 +11,7 @@
 // Logging system - Variable globale définie dans main.cpp
 // ============================================================================
 extern bool g_verbose;
-#define DEBUG_LOG(x) if (g_verbose) { std::cout << x << std::endl; }
+#define DEBUG_LOG(x) if (g_verbose) { std::cout << x); }
 
 
 // Helper pour extraire une valeur d'un document IXML
@@ -47,10 +47,10 @@ UPnPDevice::UPnPDevice(const Config& config)
     , m_volume(50)
     , m_mute(false)
 {
-    DEBUG_LOG("[UPnPDevice] Created: " << m_config.friendlyName << std::endl;
+    DEBUG_LOG("[UPnPDevice] Created: " << m_config.friendlyName);
     
     // Générer le ProtocolInfo basé sur les capacités Diretta/Holo Audio
-    DEBUG_LOG("[UPnPDevice] Generating ProtocolInfo..." << std::endl;
+    DEBUG_LOG("[UPnPDevice] Generating ProtocolInfo...");
     auto caps = ProtocolInfoBuilder::getHoloAudioCapabilities();
     m_protocolInfo = ProtocolInfoBuilder::buildProtocolInfo(caps);
     
@@ -62,7 +62,7 @@ UPnPDevice::UPnPDevice(const Config& config)
 
 UPnPDevice::~UPnPDevice() {
     stop();
-    DEBUG_LOG("[UPnPDevice] Destroyed") << std::endl;
+    DEBUG_LOG("[UPnPDevice] Destroyed");
 }
 
 bool UPnPDevice::start() {
@@ -73,7 +73,7 @@ bool UPnPDevice::start() {
         return false;
     }
     
-    DEBUG_LOG("[UPnPDevice] Starting...") << std::endl;
+    DEBUG_LOG("[UPnPDevice] Starting...");
     
     // 1. Initialize libupnp
     int ret = UpnpInit2(nullptr, m_config.port);
@@ -125,7 +125,7 @@ bool UPnPDevice::start() {
     UpnpEnableWebserver(1);
     UpnpSetWebServerRootDir("/tmp/upnp_scpd");
     
-    DEBUG_LOG("[UPnPDevice] ✓ SCPD files created and webserver configured" << std::endl;
+    DEBUG_LOG("[UPnPDevice] ✓ SCPD files created and webserver configured");
     
     // 7. Register root device
     ret = UpnpRegisterRootDevice2(
@@ -154,7 +154,7 @@ bool UPnPDevice::start() {
         std::cerr << "[UPnPDevice] UpnpSendAdvertisement failed: " 
                   << ret << std::endl;
     } else {
-        DEBUG_LOG("[UPnPDevice] ✓ SSDP advertisements sent") << std::endl;
+        DEBUG_LOG("[UPnPDevice] ✓ SSDP advertisements sent");
     }
     
     m_running = true;
@@ -173,7 +173,7 @@ void UPnPDevice::stop() {
         return;
     }
     
-    DEBUG_LOG("[UPnPDevice] Stopping...") << std::endl;
+    DEBUG_LOG("[UPnPDevice] Stopping...");
     
     if (m_deviceHandle >= 0) {
         // Send byebye
@@ -189,13 +189,13 @@ void UPnPDevice::stop() {
     
     m_running = false;
     
-    DEBUG_LOG("[UPnPDevice] ✓ Stopped") << std::endl;
+    DEBUG_LOG("[UPnPDevice] ✓ Stopped");
 }
 
 void UPnPDevice::setCallbacks(const Callbacks& callbacks) {
     std::lock_guard<std::mutex> lock(m_stateMutex);
     m_callbacks = callbacks;
-    DEBUG_LOG("[UPnPDevice] Callbacks set") << std::endl;
+    DEBUG_LOG("[UPnPDevice] Callbacks set");
 }
 
 // Static callback dispatcher
@@ -346,7 +346,7 @@ int UPnPDevice::handleSubscriptionRequest(UpnpSubscriptionRequest* request) {
         UpnpSubscriptionRequest_get_ServiceId(request)
     );
     
-    DEBUG_LOG("[UPnPDevice] Subscription request for: " << serviceID << std::endl;
+    DEBUG_LOG("[UPnPDevice] Subscription request for: " << serviceID);
     
     // Accept all subscriptions
     // UpnpSubscriptionRequest_set_ErrCode(request, UPNP_E_SUCCESS);
@@ -359,7 +359,7 @@ int UPnPDevice::handleGetVarRequest(UpnpStateVarRequest* request) {
         UpnpStateVarRequest_get_StateVarName(request)
     );
     
-    DEBUG_LOG("[UPnPDevice] GetVar: " << varName << std::endl;
+    DEBUG_LOG("[UPnPDevice] GetVar: " << varName);
     
     // Return current value
     if (varName == "TransportState") {
@@ -388,7 +388,7 @@ int UPnPDevice::actionSetAVTransportURI(UpnpActionRequest* request) {
         return UPNP_E_SUCCESS;
     }
     
-    DEBUG_LOG("[UPnPDevice] SetAVTransportURI: " << uri << std::endl;
+    DEBUG_LOG("[UPnPDevice] SetAVTransportURI: " << uri);
     
 {
     std::lock_guard<std::mutex> lock(m_stateMutex);
@@ -401,7 +401,7 @@ int UPnPDevice::actionSetAVTransportURI(UpnpActionRequest* request) {
     
     // Effacer l'ancienne queue gapless (nouveau contexte)
     if (!m_nextURI.empty()) {
-        DEBUG_LOG("[UPnPDevice] ✓ Clearing old gapless queue (new context)" << std::endl;
+        DEBUG_LOG("[UPnPDevice] ✓ Clearing old gapless queue (new context)");
         m_nextURI.clear();
         m_nextMetadata.clear();
     }
@@ -428,7 +428,7 @@ int UPnPDevice::actionSetNextAVTransportURI(UpnpActionRequest* request) {
     std::string uri = getArgumentValue(actionDoc, "NextURI");
     std::string metadata = getArgumentValue(actionDoc, "NextURIMetaData");
     
-    DEBUG_LOG("[UPnPDevice] SetNextAVTransportURI: " << uri << std::endl;
+    DEBUG_LOG("[UPnPDevice] SetNextAVTransportURI: " << uri);
     
     {
         std::lock_guard<std::mutex> lock(m_stateMutex);
@@ -512,7 +512,7 @@ int UPnPDevice::actionStop(UpnpActionRequest* request) {
     
     // Effacer la queue gapless
     if (!m_nextURI.empty()) {
-        DEBUG_LOG("[UPnPDevice] ✓ Clearing gapless queue: " << m_nextURI << std::endl;
+        DEBUG_LOG("[UPnPDevice] ✓ Clearing gapless queue: " << m_nextURI);
         m_nextURI.clear();
         m_nextMetadata.clear();
     }
@@ -520,9 +520,9 @@ int UPnPDevice::actionStop(UpnpActionRequest* request) {
     
     // Callback
     if (m_callbacks.onStop) {
-        DEBUG_LOG("[UPnPDevice] ✓ Calling onStop callback..." << std::endl;
+        DEBUG_LOG("[UPnPDevice] ✓ Calling onStop callback...");
         m_callbacks.onStop();
-        DEBUG_LOG("[UPnPDevice] ✓ onStop callback completed") << std::endl;
+        DEBUG_LOG("[UPnPDevice] ✓ onStop callback completed");
     } else {
         std::cout << "[UPnPDevice] ❌ NO onStop CALLBACK CONFIGURED!" << std::endl;
     }    
@@ -530,10 +530,10 @@ int UPnPDevice::actionStop(UpnpActionRequest* request) {
     sendAVTransportEvent();
     
     // Response
-    DEBUG_LOG("[UPnPDevice] Creating response...") << std::endl;
+    DEBUG_LOG("[UPnPDevice] Creating response...");
     IXML_Document* response = createActionResponse("Stop");
     UpnpActionRequest_set_ActionResult(request, response);
-    DEBUG_LOG("[UPnPDevice] ✓ Stop action completed") << std::endl;
+    DEBUG_LOG("[UPnPDevice] ✓ Stop action completed");
     
     return UPNP_E_SUCCESS;
 }
