@@ -43,7 +43,9 @@ clean stop/start sequence to prevent audio artifacts.
 - Optimize FFmpeg settings for faster streaming startup (Many thanks to herisson88)
   * Add probesize (1MB) and analyzeduration (1.5s) for faster initial buffering
   * Increase network buffer from 32KB to 512KB for better stability
+    
 Fix thread-safety issues in AudioEngine (Many thanks to herisson88)
+
 - Replace unsafe detached preload thread with joinable thread
   * Add m_preloadThread member and m_preloadRunning atomic flag
   * Add waitForPreloadThread() helper called in stop() and destructor
