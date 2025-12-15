@@ -1218,6 +1218,28 @@ bool AudioEngine::process(size_t samplesNeeded) {
         std::cout << "[AudioEngine] Pending next URI applied (gapless)" << std::endl;
     }
 
+    // ⭐ FIX: Auto-reopen decoder if URI changed during playback
+    // Handles SetAVTransportURI without Stop/Play (Squeeze Bridge / JPlay behavior)
+    if (!m_currentDecoder) {
+        if (!m_currentURI.empty()) {
+            std::cout << "[AudioEngine] 🔄 Decoder null while PLAYING - reopening track..." << std::endl;
+            if (!openCurrentTrack()) {
+                std::cerr << "[AudioEngine] ❌ Failed to open track" << std::endl;
+                m_state = State::STOPPED;
+                if (m_trackEndCallback) {
+                    m_trackEndCallback();
+                }
+                return false;
+            }
+            std::cout << "[AudioEngine] ✓ Track reopened successfully" << std::endl;
+            m_samplesPlayed = 0;
+            m_silenceCount = 0;
+            m_isDraining = false;
+        } else {
+            return false;
+        }
+    }
+
     if (!m_currentDecoder) {
         return false;
     }    // ... reste du code ...    // Determine output format
