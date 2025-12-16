@@ -94,19 +94,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `DirettaRenderer.cpp` - onPlay callback logic
 
 ### Fixed
-- **Dynamic sample rate switching**: Fixed DAC not changing sample rate when transitioning between tracks with different formats (e.g., 96kHz → 44.1kHz)
+- **Dynamic sample rate switching**: 
+
+Fixed DAC not changing sample rate when transitioning between tracks with different formats (e.g., 96kHz → 44.1kHz)
   - Root cause: After `close()`, the callback would immediately `open()` with the new format without giving the Diretta Target time to reinitialize
   - Solution: Added persistent format tracking using static variables to detect format changes even after `close()`, and implemented a 500ms pause before reopening to allow the Target's clock generator and PLL to properly reset
   - The Diretta Target now correctly reconfigures the DAC for each format change
   - Format changes are properly logged with detailed transition information
 
 ### Changed
-- **Improved audio thread logging**: Reduced log spam when `process()` returns false
+- **Improved audio thread logging**: 
+
+Reduced log spam when `process()` returns false
   - Now logs only every 100 consecutive failures instead of every occurrence
   - Prevents multi-gigabyte log files during idle states
   - Added consecutive failure counter for better debugging visibility
 
 ### Technical Details
+
 - Format change detection now works in two scenarios:
   1. When `isConnected() == true`: Compares current format with `getFormat()`
   2. When `isConnected() == false`: Compares with last known format stored in static variable (critical for JPLAY's AUTO-STOP behavior)
@@ -114,6 +119,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Validated transitions: PCM ↔ PCM (different sample rates), PCM ↔ DSD
 
 ### Notes
+
 - Format changes between tracks are expected to have a brief pause (~1s) for proper DAC reconfiguration
 - Gapless playback for tracks with the same format remains unaffected and works seamlessly
 - This fix enables proper bit-perfect playback across entire multi-format playlists
