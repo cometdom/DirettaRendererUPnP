@@ -911,6 +911,14 @@ if (format.dsdFormat == AudioFormat::DSDFormat::DFF) {
             std::cout << "DSD256 (11289600 Hz)" << std::endl;
             formatID |= DIRETTA::FormatID::RAT_44100 | DIRETTA::FormatID::RAT_MP256;
             DEBUG_LOG("[DirettaOutput]    ✅ DSD256 configured");
+        } else if (format.sampleRate == 22579200) {
+            std::cout << "DSD512 (22579200 Hz)" << std::endl;
+            formatID |= DIRETTA::FormatID::RAT_44100 | DIRETTA::FormatID::RAT_MP512;
+            DEBUG_LOG("[DirettaOutput]    ✅ DSD512 configured");
+        } else if (format.sampleRate == 45158400) {
+            std::cout << "DSD1024 (45158400 Hz)" << std::endl;
+            formatID |= DIRETTA::FormatID::RAT_44100 | DIRETTA::FormatID::RAT_MP1024;
+            DEBUG_LOG("[DirettaOutput]    ✅ DSD1024 configured");
         } else {
             std::cerr << "[DirettaOutput]    ⚠️  Unknown DSD rate: " << format.sampleRate << std::endl;
             formatID |= DIRETTA::FormatID::RAT_44100 | DIRETTA::FormatID::RAT_MP64;
