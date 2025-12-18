@@ -453,7 +453,7 @@ Tested and working with:
 | **JPlay iOS** | iOS | ⭐⭐⭐⭐⭐ | Excellent, full feature support |
 | **BubbleUPnP** | Android | ⭐⭐⭐⭐⭐ | Excellent, highly configurable |
 | **mConnect** | iOS/Android | ⭐⭐⭐⭐ | Very good, clean interface |
-| **Linn Kazoo** | iOS/Android | ⭐⭐⭐⭐ | Good, designed for Linn systems | needs Openhome (BubbleUPnP sever)
+| **Linn Kazoo** | iOS/Android | ⭐⭐⭐⭐ | Good, designed for Linn systems but needs Openhome (BubbleUPnP sever)
 | **gerbera** | Web | ⭐⭐⭐ | Basic functionality |
 
 ### Recommended Settings
