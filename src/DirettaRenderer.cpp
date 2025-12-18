@@ -236,7 +236,7 @@ m_audioEngine->setAudioCallback(
                 
                 // STEP 4: Wait for DAC lock
                 std::cout << "[Callback]    4. Waiting for DAC lock (300ms)..." << std::endl;
-                std::this_thread::sleep_for(std::chrono::milliseconds(300));
+                std::this_thread::sleep_for(std::chrono::milliseconds(600));
                 
                 std::cout << "[Callback] ✅ Format change completed successfully" << std::endl;
                 std::cout << "════════════════════════════════════════" << std::endl;
@@ -284,7 +284,7 @@ m_audioEngine->setAudioCallback(
                 
                 // Wait for Target to reinitialize after format change
                 std::cout << "[Callback] ⏳ Waiting for Target reinitialization (500ms)..." << std::endl;
-                std::this_thread::sleep_for(std::chrono::milliseconds(500));
+                std::this_thread::sleep_for(std::chrono::milliseconds(600));
                 std::cout << "[Callback] ✓ Target ready for new format" << std::endl;
                 
             } else if (needsTargetReset) {
@@ -293,7 +293,7 @@ m_audioEngine->setAudioCallback(
                 std::cout << "[Callback] 🔌 Reopening Diretta connection (same format: " 
                           << sampleRate << "Hz/" << bitDepth << "bit/" << channels << "ch)" << std::endl;
                 std::cout << "[Callback] ⏳ Waiting for Target reset (300ms)..." << std::endl;
-                std::this_thread::sleep_for(std::chrono::milliseconds(300));
+                std::this_thread::sleep_for(std::chrono::milliseconds(600));
                 std::cout << "[Callback] ✓ Target ready for reconnection" << std::endl;
                 
             } else {
@@ -352,7 +352,7 @@ m_audioEngine->setAudioCallback(
             
             // ⭐ CRITICAL: Wait for DAC stabilization
             DEBUG_LOG("[DirettaRenderer] ⏳ Waiting for DAC stabilization (200ms)...");
-            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            std::this_thread::sleep_for(std::chrono::milliseconds(400));
             
             auto totalTime = std::chrono::steady_clock::now();
             auto totalDuration = std::chrono::duration_cast<std::chrono::milliseconds>(totalTime - initStart);
@@ -522,7 +522,7 @@ callbacks.onPlay = [&lastStopTime, &stopTimeMutex, this]() {
         if (timeSinceStop.count() < 100) {
             DEBUG_LOG("[DirettaRenderer] ⚠️  Stop was " << timeSinceStop.count() 
                       << "ms ago, adding safety delay");
-            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
     }
     
