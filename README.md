@@ -462,8 +462,8 @@ Tested and working with:
 - **Gapless**: On (if desired)
 
 ## AUDIRVANA
-- **Universal gapless enabled** is you notice pink noise after few seconds of playback
-- **DSD** DSD isn’t functioning properly, as the DAC plays PCM instead (e.g., DSD64 → PCM 352.4 kHz). So you can set NO DSD.
+- **Universal gapless enabled**: is you notice pink noise after few seconds of playback
+- **DSD**: DSD isn’t functioning properly, as the DAC plays PCM instead (e.g., DSD64 → PCM 352.4 kHz). So you can set NO DSD.
 
 ---
 
