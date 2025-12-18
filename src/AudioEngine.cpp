@@ -1285,9 +1285,26 @@ bool AudioEngine::process(size_t samplesNeeded) {
         std::cout << "[AudioEngine] Pending next URI applied (gapless)" << std::endl;
     }
 
+    // Safety net: auto-reopen if decoder null while PLAYING
     if (!m_currentDecoder) {
-        return false;
-    }    // ... reste du code ...    // Determine output format
+        if (!m_currentURI.empty()) {
+            if (!openCurrentTrack()) {
+                std::cerr << "[AudioEngine] Failed to reopen track" << std::endl;
+                m_state = State::STOPPED;
+                if (m_trackEndCallback) {
+                    m_trackEndCallback();
+                }
+                return false;
+            }
+            m_samplesPlayed = 0;
+            m_silenceCount = 0;
+            m_isDraining = false;
+        } else {
+            return false;
+        }
+    }
+
+    // Determine output format
     uint32_t outputRate = m_currentTrackInfo.sampleRate;
     uint32_t outputBits = m_currentTrackInfo.bitDepth;
     uint32_t outputChannels = m_currentTrackInfo.channels;

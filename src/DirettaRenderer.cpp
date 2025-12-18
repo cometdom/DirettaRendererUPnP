@@ -154,9 +154,26 @@ bool DirettaRenderer::start() {
         
         
 m_audioEngine->setAudioCallback(
-    [this](const AudioBuffer& buffer, size_t samples, 
+    [this](const AudioBuffer& buffer, size_t samples,
            uint32_t sampleRate, uint32_t bitDepth, uint32_t channels) -> bool {
-        
+
+        {
+            std::lock_guard<std::mutex> lk(m_callbackMutex);
+            m_callbackRunning = true;
+        }
+
+        // RAII guard - clears flag on any exit path
+        struct CallbackGuard {
+            DirettaRenderer* self;
+            ~CallbackGuard() {
+                {
+                    std::lock_guard<std::mutex> lk(self->m_callbackMutex);
+                    self->m_callbackRunning = false;
+                }
+                self->m_callbackCV.notify_all();
+            }
+        } guard{this};
+
         DEBUG_LOG("[Callback] Sending " << samples << " samples");
         
         // Get track info to check for DSD
@@ -415,9 +432,8 @@ m_audioEngine->setAudioCallback(
         
         // Setup callbacks from UPnP to AudioEngine
   
-        // Track last stop time to handle Stop+Play race condition
+        // Track last stop time for DAC stabilization delay
         static std::chrono::steady_clock::time_point lastStopTime;
-        static std::mutex stopTimeMutex;
   
 UPnPDevice::Callbacks callbacks;
 
@@ -441,10 +457,14 @@ callbacks.onSetURI = [this](const std::string& uri, const std::string& metadata)
                   << std::endl;
         std::cout << "[DirettaRenderer] 🛑 Auto-STOP before URI change (JPLAY compatibility)" << std::endl;
         std::cout << "════════════════════════════════════════" << std::endl;
-        
-        // Stop AudioEngine
-        m_audioEngine->stop();
-        
+
+        // SYNC: Stop with mutex held, then wait for callback
+        {
+            std::lock_guard<std::mutex> cbLock(m_callbackMutex);
+            m_audioEngine->stop();
+        }
+        waitForCallbackComplete();
+
         // Stop and close DirettaOutput
         if (m_direttaOutput) {
             if (m_direttaOutput->isPlaying()) {
@@ -475,7 +495,7 @@ callbacks.onSetNextURI = [this](const std::string& uri, const std::string& metad
     m_audioEngine->setNextURI(uri, metadata);
 };
 
-callbacks.onPlay = [&lastStopTime, &stopTimeMutex, this]() {
+callbacks.onPlay = [&lastStopTime, this]() {
     std::cout << "[DirettaRenderer] ✓ Play command received" << std::endl;
     
     std::lock_guard<std::mutex> lock(m_mutex);  // Serialize UPnP actions
@@ -512,10 +532,8 @@ callbacks.onPlay = [&lastStopTime, &stopTimeMutex, this]() {
         DEBUG_LOG("[DirettaRenderer] ✓ Track reopened");
     }
     
-    // ⚠️  SAFETY: Conditional delay to avoid race condition with Stop
-    // Only add delay if Stop was called very recently (< 100ms ago)
+    // DAC stabilization delay after recent Stop
     {
-        std::lock_guard<std::mutex> lock(stopTimeMutex);
         auto now = std::chrono::steady_clock::now();
         auto timeSinceStop = std::chrono::duration_cast<std::chrono::milliseconds>(now - lastStopTime);
         
@@ -557,21 +575,23 @@ callbacks.onPause = [this]() {
         std::cerr << "❌ Exception in Pause callback: " << e.what() << std::endl;
     }
 };
-callbacks.onStop = [&lastStopTime, &stopTimeMutex, this]() {
+callbacks.onStop = [&lastStopTime, this]() {
     std::lock_guard<std::mutex> lock(m_mutex);  // Serialize UPnP actions
     std::cout << "════════════════════════════════════════" << std::endl;
     std::cout << "[DirettaRenderer] ⛔ STOP REQUESTED" << std::endl;
     std::cout << "════════════════════════════════════════" << std::endl;
     
-    // Record stop time for Play race condition detection
-    {
-        std::lock_guard<std::mutex> lock(stopTimeMutex);
-        lastStopTime = std::chrono::steady_clock::now();
-    }
+    // Record stop time for DAC stabilization delay
+    lastStopTime = std::chrono::steady_clock::now();
     
     try {
-        DEBUG_LOG("[DirettaRenderer] Calling AudioEngine::stop()...");
-        m_audioEngine->stop();
+        // SYNC: Stop with mutex held, then wait for callback
+        {
+            std::lock_guard<std::mutex> cbLock(m_callbackMutex);
+            DEBUG_LOG("[DirettaRenderer] Calling AudioEngine::stop()...");
+            m_audioEngine->stop();
+        }
+        waitForCallbackComplete();
         DEBUG_LOG("[DirettaRenderer] ✓ AudioEngine stopped");
         
        // ⭐ RESET position: Recharger l'URI pour revenir au début
