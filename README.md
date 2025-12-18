@@ -453,13 +453,17 @@ Tested and working with:
 | **JPlay iOS** | iOS | ⭐⭐⭐⭐⭐ | Excellent, full feature support |
 | **BubbleUPnP** | Android | ⭐⭐⭐⭐⭐ | Excellent, highly configurable |
 | **mConnect** | iOS/Android | ⭐⭐⭐⭐ | Very good, clean interface |
-| **Linn Kazoo** | iOS/Android | ⭐⭐⭐⭐ | Good, designed for Linn systems |
+| **Linn Kazoo** | iOS/Android | ⭐⭐⭐⭐ | Good, designed for Linn systems | needs Openhome (BubbleUPnP sever)
 | **gerbera** | Web | ⭐⭐⭐ | Basic functionality |
 
-### Recommended Settings (JPlay iOS)
-- **Device Quality**: Maximum
-- **Memory Mode**: Off (renderer handles this)
+### Recommended Settings
+## JPLAY iOS
+- **Force STOP before playback**: if you have problem switching from a track to another or album to another. You don't need it if switching is working fine.
 - **Gapless**: On (if desired)
+
+## AUDIRVANA
+- **Universal gapless enabled** is you notice pink noise afeter few seconds of playback
+- **DSD** DSD isn’t functioning properly, as the DAC plays PCM instead (e.g., DSD64 → PCM 352.4 kHz). So you can set NO DSD.
 
 ---
 
@@ -665,4 +669,4 @@ This software is provided "as is" without warranty. While designed for high-qual
 
 **Enjoy bit-perfect, high-resolution audio streaming! 🎵**
 
-*Last updated: 2025-12-14*
+*Last updated: 2025-12-18*
