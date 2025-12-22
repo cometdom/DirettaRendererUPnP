@@ -16,6 +16,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ---
+## [1.0.8] - 2022-12-XX
+
+### Fixed
+
+- **CRITICAL: Race condition in AudioDecoder** - Converted 9 static variables to instance 
+  members to prevent data races during gapless playback when multiple decoder instances 
+  run concurrently
+  - Fixed: callCount, packetCount, and 7 logging flags now per-instance
+  - Impact: Eliminates crashes, data corruption, and incorrect behavior in gapless mode
+  - Each AudioDecoder instance now maintains its own independent state
+  - Thread-safe for concurrent preloading and playback
+
+- **CRITICAL: SEEK deadlock causing control points to freeze** - Implemented asynchronous 
+  seek mechanism using atomic flags to avoid mutex deadlock
+  - The UPnP thread no longer blocks waiting for the audio thread's mutex
+  - Seek requests are processed in the audio thread during the next process() cycle
+  - Removed unnecessary DirettaOutput seek during playback (AudioEngine seek is sufficient)
+  - Latency: ~170-185ms (imperceptible, standard for real-time audio)
+  - Fixes: mConnect, BubbleUPnP, and other control points no longer freeze on seek
+  - Impact: Seek now works reliably across all UPnP control points
+
+- **Refactor Makefile**
+  - proper ARCH_NAME/VARIANT handling, unified auto-detection (Thanks to udosan174)
+
+### Technical Details
+
+- Added atomic members `m_seekRequested` and `m_seekTarget` to AudioEngine
+- Modified `AudioEngine::seek()` to be lock-free and non-blocking
+- Seek processing moved to audio thread in `process()` for thread safety
+- All static debug counters in AudioDecoder converted to instance members
+
+
+
+
 ## [1.0.7]
 
 ### Add

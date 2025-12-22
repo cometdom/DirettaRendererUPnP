@@ -289,17 +289,8 @@ int UPnPDevice::handleActionRequest(UpnpActionRequest* request) {
             IXML_Document* response = createActionResponse("GetProtocolInfo");
             addResponseArg(response, "Source", "");
             
-            // Use dynamically generated ProtocolInfo from Diretta capabilities
-            // Combined with essential formats for controller compatibility
-            std::string sinkProtocols = m_protocolInfo;
-
-            // Append common formats required by strict controllers (Audirvana, Squeeze Bridge)
-            if (!sinkProtocols.empty()) {
-                sinkProtocols += ",";
-            }
-            // Liste explicite des formats supportés
             // Requis par certains contrôleurs stricts comme Audirvana
-            sinkProtocols += 
+            std::string sinkProtocols = 
                 // WAV (requis par Audirvana)
                 "http-get:*:audio/wav:*,"
                 "http-get:*:audio/x-wav:*,"

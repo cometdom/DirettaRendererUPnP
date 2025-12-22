@@ -119,7 +119,18 @@ private:
     // on garde l'excédent ici pour le prochain appel
     AudioBuffer m_remainingSamples;
     size_t m_remainingCount;
-    
+        // ⭐⭐⭐ NEW: Debug/diagnostic counters (instance variables, NOT static!)
+    // These were previously static variables causing race conditions when
+    // multiple AudioDecoder instances run concurrently (e.g., gapless preload)
+    int m_readCallCount = 0;              // readSamples() call counter
+    int m_packetCount = 0;                // DSD packet counter
+    bool m_dsdWarningShown = false;       // DSD packet size warning (once per instance)
+    bool m_interleavingLoggedDOP = false; // DSD-over-PCM interleaving logged
+    bool m_interleavingLoggedNative = false; // Native DSD interleaving logged
+    bool m_dumpedFirstPacket = false;     // First packet hex dump flag
+    bool m_bitReversalLogged = false;     // Bit reversal logged (PCM mode)
+    bool m_resamplingLogged = false;      // Resampling logged (PCM mode)
+    bool m_resamplerInitLogged = false;   // Resampler init logged (open())
     bool initResampler(uint32_t outputRate, uint32_t outputBits);
     
 };
@@ -321,14 +332,18 @@ private:
     std::string m_pendingNextURI;
     std::string m_pendingNextMetadata;
 
-    // Preload thread management (replaces detached thread)
+   // Preload thread management (replaces detached thread)
     std::thread m_preloadThread;
     std::atomic<bool> m_preloadRunning{false};
     void waitForPreloadThread();
 
+    // ⭐⭐⭐ NEW: Async seek mechanism to avoid deadlock
+    // The UPnP thread sets these flags, the audio thread processes the seek
+    std::atomic<bool> m_seekRequested{false};
+    std::atomic<double> m_seekTarget{0.0};
+
     // Prevent copying
     AudioEngine(const AudioEngine&) = delete;
-    AudioEngine& operator=(const AudioEngine&) = delete;
-};
+    AudioEngine& operator=(const AudioEngine&) = delete;};
 
 #endif // AUDIO_ENGINE_H

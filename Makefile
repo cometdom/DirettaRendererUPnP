@@ -16,110 +16,113 @@ CXXFLAGS = -std=c++17 -Wall -Wextra -O2 -pthread
 LDFLAGS = -pthread
 
 # ============================================
-# Manual Override Option
+# Manual Override Option / Architecture detection
 # ============================================
 
 UNAME_M := $(shell uname -m)
 
-# Map uname output to Diretta library architecture
+# Detect base architecture (for auto mode)
 ifeq ($(UNAME_M),x86_64)
-    DIRETTA_ARCH = x64
-    ARCH_DESC = x86_64 (Intel/AMD 64-bit)
+    BASE_ARCH = x64
+    ARCH_DESC_BASE = x86_64 (Intel/AMD 64-bit)
 else ifeq ($(UNAME_M),aarch64)
-    DIRETTA_ARCH = aarch64
-    ARCH_DESC = ARM64 (Raspberry Pi 4, etc.)
-else ifeq ($(UNAME_M),armv7l)
-    DIRETTA_ARCH = arm
-    ARCH_DESC = ARM 32-bit (Raspberry Pi 3, etc.)
+    BASE_ARCH = aarch64
+    ARCH_DESC_BASE = ARM64 (aarch64)
 else ifeq ($(UNAME_M),arm64)
-    DIRETTA_ARCH = arm64
-    ARCH_DESC = ARM64 (Apple Silicon, etc.)
+    BASE_ARCH = aarch64
+    ARCH_DESC_BASE = ARM64 (arm64 → aarch64)
+else ifeq ($(UNAME_M),armv7l)
+    BASE_ARCH = arm
+    ARCH_DESC_BASE = ARM 32-bit (armv7l)
+    $(warning ARM 32-bit detected but not officially supported by Diretta SDK)
+else ifeq ($(UNAME_M),riscv64)
+    BASE_ARCH = riscv64
+    ARCH_DESC_BASE = RISC-V 64-bit
 else
-    # ============================================
-    # Automatic Architecture Detection
-    # ============================================
-    
-    UNAME_M := $(shell uname -m)
-    
-    # Detect base architecture
-    ifeq ($(UNAME_M),x86_64)
-        BASE_ARCH = x64
-        ARCH_DESC_BASE = x86_64 (Intel/AMD 64-bit)
-    else ifeq ($(UNAME_M),aarch64)
-        BASE_ARCH = aarch64
-        ARCH_DESC_BASE = ARM64 (aarch64)
-    else ifeq ($(UNAME_M),arm64)
-        BASE_ARCH = aarch64
-        ARCH_DESC_BASE = ARM64 (arm64 → aarch64)
-    else ifeq ($(UNAME_M),armv7l)
-        BASE_ARCH = arm
-        ARCH_DESC_BASE = ARM 32-bit (armv7l)
-        $(warning ARM 32-bit detected but not officially supported by Diretta SDK)
-    else ifeq ($(UNAME_M),riscv64)
-        BASE_ARCH = riscv64
-        ARCH_DESC_BASE = RISC-V 64-bit
-    else
-        BASE_ARCH = unknown
-        ARCH_DESC_BASE = Unknown: $(UNAME_M)
-    endif
-    
-    # ============================================
-    # Architecture-Specific Variant Detection
-    # ============================================
-    
-    ifeq ($(BASE_ARCH),x64)
-        # x64: Auto-detect CPU capabilities
-        HAS_AVX2 := $(shell grep -q avx2 /proc/cpuinfo && echo 1 || echo 0)
-        HAS_AVX512 := $(shell grep -q avx512 /proc/cpuinfo && echo 1 || echo 0)
-        IS_ZEN4 := $(shell lscpu 2>/dev/null | grep -qi "AMD.*Zen 4" && echo 1 || echo 0)
-        
-        ifeq ($(IS_ZEN4),1)
-            DEFAULT_VARIANT = x64-linux-15zen4
-            CPU_DESC = AMD Zen 4 detected
-        else ifeq ($(HAS_AVX512),1)
-            DEFAULT_VARIANT = x64-linux-15v4
-            CPU_DESC = AVX512 detected (x86-64-v4)
-        else ifeq ($(HAS_AVX2),1)
-            DEFAULT_VARIANT = x64-linux-15v3
-            CPU_DESC = AVX2 detected (x86-64-v3)
-        else
-            DEFAULT_VARIANT = x64-linux-15v2
-            CPU_DESC = Basic x64 (x86-64-v2)
-        endif
-        
-    else ifeq ($(BASE_ARCH),aarch64)
-        # aarch64: Check kernel version
-        KERNEL_VER := $(shell uname -r | cut -d. -f1-2)
-        KERNEL_MAJOR := $(shell echo $(KERNEL_VER) | cut -d. -f1)
-        KERNEL_MINOR := $(shell echo $(KERNEL_VER) | cut -d. -f2)
-        
-        # Use k16 variant if kernel >= 4.16
-        ifeq ($(shell [ $(KERNEL_MAJOR) -gt 4 ] || [ $(KERNEL_MAJOR) -eq 4 -a $(KERNEL_MINOR) -ge 16 ] && echo 1),1)
-            DEFAULT_VARIANT = aarch64-linux-15k16
-            CPU_DESC = Kernel $(KERNEL_VER) (using k16 variant)
-        else
-            DEFAULT_VARIANT = aarch64-linux-15
-            CPU_DESC = Kernel $(KERNEL_VER) (using standard variant)
-        endif
-        
-    else ifeq ($(BASE_ARCH),riscv64)
-        DEFAULT_VARIANT = riscv64-linux-15
-        CPU_DESC = RISC-V 64-bit
-        
-    else
-        DEFAULT_VARIANT = unknown
-        CPU_DESC = Unknown architecture
-    endif
-    
-    # Allow user to override just the variant part
-    ifndef VARIANT
-        FULL_VARIANT = $(DEFAULT_VARIANT)
-    else
-        FULL_VARIANT = $(BASE_ARCH)-linux-$(VARIANT)
-    endif
-    
-    ARCH_DESC = $(ARCH_DESC_BASE) - $(CPU_DESC)
+    BASE_ARCH = unknown
+    ARCH_DESC_BASE = Unknown: $(UNAME_M)
 endif
+
+# ============================================
+# Architecture-Specific Variant Detection (auto mode)
+# ============================================
+
+# DEFAULT_VARIANT is only used when ARCH_NAME/VARIANT are not given
+ifeq ($(BASE_ARCH),x64)
+    # x64: Auto-detect CPU capabilities
+    HAS_AVX2   := $(shell grep -q avx2 /proc/cpuinfo 2>/dev/null && echo 1 || echo 0)
+    HAS_AVX512 := $(shell grep -q avx512 /proc/cpuinfo 2>/dev/null && echo 1 || echo 0)
+    IS_ZEN4    := $(shell lscpu 2>/dev/null | grep -qi "AMD.*Zen 4" && echo 1 || echo 0)
+    
+    ifeq ($(IS_ZEN4),1)
+        DEFAULT_VARIANT = x64-linux-15zen4
+        CPU_DESC = AMD Zen 4 detected
+    else ifeq ($(HAS_AVX512),1)
+        DEFAULT_VARIANT = x64-linux-15v4
+        CPU_DESC = AVX512 detected (x86-64-v4)
+    else ifeq ($(HAS_AVX2),1)
+        DEFAULT_VARIANT = x64-linux-15v3
+        CPU_DESC = AVX2 detected (x86-64-v3)
+    else
+        DEFAULT_VARIANT = x64-linux-15v2
+        CPU_DESC = Basic x64 (x86-64-v2)
+    endif
+
+else ifeq ($(BASE_ARCH),aarch64)
+    # aarch64: Check kernel version
+    KERNEL_VER   := $(shell uname -r | cut -d. -f1-2)
+    KERNEL_MAJOR := $(shell echo $(KERNEL_VER) | cut -d. -f1)
+    KERNEL_MINOR := $(shell echo $(KERNEL_VER) | cut -d. -f2)
+    
+    # Use k16 variant if kernel >= 4.16
+    ifeq ($(shell [ $(KERNEL_MAJOR) -gt 4 ] || [ $(KERNEL_MAJOR) -eq 4 -a $(KERNEL_MINOR) -ge 16 ] && echo 1),1)
+        DEFAULT_VARIANT = aarch64-linux-15k16
+        CPU_DESC = Kernel $(KERNEL_VER) (using k16 variant)
+    else
+        DEFAULT_VARIANT = aarch64-linux-15
+        CPU_DESC = Kernel $(KERNEL_VER) (using standard variant)
+    endif
+
+else ifeq ($(BASE_ARCH),riscv64)
+    DEFAULT_VARIANT = riscv64-linux-15
+    CPU_DESC = RISC-V 64-bit
+
+else
+    DEFAULT_VARIANT = unknown
+    CPU_DESC = Unknown architecture
+endif
+
+# ============================================
+# Variant resolution (ARCH_NAME / VARIANT / auto)
+# ============================================
+
+# 1. Full manual override: ARCH_NAME=x64-linux-15v3
+ifdef ARCH_NAME
+    FULL_VARIANT = $(ARCH_NAME)
+else
+    # 2. Only VARIANT given: VARIANT=15v4 → x64-linux-15v4
+    ifdef VARIANT
+        FULL_VARIANT = $(BASE_ARCH)-linux-$(VARIANT)
+    else
+        # 3. Pure auto-detect
+        FULL_VARIANT = $(DEFAULT_VARIANT)
+    endif
+endif
+
+# Derived values from FULL_VARIANT
+# FULL_VARIANT format examples:
+#   x64-linux-15v3
+#   x64-linux-15zen4
+#   x64-linux-musl15zen4
+#   aarch64-linux-15
+#   riscv64-linux-15
+#
+# DIRETTA_ARCH      = first component (x64 / aarch64 / riscv64 / ...)
+# DIRETTA_LIB_SUFFIX = everything after "<arch>-linux-"
+DIRETTA_ARCH      = $(word 1,$(subst -, ,$(FULL_VARIANT)))
+DIRETTA_LIB_SUFFIX = $(subst $(DIRETTA_ARCH)-linux-,,$(FULL_VARIANT))
+
+ARCH_DESC = $(ARCH_DESC_BASE) - $(CPU_DESC)
 
 # ============================================
 # Add -nolog suffix if requested
@@ -136,7 +139,7 @@ endif
 # ============================================
 
 DIRETTA_LIB_NAME = libDirettaHost_$(FULL_VARIANT)$(NOLOG_SUFFIX).a
-ACQUA_LIB_NAME = libACQUA_$(FULL_VARIANT)$(NOLOG_SUFFIX).a
+ACQUA_LIB_NAME   = libACQUA_$(FULL_VARIANT)$(NOLOG_SUFFIX).a
 
 $(info )
 $(info ═══════════════════════════════════════════════════════)
@@ -177,23 +180,9 @@ endif
 # Verify SDK Installation
 # ============================================
 
-# Diretta library naming pattern: libDirettaHost_<arch>-linux-15v3.so
-# Only x86_64 and aarch64 are supported
-ifeq ($(DIRETTA_ARCH),x64)
-    DIRETTA_LIB_NAME = libDirettaHost_$(DIRETTA_ARCH)-linux-15v3.a
-    ACQUA_LIB_NAME = libACQUA_$(DIRETTA_ARCH)-linux-15v3.a
-    DIRETTA_LIB_SUFFIX = 15v3
-else ifeq ($(DIRETTA_ARCH),aarch64)
-    DIRETTA_LIB_NAME = libDirettaHost_$(DIRETTA_ARCH)-linux-15.a
-    ACQUA_LIB_NAME = libACQUA_$(DIRETTA_ARCH)-linux-15.a
-    DIRETTA_LIB_SUFFIX = 15
-else
-    $(error ❌ Unsupported architecture for library linking: $(DIRETTA_ARCH). Only x64 (x86_64) and aarch64 are supported.)
-endif
-
-# Full paths to libraries
+# Full paths to libraries based on FULL_VARIANT
 SDK_LIB_DIRETTA = $(SDK_PATH)/lib/$(DIRETTA_LIB_NAME)
-SDK_LIB_ACQUA = $(SDK_PATH)/lib/$(ACQUA_LIB_NAME)
+SDK_LIB_ACQUA   = $(SDK_PATH)/lib/$(ACQUA_LIB_NAME)
 
 ifeq (,$(wildcard $(SDK_LIB_DIRETTA)))
     $(info )
@@ -253,14 +242,14 @@ LIBS = \
     -lupnp \
     -lixml \
     -lpthread \
-    -lDirettaHost_$(DIRETTA_ARCH)-linux-$(DIRETTA_LIB_SUFFIX) \
+    -lDirettaHost_$(FULL_VARIANT)$(NOLOG_SUFFIX) \
     -lavformat \
     -lavcodec \
     -lavutil \
     -lswresample
 
 ifneq (,$(wildcard $(SDK_LIB_ACQUA)))
-    LIBS += -lACQUA_$(DIRETTA_ARCH)-linux-$(DIRETTA_LIB_SUFFIX)
+    LIBS += -lACQUA_$(FULL_VARIANT)$(NOLOG_SUFFIX)
     $(info ✓ ACQUA library will be linked)
 endif
 
@@ -414,3 +403,4 @@ help:
 	@echo "For more examples: make examples"
 
 -include $(DEPENDS)
+

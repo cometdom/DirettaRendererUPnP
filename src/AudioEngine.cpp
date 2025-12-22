@@ -456,14 +456,10 @@ size_t AudioDecoder::readSamples(AudioBuffer& buffer, size_t numSamples,
     // DSD NATIVE MODE - Read raw packets without decoding
     // ══════════════════════════════════════════════════════════════
     if (m_rawDSD) {
-        static int callCount = 0;
-        callCount++;
-        
-        if (callCount <= 20 || callCount % 100 == 0) {
-            DEBUG_LOG("[AudioDecoder::readSamples] Call #" << callCount 
-                      << ", requested=" << numSamples << " samples"
-                      << ", remaining=" << m_remainingCount << " bytes");
-        }
+        m_readCallCount++;
+    if (m_readCallCount % 100 == 0) {
+        DEBUG_LOG("[readSamples] Call " << m_readCallCount);
+}
         
         if (m_eof) {
             DEBUG_LOG("[AudioDecoder::readSamples] EOF flag set, returning 0");
@@ -526,16 +522,15 @@ size_t AudioDecoder::readSamples(AudioBuffer& buffer, size_t numSamples,
             size_t dataSize = m_packet->size;
             
             // Debug: count packets
-            static int packetCount = 0;
-            packetCount++;
+            // Removed static variable - now m_packetCount (instance member)
+               m_packetCount++;
             
             // ⚠️  TEST: DON'T skip any packets - all contain audio data
             /*
-            if (packetCount <= 10) {
-                static bool warningShown = false;
-                if (!warningShown) {
+            if (m_packetCount <= 10) {
+                if (!m_dsdWarningShown) {
                     DEBUG_LOG("[AudioDecoder] ⚠️  Skipping first 10 packets (header/padding)");
-                    warningShown = true;
+                    m_dsdWarningShown = true;
                 }
                 av_packet_unref(m_packet);
                 continue;
@@ -543,8 +538,8 @@ size_t AudioDecoder::readSamples(AudioBuffer& buffer, size_t numSamples,
             */
             
             // DEBUG: Always log packet processing
-            if (packetCount <= 50) {
-                DEBUG_LOG("[AudioDecoder] 📦 Processing packet #" << packetCount 
+            if (m_packetCount <= 50) {
+                DEBUG_LOG("[AudioDecoder] 📦 Processing packet #" << m_packetCount 
                           << ", size=" << dataSize << " bytes"
                           << ", need=" << (totalBytesNeeded - totalBytesRead) << " bytes more");
             }
@@ -576,8 +571,8 @@ size_t AudioDecoder::readSamples(AudioBuffer& buffer, size_t numSamples,
             av_packet_unref(m_packet);
             
             // Debug first few times
-            if (packetCount <= 15) {
-                DEBUG_LOG("[AudioDecoder] Packet #" << packetCount 
+            if (m_packetCount <= 15) {
+                DEBUG_LOG("[AudioDecoder] Packet #" << m_packetCount 
                           << ": used " << std::min(dataSize, bytesNeeded) << " bytes"
                           << " (total: " << totalBytesRead << "/" << totalBytesNeeded << ")");
             }
@@ -609,11 +604,10 @@ size_t AudioDecoder::readSamples(AudioBuffer& buffer, size_t numSamples,
                     dst[i * 2]     = src[i];                     // Left byte
                     dst[i * 2 + 1] = src[bytesPerChannel + i];   // Right byte
                 }
-                
-                static bool interleavingLogged = false;
-                if (!interleavingLogged) {
+            
+                if (!m_interleavingLoggedDOP) {
                     DEBUG_LOG("[AudioDecoder] 🔄 PLANAR → INTERLEAVED (byte-by-byte)");
-                    interleavingLogged = true;
+                    m_interleavingLoggedDOP = true;
                 }
             } else {
                 // ✅ WORKING: Interleave by 32-bit WORDS
@@ -626,11 +620,9 @@ size_t AudioDecoder::readSamples(AudioBuffer& buffer, size_t numSamples,
                     dst[i * 2]     = src[i];                      // Left word
                     dst[i * 2 + 1] = src[wordsPerChannel + i];    // Right word
                 }
-                
-                static bool interleavingLogged = false;
-                if (!interleavingLogged) {
+                if (!m_interleavingLoggedNative) {
                     DEBUG_LOG("[AudioDecoder] ✅ PLANAR → INTERLEAVED (32-bit words)");
-                    interleavingLogged = true;
+                    m_interleavingLoggedNative = true;
                 }
             }
         }
@@ -638,8 +630,7 @@ size_t AudioDecoder::readSamples(AudioBuffer& buffer, size_t numSamples,
 
     // ✅ DEBUG: Dump first 64 bytes to understand Audirvana's format
     if (g_verbose) {
-        static bool dumped = false;
-    if (!dumped && totalBytesRead >= 64) {
+    if (!m_dumpedFirstPacket && totalBytesRead >= 64) {
         std::cout << "\n[DEBUG] First 64 bytes from Audirvana DFF:" << std::endl;
         std::cout << "[DEBUG] Hex dump:" << std::endl;
         
@@ -653,7 +644,7 @@ size_t AudioDecoder::readSamples(AudioBuffer& buffer, size_t numSamples,
         std::cout << "[DEBUG] Sample rate: " << m_trackInfo.sampleRate << std::endl;
         std::cout << "[DEBUG] Channels: " << m_trackInfo.channels << std::endl;
         
-        dumped = true;
+        m_dumpedFirstPacket = true;
     }
     }
 
@@ -694,18 +685,17 @@ size_t AudioDecoder::readSamples(AudioBuffer& buffer, size_t numSamples,
         for (size_t i = 0; i < totalBytesRead; i++) {
             data[i] = bitReverseTable[data[i]];
         }
-        
-        static bool logged = false;
-        if (!logged) {
+    
+        if (!m_bitReversalLogged) {
             std::cout << "[AudioDecoder] 🔄 DFF: Bit reversal ONLY (MSB→LSB, keep LE)" << std::endl;
-            logged = true;
+            m_bitReversalLogged = true;
         }
       }else if (isAudirvana) {
-    static bool logged = false;
-    if (!logged) {
+
+        if (!m_resamplingLogged) {
         std::cout << "[AudioDecoder] ⚠️  Audirvana detected: Skipping bit reversal" << std::endl;
         std::cout << "[AudioDecoder]     (DSF data with .dff URL - already LSB)" << std::endl;
-        logged = true;
+        m_resamplingLogged = true;
       }    
     }
         return (totalBytesRead * 8) / m_trackInfo.channels;
@@ -921,12 +911,11 @@ if (m_trackInfo.isDSD) {
                                    tempBuffer.data() + bytesToUse,
                                    excessBytes);
                             m_remainingCount = excess;
-                            
-                            static bool loggedOnce = false;
-                            if (!loggedOnce) {
+                        
+                            if (!m_resamplerInitLogged) {
                                 std::cout << "[AudioDecoder] ✅ Buffering " << excess 
                                           << " excess samples for next read" << std::endl;
-                                loggedOnce = true;
+                                m_resamplerInitLogged = true;
                             }
                         }
                     }
@@ -1242,31 +1231,55 @@ bool AudioEngine::process(size_t samplesNeeded) {
     // Vérification rapide sans mutex
     State currentState = m_state.load();
     
-    if (currentState != State::PLAYING) {
-        // ⚠️ DISTINCTION CRITIQUE : PAUSED vs STOPPED
-        if (currentState == State::STOPPED) {
-            // Cleanup UNIQUEMENT si STOPPED (pas PAUSED)
-            std::lock_guard<std::mutex> lock(m_mutex);
-            
-            if (m_currentDecoder || m_nextDecoder) {
-                std::cout << "[AudioEngine] 🧹 Cleanup after STOP" << std::endl;
-                m_currentDecoder.reset();
-                m_nextDecoder.reset();
-                m_samplesPlayed = 0;
-                // ✅ NE PAS effacer m_currentURI - on veut redémarrer depuis le début
-                // Le decoder sera rouvert à position 0 au prochain play()
+    // ⭐⭐⭐ CRITICAL: Process async seek request (lock-free check)
+    // This runs in the audio thread, so we can safely take the mutex
+    if (m_seekRequested.load(std::memory_order_acquire)) {
+        double targetSeconds = m_seekTarget.load(std::memory_order_acquire);
+        m_seekRequested.store(false, std::memory_order_release);
+        
+        std::cout << "[AudioEngine] 🔍 Processing async seek to " << targetSeconds << "s" << std::endl;
+        
+        // Now we can safely take the mutex (we're in the audio thread)
+        std::lock_guard<std::mutex> seekLock(m_mutex);
+        
+        // Validate decoder exists
+        if (!m_currentDecoder) {
+            std::cerr << "[AudioEngine] ❌ No decoder for seek" << std::endl;
+            // Don't return false - continue playing
+        } else {
+            // Validate position
+            const TrackInfo& info = m_currentTrackInfo;
+            if (info.sampleRate > 0 && info.duration > 0) {
+                double maxSeconds = static_cast<double>(info.duration) / info.sampleRate;
+                if (targetSeconds > maxSeconds) {
+                    targetSeconds = maxSeconds;
+                }
+                if (targetSeconds < 0) {
+                    targetSeconds = 0;
+                }
+                
+                // Perform the actual seek
+                if (m_currentDecoder->seek(targetSeconds)) {
+                    // Update position
+                    m_samplesPlayed = static_cast<uint64_t>(targetSeconds * info.sampleRate);
+                    
+                    // Reset drainage counters
+                    m_silenceCount = 0;
+                    m_isDraining = false;
+                    
+                    std::cout << "[AudioEngine] ✓ Seek completed to " << targetSeconds << "s" << std::endl;
+                    DEBUG_LOG("[AudioEngine] ✓ Position updated to " 
+                              << m_samplesPlayed << " samples (" << targetSeconds << "s)");
+                } else {
+                    std::cerr << "[AudioEngine] ❌ Seek failed in decoder" << std::endl;
+                }
             }
-        } else if (currentState == State::PAUSED) {
-            // En PAUSED, on ne fait RIEN - on garde tout en mémoire
-            // Le décodeur reste ouvert à sa position actuelle
-            // Prêt à reprendre instantanément
         }
         
-        return false;
+        // Continue processing after seek
     }
     
-    std::lock_guard<std::mutex> lock(m_mutex);
-    
+    std::lock_guard<std::mutex> lock(m_mutex);    
     // Double vérification avec mutex
     if (m_state.load() != State::PLAYING) {
         return false;
@@ -1603,47 +1616,38 @@ bool AudioDecoder::seek(double seconds) {
 // ============================================================================
 
 bool AudioEngine::seek(double seconds) {
-    std::lock_guard<std::mutex> lock(m_mutex);
+    // ⭐⭐⭐ CRITICAL FIX: Async seek to avoid deadlock
+    // The UPnP thread calling this should not block waiting for mutex
+    // Instead, we set atomic flags and let the audio thread handle the seek
     
-    std::cout << "[AudioEngine] ⏩ Seek to " << seconds << " seconds" << std::endl;
+    std::cout << "[AudioEngine] ⏩ Seek requested to " << seconds << " seconds (async)" << std::endl;
     
-    // Vérifier qu'on a un décodeur actif
-    if (!m_currentDecoder) {
-        std::cerr << "[AudioEngine] Cannot seek: no active decoder" << std::endl;
+    // Quick validation without mutex
+    if (m_state.load(std::memory_order_acquire) != State::PLAYING) {
+        std::cerr << "[AudioEngine] ❌ Cannot seek when not playing" << std::endl;
         return false;
     }
     
-    // Vérifier que la position est valide
+    // Clamp to valid range (optimistic check, will be validated in audio thread)
     const TrackInfo& info = m_currentTrackInfo;
-    if (info.sampleRate == 0 || info.duration == 0) {
-        std::cerr << "[AudioEngine] Cannot seek: invalid track info" << std::endl;
-        return false;
+    if (info.sampleRate > 0 && info.duration > 0) {
+        double maxSeconds = static_cast<double>(info.duration) / info.sampleRate;
+        if (seconds < 0) {
+            seconds = 0;
+        }
+        if (seconds > maxSeconds) {
+            DEBUG_LOG("[AudioEngine] Seek position clamped to " << maxSeconds << "s");
+            seconds = maxSeconds;
+        }
     }
     
-    double maxSeconds = static_cast<double>(info.duration) / info.sampleRate;
-    if (seconds < 0) {
-        seconds = 0;
-    }
-    if (seconds > maxSeconds) {
-        DEBUG_LOG("[AudioEngine] Seek position clamped to " << maxSeconds << "s");
-        seconds = maxSeconds;
-    }
+    // ⭐ Set seek request atomically (lock-free, non-blocking)
+    m_seekTarget.store(seconds, std::memory_order_release);
+    m_seekRequested.store(true, std::memory_order_release);
     
-    // Effectuer le seek dans le décodeur
-    if (!m_currentDecoder->seek(seconds)) {
-        return false;
-    }
+    std::cout << "[AudioEngine] ✓ Seek queued, will be processed by audio thread" << std::endl;
     
-    // Mettre à jour le compteur de samples
-    m_samplesPlayed = static_cast<uint64_t>(seconds * info.sampleRate);
-    
-    // Réinitialiser les compteurs de drainage
-    m_silenceCount = 0;
-    m_isDraining = false;
-    
-    DEBUG_LOG("[AudioEngine] ✓ Position updated to " 
-              << m_samplesPlayed << " samples (" << seconds << "s)")
-    
+    // Return immediately - UPnP thread doesn't wait
     return true;
 }
 

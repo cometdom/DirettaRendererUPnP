@@ -641,24 +641,9 @@ callbacks.onSeek = [this](const std::string& target) {  // ⭐ Enlever unit
                 std::cerr << "[DirettaRenderer] ❌ AudioEngine seek failed" << std::endl;
                 return;
             }
-            std::cout << "[DirettaRenderer] ✓ AudioEngine seeked" << std::endl;
-        }
+            DEBUG_LOG("[DirettaRenderer] ✓ Seek request sent to AudioEngine (async)");        }
         
-        // Seek dans DirettaOutput
-        if (m_direttaOutput && m_audioEngine) {
-    uint32_t sampleRate = m_audioEngine->getCurrentSampleRate();  // ⭐ Obtenir depuis AudioEngine
-    if (sampleRate > 0) {
-        int64_t samplePosition = static_cast<int64_t>(seconds * sampleRate);
-            
-            std::cout << "[DirettaRenderer] Seeking DirettaOutput to sample " << samplePosition << "..." << std::endl;
-            if (!m_direttaOutput->seek(samplePosition)) {
-                std::cerr << "[DirettaRenderer] ❌ DirettaOutput seek failed" << std::endl;
-                return;
-            }
-            std::cout << "[DirettaRenderer] ✓ DirettaOutput seeked" << std::endl;
-        }
-	}
-        std::cout << "[DirettaRenderer] ✓ Seek complete" << std::endl;
+            DEBUG_LOG("[DirettaRenderer] ✓ Seek complete");
         
     } catch (const std::exception& e) {
         std::cerr << "❌ Exception in Seek callback: " << e.what() << std::endl;
