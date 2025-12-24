@@ -114,7 +114,7 @@ public:
      * @param numSamples Number of samples (frames)
      * @return true if successful, false otherwise
      */
-       
+    bool sendAudio(const uint8_t* data, size_t numSamples); 
     /**
      * @brief Get buffer level (for monitoring)
      * @return Buffer fill level (0.0 to 1.0)
