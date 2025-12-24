@@ -1169,14 +1169,43 @@ bool DirettaOutput::seek(int64_t samplePosition) {
     if (!m_syncBuffer) {
         std::cerr << "[DirettaOutput] ⚠️  No SyncBuffer available for seek" << std::endl;
         return false;
-     }
+    }
 
     bool wasPlaying = m_playing;
     
+    // ⭐ CRITIQUE : Détecter si c'est un seek arrière
+    bool isBackwardSeek = (samplePosition < m_totalSamplesSent);
+    
+    if (isBackwardSeek) {
+        std::cout << "[DirettaOutput] ⚠️  Backward seek detected (" 
+                  << m_totalSamplesSent << " → " << samplePosition << ")" << std::endl;
+    }
+    
     // Si en lecture, arrêter temporairement
     if (wasPlaying && m_syncBuffer) {
-        std::cout << "[DirettaOutput] Pausing for seek..." << std::endl;
+        std::cout << "[DirettaOutput] Stopping for seek..." << std::endl;
         m_syncBuffer->stop();
+        
+        // ⭐ NOUVEAU : Pour seek arrière, VIDER LE BUFFER
+        if (isBackwardSeek) {
+            std::cout << "[DirettaOutput] Draining buffer for backward seek..." << std::endl;
+            
+            // Attendre que le buffer se vide (court timeout)
+            int timeout_ms = 500;
+            int waited_ms = 0;
+            
+            while (!m_syncBuffer->buffer_empty() && waited_ms < timeout_ms) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(50));
+                waited_ms += 50;
+            }
+            
+            if (!m_syncBuffer->buffer_empty()) {
+                std::cout << "[DirettaOutput] ⚠️  Buffer not empty after timeout, forcing flush..." << std::endl;
+                // Force disconnect/reconnect pour vider complètement
+                m_syncBuffer->pre_disconnect(true);
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            }
+        }
     }
     
     // Seek à la position
@@ -1190,8 +1219,15 @@ bool DirettaOutput::seek(int64_t samplePosition) {
     if (wasPlaying && m_syncBuffer) {
         std::cout << "[DirettaOutput] Resuming after seek..." << std::endl;
         m_syncBuffer->play();
+        
+        // ⭐ NOUVEAU : Attendre stabilisation après seek arrière
+        if (isBackwardSeek) {
+            std::cout << "[DirettaOutput] Waiting for DAC stabilization..." << std::endl;
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        }
     }
    
-    std::cout << "[DirettaOutput] ✓ Seeked to sample " << samplePosition << std::endl;
+    std::cout << "[DirettaOutput] ✓ Seeked to sample " << samplePosition 
+              << " (" << (isBackwardSeek ? "backward" : "forward") << ")" << std::endl;
     return true;
-   }
+}
