@@ -25,6 +25,9 @@ This renderer uses the **Diretta Host SDK**, which is proprietary software by Yu
 - [Performance](#performance)
 - [Compatible Control Points](#compatible-control-points)
 - [System Optimization](#system-optimization)
+- [Command Line Options](#command-line-options)
+- [Advanced Settings](#advanced-settings)
+- [Multi-Homed Systems](#multi-homed-systems--network-interface-selection) ← NOUVEAU
 - [Documentation](#documentation)
 - [Troubleshooting](#troubleshooting)
 - [Contributing](#contributing)
@@ -551,9 +554,8 @@ This means the Diretta Target is refusing the connection:
 For more solutions, see the [Troubleshooting Guide](docs/TROUBLESHOOTING.md).
 
 ---
-# Advanced Configuration
 
-## Command-Line Parameters
+## Command-Line Options
 
 ### Basic Options
 
@@ -677,6 +679,170 @@ sudo systemctl restart diretta-renderer
 ### Jumbo Frames Optimization
 ```bash
 --mtu 16128 --thread-mode 17 --buffer 2.0
+```
+## Multi-Homed Systems & Network Interface Selection
+
+For systems with multiple network interfaces (multi-homed configurations), you can specify which interface to use for UPnP discovery and communication.
+
+### Why This Matters
+
+In configurations with multiple networks (e.g., 3-tier architecture), the renderer needs to advertise itself on the correct network where your UPnP control points are located.
+
+**Common scenarios:**
+- Separate control network and audio network
+- VPN connections alongside local network
+- Multiple Ethernet adapters
+- Bridged network configurations
+
+### Command Line Options
+
+```bash
+--interface <name>     Bind to specific network interface (e.g., eth0, eno1, enp6s0)
+--bind-ip <address>    Bind to specific IP address (e.g., 192.168.1.10)
+```
+
+**Note:** If not specified, the renderer will automatically use the first available network interface.
+
+### Usage Examples
+
+#### List your network interfaces:
+```bash
+ip link show
+ip addr show
+```
+
+#### Single network (default behavior):
+```bash
+sudo ./bin/DirettaRendererUPnP --target 1
+```
+The renderer automatically uses the first available interface.
+
+#### Specify interface by name (recommended):
+```bash
+sudo ./bin/DirettaRendererUPnP --target 1 --interface eth0
+```
+
+#### Specify by IP address:
+```bash
+sudo ./bin/DirettaRendererUPnP --target 1 --bind-ip 192.168.1.10
+```
+
+### 3-Tier Architecture Example
+
+This configuration separates control points from the Diretta audio network:
+
+**Network topology:**
+```
+Control Points (JPlay, Roon, etc.)
+         ↓
+    192.168.1.x (eth0)
+         ↓
+    Linux Host (eth0 + eth1)
+         ↓
+    192.168.2.x (eth1)
+         ↓
+    Diretta DAC
+```
+
+**Configuration:**
+
+The renderer must bind to `eth0` (control network) while targeting the DAC on `eth1` (audio network):
+
+```bash
+sudo ./bin/DirettaRendererUPnP --interface eth0 --target 1
+```
+
+The `--target` parameter will automatically connect to the Diretta DAC discovered on the audio network (192.168.2.x).
+
+### Systemd Configuration
+
+Edit `/opt/diretta-renderer-upnp/diretta-renderer.conf`:
+
+```bash
+# For 3-tier architecture
+NETWORK_INTERFACE="eth0"      # Interface with control points
+TARGET=1                       # Diretta DAC (will be found on eth1)
+
+# Or specify by IP
+NETWORK_INTERFACE="192.168.1.10"
+```
+
+Then restart:
+```bash
+sudo systemctl restart diretta-renderer
+```
+
+### Troubleshooting
+
+**Problem:** Renderer not discovered by control points
+
+**Solution:** 
+1. Check which interface your control points are on:
+   ```bash
+   ip addr show
+   ```
+
+2. Bind the renderer to that interface:
+   ```bash
+   sudo ./bin/DirettaRendererUPnP --interface <control-network-interface> --target 1
+   ```
+
+**Problem:** "UpnpInit2 failed" error
+
+**Possible causes:**
+- Invalid interface name (check with `ip link show`)
+- IP address not assigned to any interface
+- Insufficient permissions (run with `sudo`)
+
+**Verify:**
+```bash
+# List all interfaces
+ip link show
+
+# Check IP addresses
+ip addr show <interface-name>
+
+# Test with specific interface
+sudo ./bin/DirettaRendererUPnP --interface eth0 --list-targets
+```
+### Network Interface Binding
+
+The renderer can bind to a specific network interface for UPnP operations. This is essential for multi-homed systems where you have:
+- Multiple network adapters
+- Separate networks for control and audio
+- VPN connections
+
+**Default behavior:** Auto-detect first available interface  
+**Recommended for multi-homed:** Specify the interface connected to your control points
+
+See [Multi-Homed Systems](#multi-homed-systems--network-interface-selection) for detailed examples.
+
+---
+
+## Section changelog à mettre à jour
+
+### Version 1.0.9 (2024-12-24)
+
+**New Features:**
+- 🌐 **Multi-interface support**: Added `--interface` and `--bind-ip` options for multi-homed systems
+  - Essential for 3-tier architecture configurations (separate control and audio networks)
+  - Fixes SSDP discovery issues on systems with multiple network interfaces
+  - Automatic interface detection remains default behavior
+
+**Improvements:**
+- Better error messages when UPnP initialization fails with specific interface
+- Added interface information in startup logs
+- Systemd configuration now supports `NETWORK_INTERFACE` parameter
+
+**Use cases:**
+- Control points on 192.168.1.x, Diretta DAC on 192.168.2.x
+- VPN connections alongside local network
+- Multiple Ethernet adapters
+
+**Example:**
+```bash
+# 3-tier: Control on eth0, DAC on eth1
+sudo ./bin/DirettaRendererUPnP --interface eth0 --target 1
 ```
 
 ## Troubleshooting
