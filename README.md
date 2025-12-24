@@ -11,7 +11,7 @@
 ![Version](https://img.shields.io/badge/version-1.0.9-blue.svg)
 ![Multi-Interface](https://img.shields.io/badge/multi--interface-supported-green.svg) ← NOUVEAU
 ```
-
+---
 ## ⚠️ IMPORTANT - PERSONAL USE ONLY
 
 This renderer uses the **Diretta Host SDK**, which is proprietary software by Yu Harada available for **personal use only**. Commercial use is strictly prohibited. See [LICENSE](LICENSE) for details.
