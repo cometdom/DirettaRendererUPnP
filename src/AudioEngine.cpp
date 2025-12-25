@@ -4,6 +4,7 @@
  */
 
 #include "AudioEngine.h"
+#include "DirettaOutput.h
 #include <iostream>
 #include <thread>
 #include <cstring>
