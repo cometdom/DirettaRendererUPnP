@@ -8,7 +8,7 @@
 
 ---
 
-![Version](https://img.shields.io/badge/version-1.0.9-blue.svg)
+![Version](https://img.shields.io/badge/version-1.1.1-blue.svg)
 ![Multi-Interface](https://img.shields.io/badge/multi--interface-supported-green.svg) ← NEW
 
 ---
