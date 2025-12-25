@@ -370,7 +370,7 @@ m_audioEngine->setAudioCallback(
             
             // ⭐ CRITICAL: Wait for DAC stabilization
             DEBUG_LOG("[DirettaRenderer] ⏳ Waiting for DAC stabilization (200ms)...");
-            std::this_thread::sleep_for(std::chrono::milliseconds(400));
+            std::this_thread::sleep_for(std::chrono::milliseconds(300));
             
             auto totalTime = std::chrono::steady_clock::now();
             auto totalDuration = std::chrono::duration_cast<std::chrono::milliseconds>(totalTime - initStart);
@@ -439,14 +439,18 @@ m_audioEngine->setAudioCallback(
 UPnPDevice::Callbacks callbacks;
 
 callbacks.onSetURI = [this](const std::string& uri, const std::string& metadata) {
-    std::lock_guard<std::mutex> lock(m_mutex);  // Serialize UPnP actions
     DEBUG_LOG("[DirettaRenderer] SetURI: " << uri);
     
-    // ⭐ CRITICAL FIX (v1.0.14): Auto-STOP if playing
-    // JPLAY iOS doesn't send explicit STOP when zapping tracks/albums
-    // Without this, renderer gets stuck in TRANSITIONING state
-    auto currentState = m_audioEngine->getState();
+    AudioEngine::State currentState;
     
+    // ⭐ v1.1.1 FIX: Lock only to READ state, then RELEASE
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        currentState = m_audioEngine->getState();
+    }
+    // ← m_mutex is NOW RELEASED - CRITICAL for avoiding deadlock
+    
+    // ⭐ Auto-STOP if playing (JPlay iOS compatibility - added in v1.0.8)
     if (currentState == AudioEngine::State::PLAYING || 
         currentState == AudioEngine::State::PAUSED ||
         currentState == AudioEngine::State::TRANSITIONING) {
@@ -456,14 +460,16 @@ callbacks.onSetURI = [this](const std::string& uri, const std::string& metadata)
                   << (currentState == AudioEngine::State::PLAYING ? "PLAYING" :
                       currentState == AudioEngine::State::PAUSED ? "PAUSED" : "TRANSITIONING")
                   << std::endl;
-        std::cout << "[DirettaRenderer] 🛑 Auto-STOP before URI change (JPLAY compatibility)" << std::endl;
+        std::cout << "[DirettaRenderer] 🛑 Auto-STOP before URI change (JPlay iOS compatibility)" << std::endl;
         std::cout << "════════════════════════════════════════" << std::endl;
 
-        // SYNC: Stop with mutex held, then wait for callback
+        // SYNC: Stop with callback mutex held, then wait for completion
         {
             std::lock_guard<std::mutex> cbLock(m_callbackMutex);
             m_audioEngine->stop();
         }
+        
+        // ⭐ v1.1.1 FIX: Now SAFE to wait - m_mutex is NOT held
         waitForCallbackComplete();
 
         // Stop and close DirettaOutput
@@ -482,11 +488,13 @@ callbacks.onSetURI = [this](const std::string& uri, const std::string& metadata)
         DEBUG_LOG("[DirettaRenderer] ✓ Auto-STOP completed");
     }
     
-    // ⭐ Sauvegarder l'URI courante
-    this->m_currentURI = uri;
-    this->m_currentMetadata = metadata;
-    
-    m_audioEngine->setCurrentURI(uri, metadata);
+    // ⭐ v1.1.1: Now acquire mutex AGAIN to safely update URI
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        this->m_currentURI = uri;
+        this->m_currentMetadata = metadata;
+        m_audioEngine->setCurrentURI(uri, metadata);
+    }
 };
 
 // CRITICAL: SetNextAVTransportURI pour le gapless
