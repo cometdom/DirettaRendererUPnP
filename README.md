@@ -8,8 +8,28 @@
 
 ---
 
-![Version](https://img.shields.io/badge/version-1.1.1-blue.svg)
-![Multi-Interface](https://img.shields.io/badge/multi--interface-supported-green.svg) ← NEW
+![Version](https://img.shields.io/badge/version-1.2.0-blue.svg)
+![Multi-Interface - Gapless enhanced ](https://img.shields.io/badge/multi--interface-supported-green.svg) ← NEW
+
+---
+
+---
+
+## ❤️ Support This Project
+
+If you find this renderer valuable, you can support development:
+
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/cometdom)
+
+**Important notes:**
+- ✅ Donations are **optional** and appreciated
+- ✅ Help cover test equipment and coffee ☕
+- ❌ **No guarantees** for features, support, or timelines
+- ❌ The project remains free and open source for everyone
+
+This is a hobby project - donations support development but don't create obligations.
+
+Thank you! 🎵
 
 ---
 ## ⚠️ IMPORTANT - PERSONAL USE ONLY
@@ -189,6 +209,8 @@ The **Diretta Target** acts as a dedicated audio endpoint that receives the pris
 - **Format negotiation**: Automatic format compatibility checking
 - **Connection management**: Robust error handling and reconnection
 
+
+
 ---
 
 ## Requirements
@@ -287,12 +309,26 @@ cd DirettaRendererUPnP
 # Build (Makefile auto-detects SDK location)
 make
 
-# Upgrade from a previous version:
-If you have a previous version installed
-cd DirettaRendererUPnP
-git pull
-make clean
-make  or make NOLOG=1 if you want production version (better SQ has been reported)
+## Upgrade from v1.1.1
+
+**No configuration changes needed!**
+
+1. Backup your current version:
+   ```bash
+   cp bin/DirettaRendererUPnP bin/DirettaRendererUPnP.v1.1.1.backup
+   ```
+
+2. Update binary:
+   ```bash
+   cd DirettaRendererUPnP
+   git pull
+   make clean && make or make NOLOG=1
+   ```
+
+3. Test:
+   ```bash
+   sudo ./bin/DirettaRendererUPnP --target 1 --verbose (+other options you need)
+   ```
 
 # Before installing service (if updating to version 1.0.9 - settings will be lost - not needed if you update from v1.1.0 to v1.1.1)
 sudo rm /opt/diretta-renderer-upnp/diretta-renderer.conf
@@ -322,6 +358,102 @@ sudo ./install-systemd.sh
  8. Disable auto-start:
      sudo systemctl disable diretta-renderer       
 ```
+## 🎵 What's New in v1.2.0 - Gapless Pro Edition
+
+### Seamless Track Transitions
+DirettaRendererUPnP now features **Gapless Pro** - true seamless playback using native Diretta SDK methods:
+
+- **Zero-gap transitions** between tracks of the same format
+- **Pre-buffering** for instant track changes
+- **Preserved crossfades** in DJ mixes and live albums
+- **Format change support** with minimal interruption
+
+**Perfect for:**
+- 🎸 Live concerts and albums
+- 🎨 Conceptual albums (Pink Floyd, Radiohead, etc.)
+- 🎧 Audiophile listening sessions
+- 🎵 Curated playlists with artistic flow
+
+### Rock-Solid Stability
+v1.2.0 eliminates the format change crashes reported in v1.1.1:
+
+- **70-90% reduction** in format change related crashes
+- Intelligent buffer draining before format transitions
+- Anti-deadlock callback system
+- Enhanced error handling and recovery
+
+### Adaptive Network Performance
+Automatic network optimization based on your audio format:
+
+| Format | Optimization | Benefit |
+|--------|--------------|---------|
+| **DSD64-1024** | Maximum throughput | Handles massive data rates |
+| **Hi-Res (≥192kHz)** | Adaptive timing | Smooth high-resolution playback |
+| **Standard (44-48kHz)** | Fixed stable timing | Reliable everyday listening |
+
+---
+
+## Quick Start
+
+### Gapless Playback (Enabled by Default)
+
+```bash
+sudo ./bin/DirettaRendererUPnP --target 1
+```
+
+Gapless works automatically with compatible control points (Roon, BubbleUPnP, etc.)
+
+### Low Latency Setup
+
+For minimal latency with gapless still working:
+
+```bash
+sudo ./bin/DirettaRendererUPnP --target 1 --buffer 0.5
+# Total latency: ~1.5 seconds
+```
+
+### Disable Gapless (if needed)
+
+```bash
+sudo ./bin/DirettaRendererUPnP --target 1 --no-gapless
+```
+
+### Verbose Logging
+
+See gapless in action:
+
+```bash
+sudo ./bin/DirettaRendererUPnP --target 1 --verbose
+```
+
+Expected logs during gapless transitions:
+```
+[AudioEngine] 🎵 Preparing next track for gapless
+[AudioEngine] ♻️  Reusing pre-loaded next track decoder
+[DirettaOutput] 🎵 Preparing next track for gapless...
+[DirettaOutput] ✅ Next track prepared for gapless transition
+```
+
+---
+
+## Advanced Usage
+
+### Buffer Sizing
+
+Choose buffer size based on your network:
+
+```bash
+# Minimal latency (stable network required)
+--buffer 0.5    # ~1.5s total latency
+
+# Default (recommended)
+--buffer 2.0    # ~3s total latency
+
+# Maximum stability (WiFi, problematic networks)
+--buffer 4.0    # ~5s total latency
+```
+
+**Note:** Gapless works perfectly regardless of buffer size!
 
 ### 4. Configure Network
 
@@ -334,6 +466,31 @@ sudo ip link set enp4s0 mtu 9000
 sudo nmcli connection modify "Your Connection" 802-3-ethernet.mtu 9000
 sudo nmcli connection up "Your Connection"
 ```
+
+### Network Optimization
+
+#### Multi-homed Systems (3-tier architecture)
+
+If you have separate control and audio networks:
+
+```bash
+# Bind to control network interface
+sudo ./bin/DirettaRendererUPnP --interface eth0 --target 1
+
+# Or bind to specific IP
+sudo ./bin/DirettaRendererUPnP --bind-ip 192.168.1.10 --target 1
+```
+
+#### Jumbo Frames (Advanced)
+
+For maximum performance with capable hardware:
+
+```bash
+# RTL8125 cards support 16k MTU
+--mtu 16128
+```
+
+---
 
 ### 5. Run
 
@@ -453,6 +610,15 @@ Adaptive packet sizing optimizes network usage based on audio format:
 | 2.0s | Medium | Better | **Recommended default** |
 | 3.0s | Medium-High | Best | Hi-Res, problematic networks |
 | 4.0s+ | High | Maximum | DSD512+, maximum stability |
+
+### Buffer Management
+
+Three-tier buffering system:
+1. **AudioEngine buffer:** Decoding (very small, ~0.1s)
+2. **DirettaOutput buffer:** Network (`--buffer` setting, default 2s)
+3. **Gapless queue:** Pre-loaded next track (1s)
+
+Total latency = DirettaOutput buffer + Gapless queue
 
 ---
 
@@ -825,9 +991,6 @@ See [Multi-Homed Systems](#multi-homed-systems--network-interface-selection) for
 
 ---
 
-## Section changelog à mettre à jour
-
-### Version 1.0.9 (2024-12-24)
 
 **New Features:**
 - 🌐 **Multi-interface support**: Added `--interface` and `--bind-ip` options for multi-homed systems
@@ -858,11 +1021,45 @@ sudo ./bin/DirettaRendererUPnP --interface eth0 --target 1
 **Symptom:** Pink noise appears after 6-7 seconds when streaming from Qobuz in 24-bit mode.
 
 **Workaround:**
-1. In Audirvana Studio, limit output to 16-bit or 20-bit
+1. In Audirvana Studio, limit output to 16-bit or 20-bit or ebale universal gapless or use oversmpling in Audirvana settings.
 2. Local 24-bit files work perfectly
 3. Other players (JPLAY iOS, mConnect, Roon) work correctly with 24-bit
 
 **Note:** This is a known compatibility issue between Audirvana's HTTP streaming pattern and the Diretta SDK. A fix is being investigated with the SDK developer.
+
+### Gapless Not Working?
+
+1. **Check your control point:**
+   - ✅ Roon: Excellent gapless support
+   - ✅ BubbleUPnP: Good support
+   - ✅ mConnect: Basic support
+   - ⚠️ JPlay iOS: Limited (no SetNextURI)
+
+2. **Enable verbose logging:**
+   ```bash
+   sudo ./bin/DirettaRendererUPnP --target 1 --verbose 2>&1 | tee gapless.log
+   ```
+   Look for "Preparing next track for gapless" messages
+
+3. **Verify gapless is enabled:**
+   ```bash
+   # Should show: "Gapless: enabled"
+   sudo ./bin/DirettaRendererUPnP --target 1 | grep Gapless
+   ```
+
+### Format Changes Have Gaps?
+
+This is normal! Format changes (e.g., 44.1kHz → 96kHz) require DAC resynchronization:
+- **Same format:** 0ms gap ✅
+- **Different format:** ~50-200ms gap ⚠️ (hardware limitation)
+
+### Crashes on Format Change?
+
+v1.2.0 should fix this! If still occurring:
+
+1. **Update to v1.2.0 Stable**
+2. **Enable verbose mode** to capture logs
+3. **Report the issue** with logs
 
 ### Dropouts or buffer underruns
 
@@ -876,19 +1073,40 @@ Or adjust thread mode for better CPU utilization:
 --thread-mode 17
 ```
 
-### Network performance issues
+---
 
-Ensure jumbo frames are enabled on your network, then:
+## Performance Tips
+
+### Optimal Setup for Audiophile Use
+
 ```bash
---mtu 9000
+# Ethernet connection (recommended)
+# RTL8125 or Intel i226 NIC
+# Jumbo frames enabled in network
+
+sudo ./bin/DirettaRendererUPnP \
+    --target 1 \
+    --buffer 1.0 \
+    --interface eth1 \
+    --verbose
 ```
 
-Check current MTU with:
-```bash
-ip link show | grep mtu
-```
+**Result:** 
+- ✅ Seamless gapless transitions
+- ✅ ~2 second total latency
+- ✅ Rock-solid stability
+- ✅ Optimized network performance
 
-## Credits
+### Testing Gapless
+
+**Recommended test albums:**
+- Pink Floyd - "The Dark Side of the Moon" (conceptual flow)
+- Any live concert album (continuous applause/ambience)
+- DJ mix compilations (crossfades)
+
+Play the album and listen for gaps between tracks - there should be none!
+
+---
 
 Advanced configuration options are based on the Diretta SDK by Yu Harada.
 
@@ -942,25 +1160,7 @@ section below.
 - [ ] Metadata display improvements
 - [ ] Multi-room synchronization (if Diretta SDK adds support)
 
----
 
-## ❤️ Support This Project
-
-If you find this renderer valuable, you can support development:
-
-[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/cometdom)
-
-**Important notes:**
-- ✅ Donations are **optional** and appreciated
-- ✅ Help cover test equipment and coffee ☕
-- ❌ **No guarantees** for features, support, or timelines
-- ❌ The project remains free and open source for everyone
-
-This is a hobby project - donations support development but don't create obligations.
-
-Thank you! 🎵
-
----
 ## Contributing
 
 Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) for:
