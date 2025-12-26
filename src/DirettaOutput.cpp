@@ -1126,7 +1126,13 @@ if (format.isDSD) {
     bytesPerSample = (format.bitDepth / 8);
     frameSize = bytesPerSample * format.channels;
 }
-const int fs1sec = format.sampleRate;
+// FIX: Use packet rate for DSD buffer calculation
+const int fs1sec = format.isDSD ? (format.sampleRate / 8) : format.sampleRate;
+
+if (format.isDSD) {
+    DEBUG_LOG("[DirettaOutput] 🎵 DSD Buffer: " << fs1sec << " packets/sec × " 
+              << m_bufferSeconds << "s = " << (fs1sec * m_bufferSeconds) << " packets");
+}
 
 DEBUG_LOG("[DirettaOutput]    Manual calculation:");
 DEBUG_LOG("[DirettaOutput]      - Bytes per sample: " << bytesPerSample);
