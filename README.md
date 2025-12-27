@@ -24,7 +24,7 @@ If you find this renderer valuable, you can support development:
 - ❌ **No guarantees** for features, support, or timelines
 - ❌ The project remains free and open source for everyone
 
-This is a hobby project - donations support development but don't create obligations.
+Your support will help me continue this project, which requires both time and money. Thank you for your understanding.
 
 Thank you! 🎵
 
