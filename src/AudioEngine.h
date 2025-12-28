@@ -120,18 +120,16 @@ private:
     AudioBuffer m_remainingSamples;
     size_t m_remainingCount;
     
-    // ⭐⭐⭐ NEW: Debug/diagnostic counters (instance variables, NOT static!)
-    // These were previously static variables causing race conditions when
-    // multiple AudioDecoder instances run concurrently (e.g., gapless preload)
-    int m_readCallCount = 0;              // readSamples() call counter
-    int m_packetCount = 0;                // DSD packet counter
-    bool m_dsdWarningShown = false;       // DSD packet size warning (once per instance)
-    bool m_interleavingLoggedDOP = false; // DSD-over-PCM interleaving logged
-    bool m_interleavingLoggedNative = false; // Native DSD interleaving logged
-    bool m_dumpedFirstPacket = false;     // First packet hex dump flag
-    bool m_bitReversalLogged = false;     // Bit reversal logged (PCM mode)
-    bool m_resamplingLogged = false;      // Resampling logged (PCM mode)
-    bool m_resamplerInitLogged = false;   // Resampler init logged (open())
+    // Debug counters (per-instance to avoid race conditions)
+    int m_readCallCount = 0;
+    int m_packetCount = 0;
+    bool m_dsdWarningShown = false;
+    bool m_interleavingLoggedDOP = false;
+    bool m_interleavingLoggedNative = false;
+    bool m_dumpedFirstPacket = false;
+    bool m_bitReversalLogged = false;
+    bool m_resamplingLogged = false;
+    bool m_resamplerInitLogged = false;
     
     bool initResampler(uint32_t outputRate, uint32_t outputBits);
 };

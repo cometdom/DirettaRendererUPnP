@@ -15,7 +15,6 @@ extern bool g_verbose;
 
 DirettaOutput::DirettaOutput()
     : m_mtu(1500)
-    , m_mtuManuallySet(false)
     , m_bufferSeconds(2)
     , m_connected(false)
     , m_playing(false)
@@ -46,7 +45,6 @@ void DirettaOutput::setMTU(uint32_t mtu) {
     }
     
     m_mtu = mtu;
-    m_mtuManuallySet = true;
     
     DEBUG_LOG("[DirettaOutput] ✓ MTU configured: " << m_mtu << " bytes");
     
@@ -301,7 +299,6 @@ void DirettaOutput::stop(bool immediate) {
     m_isPaused = false;      // Reset état pause
     m_pausedPosition = 0;    // Reset position sauvegardée
     m_totalSamplesSent = 0;
-    DEBUG_LOG("[DirettaOutput] ⭐ m_totalSamplesSent RESET to 0");
     
     std::cout << "[DirettaOutput] ✓ Stopped" << std::endl;
 }
@@ -1103,61 +1100,8 @@ if (format.dsdFormat == AudioFormat::DSDFormat::DFF) {
 // 4. Configuring transfer...
 DEBUG_LOG("[DirettaOutput] 4. Configuring transfer...");
 
-// ⭐ Détecter les formats bas débit qui nécessitent des paquets plus petits
-bool isLowBitrate = (format.bitDepth <= 16 && format.sampleRate <= 44100 && !format.isDSD);
-
-if (isLowBitrate) {
-    // Pour 16bit/44.1kHz, 16bit/48kHz : paquets plus petits pour éviter les drops
-    std::cout << "[DirettaOutput] ⚠️  Low bitrate format detected (" 
-              << format.bitDepth << "bit/" << format.sampleRate << "Hz)" << std::endl;
-    std::cout << "[DirettaOutput] Using configTransferAuto (smaller packets)" << std::endl;
-    
-    m_syncBuffer->configTransferAuto(
-        ACQUA::Clock::MicroSeconds(200),   // limitCycle
-        ACQUA::Clock::MicroSeconds(10),   // minCycle
-        ACQUA::Clock::MicroSeconds(10000)  // maxCycle
-    );
-    std::cout << "[DirettaOutput] ✓ configTransferAuto (packets ~1-3k)" << std::endl;
-} else {
-    // Pour Hi-Res (24bit, 88.2k+, DSD, etc.) : jumbo frames pour performance max
-    DEBUG_LOG("[DirettaOutput] ✓ Hi-Res format (" 
-              << format.bitDepth << "bit/" << format.sampleRate << "Hz)");
-    DEBUG_LOG("[DirettaOutput] Using configTransferVarMax (jumbo frames)");
-    
-    m_syncBuffer->configTransferVarMax(
-        ACQUA::Clock::MicroSeconds(200)   // limitCycle
-    );
-    DEBUG_LOG("[DirettaOutput] ✓ configTransferVarMax (Packet Full mode, ~16k)");
-}
-DEBUG_LOG("[DirettaOutput] DEBUG: MTU passed to setSink: " << m_mtu);
-DEBUG_LOG("[DirettaOutput] DEBUG: Check packet size in tcpdump...");
-
-DEBUG_LOG("[DirettaOutput] configTransferAuto: limit=200us, min=333us, max=10000us");
-// Calculer manuellement au lieu de se fier à getSinkConfigure()
-int bytesPerSample;
-int frameSize;
-
-if (format.isDSD) {
-    // ✅ DSD with FMT_DSD_SIZ_32: 32-bit containers = 4 bytes per sample
-    bytesPerSample = 4;  // 32-bit word
-    frameSize = bytesPerSample * format.channels;  // 4 × 2 = 8 bytes for stereo
-    DEBUG_LOG("[DirettaOutput]      - DSD: Using 32-bit containers");
-} else {
-    // PCM: standard calculation
-    bytesPerSample = (format.bitDepth / 8);
-    frameSize = bytesPerSample * format.channels;
-}
+// Setup buffer (network config will be optimized below)
 const int fs1sec = format.sampleRate;
-
-DEBUG_LOG("[DirettaOutput]    Manual calculation:");
-DEBUG_LOG("[DirettaOutput]      - Bytes per sample: " << bytesPerSample);
-DEBUG_LOG("[DirettaOutput]      - Frame size: " << frameSize << " bytes");
-DEBUG_LOG("[DirettaOutput]      - Frames per second: " << fs1sec);
-DEBUG_LOG("[DirettaOutput]      - Buffer: " << fs1sec << " × " << m_bufferSeconds 
-          << " = " << (fs1sec * m_bufferSeconds) << " frames");
-DEBUG_LOG("[DirettaOutput]      ⚠️  CRITICAL: This is " << m_bufferSeconds 
-          << " seconds of audio buffer in Diretta!");
-
 m_syncBuffer->setupBuffer(fs1sec * m_bufferSeconds, 4, false);
     
     // ⭐ v1.2.0 Stable: Optimize network config for format
@@ -1208,7 +1152,7 @@ void DirettaOutput::optimizeNetworkConfig(const AudioFormat& format) {
 }
 
 bool DirettaOutput::seek(int64_t samplePosition) {
-    std::cout << "[DirettaOutput] 🔍 Seeking to sample " << samplePosition << "..." << std::endl;
+    DEBUG_LOG("[DirettaOutput] 🔍 Seeking to sample " << samplePosition);
 
     if (!m_syncBuffer) {
         std::cerr << "[DirettaOutput] ⚠️  No SyncBuffer available for seek" << std::endl;
@@ -1217,26 +1161,21 @@ bool DirettaOutput::seek(int64_t samplePosition) {
 
     bool wasPlaying = m_playing;
     
-    // Si en lecture, arrêter temporairement
+    // Pause if playing
     if (wasPlaying && m_syncBuffer) {
-        std::cout << "[DirettaOutput] Pausing for seek..." << std::endl;
         m_syncBuffer->stop();
     }
     
-    // Seek à la position
-    std::cout << "[DirettaOutput] Calling SyncBuffer::seek(" << samplePosition << ")..." << std::endl;
+    // Perform seek
     m_syncBuffer->seek(samplePosition);
-    
-    // Mettre à jour notre compteur
     m_totalSamplesSent = samplePosition;
     
-    // Si on était en lecture, reprendre
+    // Resume if was playing
     if (wasPlaying && m_syncBuffer) {
-        std::cout << "[DirettaOutput] Resuming after seek..." << std::endl;
         m_syncBuffer->play();
     }
    
-    std::cout << "[DirettaOutput] ✓ Seeked to sample " << samplePosition << std::endl;
+    DEBUG_LOG("[DirettaOutput] ✓ Seeked to sample " << samplePosition);
     return true;
    }
 // ═══════════════════════════════════════════════════════════════
