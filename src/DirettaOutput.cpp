@@ -1104,7 +1104,7 @@ if (format.dsdFormat == AudioFormat::DSDFormat::DFF) {
 DEBUG_LOG("[DirettaOutput] 4. Configuring transfer...");
 
 // ⭐ Détecter les formats bas débit qui nécessitent des paquets plus petits
-bool isLowBitrate = (format.bitDepth <= 8 && format.sampleRate <= 22000 && !format.isDSD);
+bool isLowBitrate = (format.bitDepth <= 16 && format.sampleRate <= 44100 && !format.isDSD);
 
 if (isLowBitrate) {
     // Pour 16bit/44.1kHz, 16bit/48kHz : paquets plus petits pour éviter les drops
