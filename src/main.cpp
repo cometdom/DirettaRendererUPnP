@@ -62,7 +62,7 @@ DirettaRenderer::Config parseArguments(int argc, char* argv[]) {
     config.threadMode = 1;        // Default: Critical only
     config.cycleTime = 10000;     // Default: 10ms
     config.cycleMinTime = 333;    // Default: 333µs
-    config.infoCycle = 5000;      // Default: 5ms
+    config.infoCycle = 100000;      // Default: 100ms
     config.mtuOverride = 0;       // 0 = auto-detect
     
     // ⭐ NEW: Network interface (empty = auto-detect)
