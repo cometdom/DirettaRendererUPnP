@@ -149,13 +149,15 @@ bool AudioDecoder::open(const std::string& url) {
     AVCodecParameters* codecpar = audioStream->codecpar;
     
     // ═══════════════════════════════════════════════════════════
-    // DIAGNOSTIC: Detect Audirvana pre-decoded streams
+    // ✅ TEST 3: DISABLED Audirvana detection (v1.0.6 behavior)
     // ═══════════════════════════════════════════════════════════
-    bool isAudirvana = false;
+    bool isAudirvana = false;  // Always false for this test
+    /*
     if (m_formatContext && m_formatContext->url) {
         std::string urlStr(m_formatContext->url);
         isAudirvana = (urlStr.find("audirvana") != std::string::npos);
     }
+    */
 
     if (isAudirvana) {
         std::cout << "\n════════════════════════════════════════════════════════" << std::endl;
@@ -456,10 +458,9 @@ size_t AudioDecoder::readSamples(AudioBuffer& buffer, size_t numSamples,
     // DSD NATIVE MODE - Read raw packets without decoding
     // ══════════════════════════════════════════════════════════════
     if (m_rawDSD) {
-        static int callCount = 0;  // ✅ TEST 1: Restored static
-        callCount++;
-    if (callCount % 100 == 0) {
-        DEBUG_LOG("[readSamples] Call " << callCount);
+        m_readCallCount++;
+    if (m_readCallCount % 100 == 0) {
+        DEBUG_LOG("[readSamples] Call " << m_readCallCount);
 }
         
         if (m_eof) {
@@ -523,16 +524,15 @@ size_t AudioDecoder::readSamples(AudioBuffer& buffer, size_t numSamples,
             size_t dataSize = m_packet->size;
             
             // Debug: count packets
-            static int packetCount = 0;  // ✅ TEST 1: Restored static
-            packetCount++;
+            // Removed static variable - now m_packetCount (instance member)
+               m_packetCount++;
             
             // ⚠️  TEST: DON'T skip any packets - all contain audio data
             /*
-            if (packetCount <= 10) {
-                static bool warningShown = false;  // ✅ TEST 1: Restored static
-                if (!warningShown) {
+            if (m_packetCount <= 10) {
+                if (!m_dsdWarningShown) {
                     DEBUG_LOG("[AudioDecoder] ⚠️  Skipping first 10 packets (header/padding)");
-                    warningShown = true;
+                    m_dsdWarningShown = true;
                 }
                 av_packet_unref(m_packet);
                 continue;
@@ -540,8 +540,8 @@ size_t AudioDecoder::readSamples(AudioBuffer& buffer, size_t numSamples,
             */
             
             // DEBUG: Always log packet processing
-            if (packetCount <= 50) {
-                DEBUG_LOG("[AudioDecoder] 📦 Processing packet #" << packetCount 
+            if (m_packetCount <= 50) {
+                DEBUG_LOG("[AudioDecoder] 📦 Processing packet #" << m_packetCount 
                           << ", size=" << dataSize << " bytes"
                           << ", need=" << (totalBytesNeeded - totalBytesRead) << " bytes more");
             }
