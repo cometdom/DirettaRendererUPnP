@@ -86,11 +86,9 @@ bool AudioDecoder::open(const std::string& url) {
     
     // Timeout to avoid blocking indefinitely
     av_dict_set(&options, "timeout", "10000000", 0);  // 10 seconds in microseconds
-    av_dict_set(&options, "rw_timeout", "5000000", 0);  // 5 seconds read/write timeout
     
-    // ✅ v1.1.3 FIX: Large buffer for DSD streaming (DSD64 = ~22 MB/s)
-    // 8 MB buffer = ~0.35s of DSD64 data (prevents HTTP wait stalls)
-    av_dict_set(&options, "buffer_size", "8388608", 0);  // 8 MB buffer
+    // Improved network buffering
+    av_dict_set(&options, "buffer_size", "262144", 0);  // 32KB buffer
     
     // HTTP persistent connections
     av_dict_set(&options, "http_persistent", "1", 0);
