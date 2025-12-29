@@ -149,15 +149,13 @@ bool AudioDecoder::open(const std::string& url) {
     AVCodecParameters* codecpar = audioStream->codecpar;
     
     // ═══════════════════════════════════════════════════════════
-    // ✅ TEST 3: DISABLED Audirvana detection (v1.0.6 behavior)
+    // DIAGNOSTIC: Detect Audirvana pre-decoded streams
     // ═══════════════════════════════════════════════════════════
-    bool isAudirvana = false;  // Always false for this test
-    /*
+    bool isAudirvana = false;
     if (m_formatContext && m_formatContext->url) {
         std::string urlStr(m_formatContext->url);
         isAudirvana = (urlStr.find("audirvana") != std::string::npos);
     }
-    */
 
     if (isAudirvana) {
         std::cout << "\n════════════════════════════════════════════════════════" << std::endl;
@@ -1233,6 +1231,8 @@ bool AudioEngine::process(size_t samplesNeeded) {
     // Vérification rapide sans mutex
     State currentState = m_state.load();
     
+    // ✅ TEST 4: DISABLED async seek (v1.0.6 behavior)
+    /*
     // ⭐⭐⭐ CRITICAL: Process async seek request (lock-free check)
     // This runs in the audio thread, so we can safely take the mutex
     if (m_seekRequested.load(std::memory_order_acquire)) {
@@ -1280,6 +1280,7 @@ bool AudioEngine::process(size_t samplesNeeded) {
         
         // Continue processing after seek
     }
+    */
     
     std::lock_guard<std::mutex> lock(m_mutex);    
     // Double vérification avec mutex
