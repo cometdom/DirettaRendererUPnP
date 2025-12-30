@@ -1111,7 +1111,7 @@ if (isLowBitrate) {
     
     m_syncBuffer->configTransferAuto(
         ACQUA::Clock::MicroSeconds(200),   // limitCycle
-        ACQUA::Clock::MicroSeconds(10),   // minCycle
+        ACQUA::Clock::MicroSeconds(333),   // minCycle
         ACQUA::Clock::MicroSeconds(10000)  // maxCycle
     );
     std::cout << "[DirettaOutput] ✓ configTransferAuto (packets ~1-3k)" << std::endl;
