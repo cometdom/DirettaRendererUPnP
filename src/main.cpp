@@ -12,7 +12,7 @@
 #include <chrono>
 
 // Version information
-#define RENDERER_VERSION "1.1.1"  // ← MISE À JOUR VERSION
+#define RENDERER_VERSION "1.1.2"  // ← MISE À JOUR VERSION
 #define RENDERER_BUILD_DATE __DATE__
 #define RENDERER_BUILD_TIME __TIME__
 // Global renderer instance for signal handler
