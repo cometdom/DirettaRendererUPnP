@@ -81,7 +81,7 @@ std::cout << "  m_mtu = " << m_mtu << std::endl;
 std::cout << "════════════════════════════════════════" << std::endl;
 // ═══════════════════════════════════════════════════════════
 
-    float effectiveBuffer;
+float effectiveBuffer;
     
 if (format.isDSD) {
     // Bloc 1 : DSD
@@ -103,13 +103,6 @@ if (format.isDSD) {
         DEBUG_LOG("[DirettaOutput]   Using 2s minimum for decode stability");
     }
 }
-        } else {
-            // Standard PCM: low latency
-            effectiveBuffer = std::min(bufferSeconds, 1.0f);
-            DEBUG_LOG("[DirettaOutput] ✓ Uncompressed PCM: low-latency path");
-            DEBUG_LOG("[DirettaOutput]   Buffer: " << effectiveBuffer << "s");
-          
-        }
     
     // Find Diretta target
     DEBUG_LOG("[DirettaOutput] Finding Diretta target...");
