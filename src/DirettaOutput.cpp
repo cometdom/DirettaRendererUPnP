@@ -112,7 +112,7 @@ bool DirettaOutput::open(const AudioFormat& format, int bufferSeconds) {
         DEBUG_LOG("[DirettaOutput] ✓ Uncompressed PCM: low-latency path");
         DEBUG_LOG("[DirettaOutput]   Buffer: " << effectiveBuffer << "s");
     }
-    
+}
 // ═══════════════════════════════════════════════════════════
     
     // Find Diretta target
