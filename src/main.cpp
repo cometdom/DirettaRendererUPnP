@@ -53,7 +53,7 @@ DirettaRenderer::Config parseArguments(int argc, char* argv[]) {
     config.name = "Diretta Renderer";
     config.port = 0;  // 0 = auto
     config.gaplessEnabled = true;
-    config.bufferSeconds =10;  // ⭐ 4 secondes minimum (essentiel pour DSD!)
+    config.bufferSeconds = 2.0f;  // ⭐ 4 secondes minimum (essentiel pour DSD!)
     
     for (int i = 1; i < argc; i++) {
         std::string arg = argv[i];
