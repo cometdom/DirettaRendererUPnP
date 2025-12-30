@@ -56,7 +56,7 @@ DirettaRenderer::Config parseArguments(int argc, char* argv[]) {
     config.name = "Diretta Renderer";
     config.port = 0;  // 0 = auto
     config.gaplessEnabled = true;
-    config.bufferSeconds = 2.0f;  // Default 2 seconds (v1.0.9)
+    config.bufferSeconds = 10.0f;  // Default 10 seconds (v1.1.2)
     
     // ⭐ NEW: Advanced Diretta SDK settings
     config.threadMode = 1;        // Default: Critical only
