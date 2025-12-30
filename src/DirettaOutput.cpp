@@ -88,7 +88,7 @@ std::cout << "══════════════════════
         // DSD: Raw bitstream, zero decode overhead
         effectiveBuffer = std::min(bufferSeconds, 0.8f);
         DEBUG_LOG("[DirettaOutput] 🎵 DSD: raw bitstream path");
-        
+    /*    
     } else if (!format.isCompressed) {
         std::cout << "[DirettaOutput] ⚠️  ENTERING PCM BLOCK" << std::endl;  // ← AJOUTE
         // WAV/AIFF: Uncompressed PCM - intelligent buffer sizing
@@ -101,7 +101,13 @@ std::cout << "══════════════════════
         // Real network would use jumbo frames (16128)
         // This is a simple heuristic - not perfect but works in most cases
         if (m_mtu <= 1500) {
-            isLoopback = true;
+            isLoopback = true;*/
+
+         } else if (!format.isCompressed) {
+    // TEST INVERSE: Back to v1.0.6 simple logic
+    effectiveBuffer = std::min(bufferSeconds, 0.8f);
+    DEBUG_LOG("[DirettaOutput] ✓ Uncompressed PCM (WAV/AIFF): low-latency path");
+    DEBUG_LOG("[DirettaOutput]   Buffer: " << effectiveBuffer << "s (similar to DSD!)");   
         }
         
         if (format.bitDepth >= 24 && format.sampleRate >= 88200) {
