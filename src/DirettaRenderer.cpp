@@ -844,7 +844,7 @@ void DirettaRenderer::audioThreadFunc() {
             }
             
             // ✅ Adapt packet size based on format
-            size_t samplesPerCall = isDSD ? 32768 : 8192;
+            size_t samplesPerCall = isDSD ? 8192 : 8192;
             
             // Recalculate timing if format changed
             if (sampleRate != lastSampleRate || samplesPerCall != currentSamplesPerCall) {
