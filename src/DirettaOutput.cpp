@@ -80,13 +80,14 @@ bool DirettaOutput::open(const AudioFormat& format, int bufferSeconds) {
     // Check if this is local playback (same-machine streaming)
     // In loopback mode, data arrives in bursts without network buffering
     bool isLoopback = false;
-    // Heuristic: If MTU is default (not jumbo), likely loopback wasn't configured
+        // Heuristic: If MTU is default (not jumbo), likely loopback wasn't configured
     // Real network would use jumbo frames (16128)
+    /*
     // This is a simple heuristic - not perfect but works in most cases
     if (m_mtu <= 1500) {
         isLoopback = true;
     }
-    
+    */
     if (format.bitDepth >= 24 && format.sampleRate >= 88200) {
         // Hi-Res audio handling
         if (isLoopback && format.sampleRate <= 96000) {
