@@ -236,7 +236,6 @@ private:
     std::unique_ptr<ACQUA::UDPV6> m_raw;
     ACQUA::IPAddress m_targetAddress;
     uint32_t m_mtu;
-    bool m_mtuManuallySet;
     
     // Diretta
     std::unique_ptr<DIRETTA::SyncBuffer> m_syncBuffer;

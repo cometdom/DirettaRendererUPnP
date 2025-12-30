@@ -292,7 +292,7 @@ m_audioEngine->setAudioCallback(
                 
                 // STEP 4: Wait for DAC lock
                 std::cout << "[Callback]    4. Waiting for DAC lock (300ms)..." << std::endl;
-                std::this_thread::sleep_for(std::chrono::milliseconds(600));
+                std::this_thread::sleep_for(std::chrono::milliseconds(300));
                 
                 std::cout << "[Callback] ✅ Format change completed successfully" << std::endl;
                 std::cout << "════════════════════════════════════════" << std::endl;
@@ -366,7 +366,7 @@ m_audioEngine->setAudioCallback(
             format.isCompressed = trackInfo.isCompressed;
             
             // ⭐ Configure DSD if needed
-            if (trackInfo.isDSD) {
+                if (trackInfo.isDSD) {
                 format.isDSD = true;
                 format.bitDepth = 1;  // DSD = 1 bit
                 format.sampleRate = sampleRate;
@@ -374,13 +374,13 @@ m_audioEngine->setAudioCallback(
                 // Determine DSD format from codec
                 std::string codec = trackInfo.codec;
                 if (codec.find("lsb") != std::string::npos) {
-                    format.dsdFormat = AudioFormat::DSDFormat::DSF;
-                    DEBUG_LOG("[DirettaRenderer] 🎵 DSD format: DSF (LSB)");
-                } else {
-                    format.dsdFormat = AudioFormat::DSDFormat::DFF;
-                    DEBUG_LOG("[DirettaRenderer] 🎵 DSD format: DFF (MSB)");
-                }
-            }
+                format.dsdFormat = AudioFormat::DSDFormat::DSF;
+                DEBUG_LOG("[DirettaRenderer] 🎵 DSD format: DSF (LSB)");
+             } else {
+                format.dsdFormat = AudioFormat::DSDFormat::DFF;
+            DEBUG_LOG("[DirettaRenderer] 🎵 DSD format: DFF (MSB)");
+          }
+      }
             
             if (g_verbose) {
                 std::cout << "[DirettaRenderer] 🔌 Opening Diretta connection: ";

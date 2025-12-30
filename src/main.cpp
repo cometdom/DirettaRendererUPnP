@@ -240,7 +240,7 @@ int main(int argc, char* argv[]) {
     
     // ⭐ Display advanced settings only if modified from defaults
     if (config.threadMode != 1 || config.cycleTime != 10000 || 
-        config.cycleMinTime != 333 || config.infoCycle != 5000 || 
+        config.cycleMinTime != 333 || config.infoCycle != 100000 || 
         config.mtuOverride != 0) {
         std::cout << "\nAdvanced Diretta Settings:" << std::endl;
         if (config.threadMode != 1)
@@ -249,7 +249,7 @@ int main(int argc, char* argv[]) {
             std::cout << "  Cycle Time:  " << config.cycleTime << " µs" << std::endl;
         if (config.cycleMinTime != 333)
             std::cout << "  Cycle Min:   " << config.cycleMinTime << " µs" << std::endl;
-        if (config.infoCycle != 5000)
+        if (config.infoCycle != 100000)
             std::cout << "  Info Cycle:  " << config.infoCycle << " µs" << std::endl;
         if (config.mtuOverride != 0)
             std::cout << "  MTU:         " << config.mtuOverride << " bytes" << std::endl;
