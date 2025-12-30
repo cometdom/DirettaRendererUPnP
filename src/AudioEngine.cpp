@@ -148,6 +148,47 @@ bool AudioDecoder::open(const std::string& url) {
     AVStream* audioStream = m_formatContext->streams[m_audioStreamIndex];
     AVCodecParameters* codecpar = audioStream->codecpar;
     
+
+    // ═══════════════════════════════════════════════════════════
+// TEST 3: Add Audirvana detection (from v1.1.2)
+// ═══════════════════════════════════════════════════════════
+bool isAudirvana = false;
+if (m_formatContext && m_formatContext->url) {
+    std::string urlStr(m_formatContext->url);
+    isAudirvana = (urlStr.find("audirvana") != std::string::npos);
+}
+
+if (isAudirvana) {
+    std::cout << "\n════════════════════════════════════════════════════════" << std::endl;
+    std::cout << "🎯 Audirvana detected - applying special handling" << std::endl;
+    std::cout << "════════════════════════════════════════════════════════" << std::endl;
+    
+    const AVCodec* diagnostic_codec = avcodec_find_decoder(codecpar->codec_id);
+    
+    std::cout << "📊 Stream analysis:" << std::endl;
+    std::cout << "   Codec: " << (diagnostic_codec ? diagnostic_codec->name : "unknown") << std::endl;
+    std::cout << "   Sample rate: " << codecpar->sample_rate << " Hz" << std::endl;
+    std::cout << "   Channels: " << codecpar->ch_layout.nb_channels << std::endl;
+    std::cout << "   Bit depth: " << codecpar->bits_per_coded_sample << " bits" << std::endl;
+    
+    bool isPCM = (codecpar->codec_id >= AV_CODEC_ID_FIRST_AUDIO && 
+                  codecpar->codec_id <= AV_CODEC_ID_PCM_F64LE &&
+                  codecpar->codec_id != AV_CODEC_ID_DSD_LSBF &&
+                  codecpar->codec_id != AV_CODEC_ID_DSD_MSBF &&
+                  codecpar->codec_id != AV_CODEC_ID_DSD_MSBF_PLANAR &&
+                  codecpar->codec_id != AV_CODEC_ID_DSD_LSBF_PLANAR);
+    
+    if (isPCM) {
+        std::cout << "   → Already-decoded PCM detected" << std::endl;
+        std::cout << "   → Will use passthrough mode (no re-decoding)" << std::endl;
+    }
+    
+    std::cout << "════════════════════════════════════════════════════════\n" << std::endl;
+}
+// ═══════════════════════════════════════════
+
+
+
     // Find decoder
     const AVCodec* codec = avcodec_find_decoder(codecpar->codec_id);
     if (!codec) {
@@ -208,16 +249,34 @@ bool AudioDecoder::open(const std::string& url) {
     
     // Check if DSD - CRITICAL: Use RAW mode for native DSD!
     m_trackInfo.isDSD = false;
-    if (codecpar->codec_id == AV_CODEC_ID_DSD_LSBF ||
-        codecpar->codec_id == AV_CODEC_ID_DSD_MSBF ||
-        codecpar->codec_id == AV_CODEC_ID_DSD_MSBF_PLANAR ||
-        codecpar->codec_id == AV_CODEC_ID_DSD_LSBF_PLANAR) {
+if (codecpar->codec_id == AV_CODEC_ID_DSD_LSBF ||
+    codecpar->codec_id == AV_CODEC_ID_DSD_MSBF ||
+    codecpar->codec_id == AV_CODEC_ID_DSD_MSBF_PLANAR ||
+    codecpar->codec_id == AV_CODEC_ID_DSD_LSBF_PLANAR) {
+    
+    // ═══════════════════════════════════════════════════════════
+    // TEST 3: Add Audirvana special DSD handling (from v1.1.2)
+    // ═══════════════════════════════════════════════════════════
+    if (isAudirvana) {
+        // AUDIRVANA DSD: Use FFmpeg decoding (NOT raw mode)
+        std::cout << "[AudioDecoder] ⚠️  Audirvana DSD: Using FFmpeg decoding" << std::endl;
+        std::cout << "[AudioDecoder]     (Audirvana sends DSD with strange wrapper)" << std::endl;
         
+        m_rawDSD = false;  // Let FFmpeg decode
+        m_trackInfo.isDSD = false;  // Treat as PCM for Diretta
+        
+        // Will fall through to standard PCM decoding below
+        
+    } else {
+        // NORMAL DSD: Use native mode (original v1.0.6 behavior)
         std::cout << "[AudioDecoder] ════════════════════════════════════════" << std::endl;
         std::cout << "[AudioDecoder] 🎵 DSD NATIVE MODE ACTIVATED!" << std::endl;
         std::cout << "[AudioDecoder] ════════════════════════════════════════" << std::endl;
         
         m_trackInfo.isDSD = true;
+        // ... GARDE tout le reste du code DSD existant ...
+    }
+    // ═══════════════════════════════════════════════════════════
         m_trackInfo.bitDepth = 1; // DSD is 1-bit
         
         // CRITICAL: FFmpeg reports packet rate, not DSD bit rate!
