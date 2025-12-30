@@ -148,43 +148,6 @@ bool AudioDecoder::open(const std::string& url) {
     AVStream* audioStream = m_formatContext->streams[m_audioStreamIndex];
     AVCodecParameters* codecpar = audioStream->codecpar;
     
-    // ═══════════════════════════════════════════════════════════
-    // DIAGNOSTIC: Detect Audirvana pre-decoded streams
-    // ═══════════════════════════════════════════════════════════
-    bool isAudirvana = false;
-    if (m_formatContext && m_formatContext->url) {
-        std::string urlStr(m_formatContext->url);
-        isAudirvana = (urlStr.find("audirvana") != std::string::npos);
-    }
-
-    if (isAudirvana) {
-        std::cout << "\n════════════════════════════════════════════════════════" << std::endl;
-        std::cout << "🎯 Audirvana detected - applying special handling" << std::endl;
-        std::cout << "════════════════════════════════════════════════════════" << std::endl;
-        
-        const AVCodec* diagnostic_codec = avcodec_find_decoder(codecpar->codec_id);
-        
-        std::cout << "📊 Stream analysis:" << std::endl;
-        std::cout << "   Codec: " << (diagnostic_codec ? diagnostic_codec->name : "unknown") << std::endl;
-        std::cout << "   Sample rate: " << codecpar->sample_rate << " Hz" << std::endl;
-        std::cout << "   Channels: " << codecpar->ch_layout.nb_channels << std::endl;
-        std::cout << "   Bit depth: " << codecpar->bits_per_coded_sample << " bits" << std::endl;
-        
-        bool isPCM = (codecpar->codec_id >= AV_CODEC_ID_FIRST_AUDIO && 
-                      codecpar->codec_id <= AV_CODEC_ID_PCM_F64LE &&
-                      codecpar->codec_id != AV_CODEC_ID_DSD_LSBF &&
-                      codecpar->codec_id != AV_CODEC_ID_DSD_MSBF &&
-                      codecpar->codec_id != AV_CODEC_ID_DSD_MSBF_PLANAR &&
-                      codecpar->codec_id != AV_CODEC_ID_DSD_LSBF_PLANAR);
-        
-        if (isPCM) {
-            std::cout << "   → Already-decoded PCM detected" << std::endl;
-            std::cout << "   → Will use passthrough mode (no re-decoding)" << std::endl;
-        }
-        
-        std::cout << "════════════════════════════════════════════════════════\n" << std::endl;
-    }
-    
     // Find decoder
     const AVCodec* codec = avcodec_find_decoder(codecpar->codec_id);
     if (!codec) {
@@ -250,72 +213,54 @@ bool AudioDecoder::open(const std::string& url) {
         codecpar->codec_id == AV_CODEC_ID_DSD_MSBF_PLANAR ||
         codecpar->codec_id == AV_CODEC_ID_DSD_LSBF_PLANAR) {
         
-        // ⚠️  Check if this is Audirvana (which pre-decodes/wraps DSD strangely)
-        if (isAudirvana) {
-            // ════════════════════════════════════════════════════════
-            // AUDIRVANA DSD: Use FFmpeg decoding (NOT raw mode)
-            // ════════════════════════════════════════════════════════
-            std::cout << "[AudioDecoder] ⚠️  Audirvana DSD: Using FFmpeg decoding" << std::endl;
-            std::cout << "[AudioDecoder]     (Audirvana sends DSD with strange wrapper)" << std::endl;
-            
-            m_rawDSD = false;  // Let FFmpeg decode
-            m_trackInfo.isDSD = false;  // Treat as PCM for Diretta
-            
-            // Will fall through to standard PCM decoding below
-            // FFmpeg will convert the "fltp" format to PCM
-            
+        std::cout << "[AudioDecoder] ════════════════════════════════════════" << std::endl;
+        std::cout << "[AudioDecoder] 🎵 DSD NATIVE MODE ACTIVATED!" << std::endl;
+        std::cout << "[AudioDecoder] ════════════════════════════════════════" << std::endl;
+        
+        m_trackInfo.isDSD = true;
+        m_trackInfo.bitDepth = 1; // DSD is 1-bit
+        
+        // CRITICAL: FFmpeg reports packet rate, not DSD bit rate!
+        // For DSD: bit_rate = packet_rate × 8 (8 bits per byte)
+        // DSD64 = 2822400 Hz, but FFmpeg reports 352800 Hz (packet rate)
+        uint32_t packetRate = codecpar->sample_rate;  // 352800 for DSD64
+        uint32_t dsdBitRate = packetRate * 8;          // 2822400 for DSD64
+        
+        m_trackInfo.sampleRate = dsdBitRate;  // ⭐ Use TRUE DSD bit rate!
+        
+        // Determine DSD rate (DSD64, DSD128, etc.)
+        // DSD64 = 2822400 Hz = 44100 * 64
+        int dsdMultiplier = dsdBitRate / 44100;
+        m_trackInfo.dsdRate = dsdMultiplier;
+        
+        DEBUG_LOG("[AudioDecoder] 🎵 DSD" << dsdMultiplier << " detected!");
+        DEBUG_LOG("[AudioDecoder]    FFmpeg packet rate: " << packetRate << " Hz");
+        DEBUG_LOG("[AudioDecoder]    True DSD bit rate: " << dsdBitRate << " Hz");
+        DEBUG_LOG("[AudioDecoder] ⚠️  NO DECODING - Reading raw DSD packets!");
+        
+        // ⭐ CRITICAL: Activate RAW DSD mode
+        m_rawDSD = true;
+        m_packet = av_packet_alloc();
+        
+        // ⭐ DO NOT open codec for DSD!
+        // We'll read raw packets with av_read_frame()
+        DEBUG_LOG("[AudioDecoder] ✓ DSD Native mode ready");
+        
+        // Calculate duration
+        if (audioStream->duration != AV_NOPTS_VALUE) {
+            m_trackInfo.duration = av_rescale_q(audioStream->duration, 
+                                                audioStream->time_base,
+                                                {1, (int)m_trackInfo.sampleRate});
         } else {
-            // ════════════════════════════════════════════════════════
-            // OTHER SOURCES: Use DSD native mode
-            // ════════════════════════════════════════════════════════
-            std::cout << "[AudioDecoder] ════════════════════════════════════════" << std::endl;
-            std::cout << "[AudioDecoder] 🎵 DSD NATIVE MODE ACTIVATED!" << std::endl;
-            std::cout << "[AudioDecoder] ════════════════════════════════════════" << std::endl;
-            
-            m_trackInfo.isDSD = true;
-            m_trackInfo.bitDepth = 1; // DSD is 1-bit
-            
-            // CRITICAL: FFmpeg reports packet rate, not DSD bit rate!
-            // For DSD: bit_rate = packet_rate × 8 (8 bits per byte)
-            // DSD64 = 2822400 Hz, but FFmpeg reports 352800 Hz (packet rate)
-            uint32_t packetRate = codecpar->sample_rate;  // 352800 for DSD64
-            uint32_t dsdBitRate = packetRate * 8;          // 2822400 for DSD64
-            
-            m_trackInfo.sampleRate = dsdBitRate;  // ⭐ Use TRUE DSD bit rate!
-            
-            // Determine DSD rate (DSD64, DSD128, etc.)
-            // DSD64 = 2822400 Hz = 44100 * 64
-            int dsdMultiplier = dsdBitRate / 44100;
-            m_trackInfo.dsdRate = dsdMultiplier;
-            
-            DEBUG_LOG("[AudioDecoder] 🎵 DSD" << dsdMultiplier << " detected!");
-            DEBUG_LOG("[AudioDecoder]    FFmpeg packet rate: " << packetRate << " Hz");
-            DEBUG_LOG("[AudioDecoder]    True DSD bit rate: " << dsdBitRate << " Hz");
-            DEBUG_LOG("[AudioDecoder] ⚠️  NO DECODING - Reading raw DSD packets!");
-            
-            // ⭐ CRITICAL: Activate RAW DSD mode
-            m_rawDSD = true;
-            m_packet = av_packet_alloc();
-            
-            // ⭐ DO NOT open codec for DSD!
-            // We'll read raw packets with av_read_frame()
-            DEBUG_LOG("[AudioDecoder] ✓ DSD Native mode ready");
-            
-            // Calculate duration
-            if (audioStream->duration != AV_NOPTS_VALUE) {
-                m_trackInfo.duration = av_rescale_q(audioStream->duration, 
-                                                    audioStream->time_base,
-                                                    {1, (int)m_trackInfo.sampleRate});
-            } else {
-            }
-            
-            m_eof = false;
-            
-            std::cout << "[AudioDecoder] ✓ Opened successfully (DSD NATIVE)" << std::endl;
-            
-            return true;  // ⭐ Exit early - no codec opening needed!
-        }  // End of else (non-Audirvana DSD native mode)
-    }  // End of DSD detection
+            m_trackInfo.duration = 0;
+        }
+        
+        m_eof = false;
+        
+        std::cout << "[AudioDecoder] ✓ Opened successfully (DSD NATIVE)" << std::endl;
+        
+        return true;  // ⭐ Exit early - no codec opening needed!
+    }
     
     // ══════════════════════════════════════════════════════════════
     // PCM MODE - Open codec and prepare for decoding
@@ -456,10 +401,14 @@ size_t AudioDecoder::readSamples(AudioBuffer& buffer, size_t numSamples,
     // DSD NATIVE MODE - Read raw packets without decoding
     // ══════════════════════════════════════════════════════════════
     if (m_rawDSD) {
-        m_readCallCount++;
-    if (m_readCallCount % 100 == 0) {
-        DEBUG_LOG("[readSamples] Call " << m_readCallCount);
-}
+        static int callCount = 0;
+        callCount++;
+        
+        if (callCount <= 20 || callCount % 100 == 0) {
+            DEBUG_LOG("[AudioDecoder::readSamples] Call #" << callCount 
+                      << ", requested=" << numSamples << " samples"
+                      << ", remaining=" << m_remainingCount << " bytes");
+        }
         
         if (m_eof) {
             DEBUG_LOG("[AudioDecoder::readSamples] EOF flag set, returning 0");
@@ -467,7 +416,6 @@ size_t AudioDecoder::readSamples(AudioBuffer& buffer, size_t numSamples,
         }
         
         size_t bytesPerSample = 1;  // DSD: 1 byte per 8 samples per channel, but we'll work in bytes
-        (void)bytesPerSample;  // Silence unused variable warning
         size_t totalBytesNeeded = (numSamples * m_trackInfo.channels) / 8;
         size_t totalBytesRead = 0;
         
@@ -522,15 +470,16 @@ size_t AudioDecoder::readSamples(AudioBuffer& buffer, size_t numSamples,
             size_t dataSize = m_packet->size;
             
             // Debug: count packets
-            // Removed static variable - now m_packetCount (instance member)
-               m_packetCount++;
+            static int packetCount = 0;
+            packetCount++;
             
             // ⚠️  TEST: DON'T skip any packets - all contain audio data
             /*
-            if (m_packetCount <= 10) {
-                if (!m_dsdWarningShown) {
+            if (packetCount <= 10) {
+                static bool warningShown = false;
+                if (!warningShown) {
                     DEBUG_LOG("[AudioDecoder] ⚠️  Skipping first 10 packets (header/padding)");
-                    m_dsdWarningShown = true;
+                    warningShown = true;
                 }
                 av_packet_unref(m_packet);
                 continue;
@@ -538,8 +487,8 @@ size_t AudioDecoder::readSamples(AudioBuffer& buffer, size_t numSamples,
             */
             
             // DEBUG: Always log packet processing
-            if (m_packetCount <= 50) {
-                DEBUG_LOG("[AudioDecoder] 📦 Processing packet #" << m_packetCount 
+            if (packetCount <= 50) {
+                DEBUG_LOG("[AudioDecoder] 📦 Processing packet #" << packetCount 
                           << ", size=" << dataSize << " bytes"
                           << ", need=" << (totalBytesNeeded - totalBytesRead) << " bytes more");
             }
@@ -571,8 +520,8 @@ size_t AudioDecoder::readSamples(AudioBuffer& buffer, size_t numSamples,
             av_packet_unref(m_packet);
             
             // Debug first few times
-            if (m_packetCount <= 15) {
-                DEBUG_LOG("[AudioDecoder] Packet #" << m_packetCount 
+            if (packetCount <= 15) {
+                DEBUG_LOG("[AudioDecoder] Packet #" << packetCount 
                           << ": used " << std::min(dataSize, bytesNeeded) << " bytes"
                           << " (total: " << totalBytesRead << "/" << totalBytesNeeded << ")");
             }
@@ -583,7 +532,6 @@ size_t AudioDecoder::readSamples(AudioBuffer& buffer, size_t numSamples,
         const bool ENABLE_INTERLEAVING = true;   // REQUIRED for stereo (prevents 2× speed
         const bool ENABLE_BIT_REVERSAL = false;  // NOT needed for DSF files
         const bool INTERLEAVE_BY_BYTE = false;   // Use 32-bit word interleaving
-        (void)ENABLE_BIT_REVERSAL;  // Silence unused variable warning
         
         // Convert PLANAR to INTERLEAVED if enabled
         if (ENABLE_INTERLEAVING && m_trackInfo.channels == 2) {
@@ -604,10 +552,11 @@ size_t AudioDecoder::readSamples(AudioBuffer& buffer, size_t numSamples,
                     dst[i * 2]     = src[i];                     // Left byte
                     dst[i * 2 + 1] = src[bytesPerChannel + i];   // Right byte
                 }
-            
-                if (!m_interleavingLoggedDOP) {
+                
+                static bool interleavingLogged = false;
+                if (!interleavingLogged) {
                     DEBUG_LOG("[AudioDecoder] 🔄 PLANAR → INTERLEAVED (byte-by-byte)");
-                    m_interleavingLoggedDOP = true;
+                    interleavingLogged = true;
                 }
             } else {
                 // ✅ WORKING: Interleave by 32-bit WORDS
@@ -620,9 +569,11 @@ size_t AudioDecoder::readSamples(AudioBuffer& buffer, size_t numSamples,
                     dst[i * 2]     = src[i];                      // Left word
                     dst[i * 2 + 1] = src[wordsPerChannel + i];    // Right word
                 }
-                if (!m_interleavingLoggedNative) {
+                
+                static bool interleavingLogged = false;
+                if (!interleavingLogged) {
                     DEBUG_LOG("[AudioDecoder] ✅ PLANAR → INTERLEAVED (32-bit words)");
-                    m_interleavingLoggedNative = true;
+                    interleavingLogged = true;
                 }
             }
         }
@@ -630,7 +581,8 @@ size_t AudioDecoder::readSamples(AudioBuffer& buffer, size_t numSamples,
 
     // ✅ DEBUG: Dump first 64 bytes to understand Audirvana's format
     if (g_verbose) {
-    if (!m_dumpedFirstPacket && totalBytesRead >= 64) {
+        static bool dumped = false;
+    if (!dumped && totalBytesRead >= 64) {
         std::cout << "\n[DEBUG] First 64 bytes from Audirvana DFF:" << std::endl;
         std::cout << "[DEBUG] Hex dump:" << std::endl;
         
@@ -644,21 +596,14 @@ size_t AudioDecoder::readSamples(AudioBuffer& buffer, size_t numSamples,
         std::cout << "[DEBUG] Sample rate: " << m_trackInfo.sampleRate << std::endl;
         std::cout << "[DEBUG] Channels: " << m_trackInfo.channels << std::endl;
         
-        m_dumpedFirstPacket = true;
+        dumped = true;
     }
     }
 
     // ✅ CRITICAL: Convert DFF for Diretta (Bit reversal ONLY, no byte swap)
     // According to SDK: FMT_DSD_SIZ_32 uses Little Endian for BOTH DSF and DFF
     // Only the BIT order differs (LSB vs MSB)
-    // ⚠️  EXCEPTION: Audirvana serves DSF with .dff URL, skip bit reversal
-    bool isAudirvana = false;
-    if (m_formatContext && m_formatContext->url) {
-        std::string url(m_formatContext->url);
-        isAudirvana = (url.find("audirvana") != std::string::npos);
-    }
-
-    if (m_trackInfo.codec.find("msbf") != std::string::npos && !isAudirvana) {
+    if (m_trackInfo.codec.find("msbf") != std::string::npos) {
         uint8_t* data = buffer.data();
         
         // Lookup table for bit reversal
@@ -685,20 +630,36 @@ size_t AudioDecoder::readSamples(AudioBuffer& buffer, size_t numSamples,
         for (size_t i = 0; i < totalBytesRead; i++) {
             data[i] = bitReverseTable[data[i]];
         }
-    
-        if (!m_bitReversalLogged) {
+        
+        static bool logged = false;
+        if (!logged) {
             std::cout << "[AudioDecoder] 🔄 DFF: Bit reversal ONLY (MSB→LSB, keep LE)" << std::endl;
-            m_bitReversalLogged = true;
+            logged = true;
         }
-      }else if (isAudirvana) {
-
-        if (!m_resamplingLogged) {
-        std::cout << "[AudioDecoder] ⚠️  Audirvana detected: Skipping bit reversal" << std::endl;
-        std::cout << "[AudioDecoder]     (DSF data with .dff URL - already LSB)" << std::endl;
-        m_resamplingLogged = true;
-      }    
     }
         return (totalBytesRead * 8) / m_trackInfo.channels;
+    }
+    
+        // Conversion DFF → DSF (votre code existant)
+    if (m_trackInfo.codec.find("msbf") != std::string::npos) {
+        // ... byte swap + bit reversal ...
+        
+        std::cout << "[AudioDecoder] 🔄 DFF → DSF: Byte swap + Bit reversal applied" << std::endl;
+        
+        // ✅ DEBUG: Dump AFTER conversion
+        if (g_verbose) {
+        static bool dumpedAfter = false;
+        if (!dumpedAfter) {
+            std::cout << "\n[DEBUG] AFTER conversion - First 64 bytes:" << std::endl;
+            const uint8_t* data = buffer.data();
+            for (int i = 0; i < 64; i++) {
+                printf("%02X ", data[i]);
+                if ((i + 1) % 16 == 0) printf("\n");
+            }
+            std::cout << std::endl;
+            dumpedAfter = true;
+    }
+        }
     }
 
     // ══════════════════════════════════════════════════════════════
@@ -911,11 +872,12 @@ if (m_trackInfo.isDSD) {
                                    tempBuffer.data() + bytesToUse,
                                    excessBytes);
                             m_remainingCount = excess;
-                        
-                            if (!m_resamplerInitLogged) {
+                            
+                            static bool loggedOnce = false;
+                            if (!loggedOnce) {
                                 std::cout << "[AudioDecoder] ✅ Buffering " << excess 
                                           << " excess samples for next read" << std::endl;
-                                m_resamplerInitLogged = true;
+                                loggedOnce = true;
                             }
                         }
                     }
@@ -1053,7 +1015,7 @@ void AudioEngine::setTrackChangeCallback(const TrackChangeCallback& callback) {
     m_trackChangeCallback = callback;
 }
 
-void AudioEngine::setCurrentURI(const std::string& uri, const std::string& metadata, bool forceReopen) {
+void AudioEngine::setCurrentURI(const std::string& uri, const std::string& metadata, bool forceReopen) {  // ⭐ Ajouter paramètre
     std::lock_guard<std::mutex> lock(m_mutex);
     
     // CRITICAL: Si on change d'URI pendant la lecture, fermer les décodeurs
@@ -1073,29 +1035,10 @@ void AudioEngine::setCurrentURI(const std::string& uri, const std::string& metad
         m_currentDecoder.reset();
         m_nextDecoder.reset();
         
-        // ⭐⭐⭐ CRITICAL FIX: Clear gapless queue when changing URI
-        // Otherwise, the old "next track" will play after the new track finishes!
-        {
-            std::lock_guard<std::mutex> pendingLock(m_pendingMutex);
-            m_pendingNextURI.clear();
-            m_pendingNextMetadata.clear();
-            m_pendingNextTrack.store(false, std::memory_order_release);
-        }
-        m_nextURI.clear();
-        m_nextMetadata.clear();
-        
-        std::cout << "[AudioEngine] ✓ Gapless queue cleared" << std::endl;
-        
         // Réinitialiser la position
         m_samplesPlayed = 0;
         m_silenceCount = 0;
         m_isDraining = false;
-        
-        // Arrêter le préchargement en cours si existant
-        if (m_preloadRunning.load(std::memory_order_acquire)) {
-            m_preloadRunning.store(false, std::memory_order_release);
-            std::cout << "[AudioEngine] ⚠️  Cancelling ongoing preload" << std::endl;
-        }
         
         // Si on est en PLAYING, on va automatiquement ouvrir la nouvelle piste
         // au prochain process()
@@ -1103,6 +1046,7 @@ void AudioEngine::setCurrentURI(const std::string& uri, const std::string& metad
     
     std::cout << "[AudioEngine] Current URI set" << std::endl;
 }
+
 void AudioEngine::setNextURI(const std::string& uri, const std::string& metadata) {
     // Thread-safe: Use pending mechanism to defer to audio thread
     {
@@ -1231,55 +1175,31 @@ bool AudioEngine::process(size_t samplesNeeded) {
     // Vérification rapide sans mutex
     State currentState = m_state.load();
     
-    // ⭐⭐⭐ CRITICAL: Process async seek request (lock-free check)
-    // This runs in the audio thread, so we can safely take the mutex
-    if (m_seekRequested.load(std::memory_order_acquire)) {
-        double targetSeconds = m_seekTarget.load(std::memory_order_acquire);
-        m_seekRequested.store(false, std::memory_order_release);
-        
-        std::cout << "[AudioEngine] 🔍 Processing async seek to " << targetSeconds << "s" << std::endl;
-        
-        // Now we can safely take the mutex (we're in the audio thread)
-        std::lock_guard<std::mutex> seekLock(m_mutex);
-        
-        // Validate decoder exists
-        if (!m_currentDecoder) {
-            std::cerr << "[AudioEngine] ❌ No decoder for seek" << std::endl;
-            // Don't return false - continue playing
-        } else {
-            // Validate position
-            const TrackInfo& info = m_currentTrackInfo;
-            if (info.sampleRate > 0 && info.duration > 0) {
-                double maxSeconds = static_cast<double>(info.duration) / info.sampleRate;
-                if (targetSeconds > maxSeconds) {
-                    targetSeconds = maxSeconds;
-                }
-                if (targetSeconds < 0) {
-                    targetSeconds = 0;
-                }
-                
-                // Perform the actual seek
-                if (m_currentDecoder->seek(targetSeconds)) {
-                    // Update position
-                    m_samplesPlayed = static_cast<uint64_t>(targetSeconds * info.sampleRate);
-                    
-                    // Reset drainage counters
-                    m_silenceCount = 0;
-                    m_isDraining = false;
-                    
-                    std::cout << "[AudioEngine] ✓ Seek completed to " << targetSeconds << "s" << std::endl;
-                    DEBUG_LOG("[AudioEngine] ✓ Position updated to " 
-                              << m_samplesPlayed << " samples (" << targetSeconds << "s)");
-                } else {
-                    std::cerr << "[AudioEngine] ❌ Seek failed in decoder" << std::endl;
-                }
+    if (currentState != State::PLAYING) {
+        // ⚠️ DISTINCTION CRITIQUE : PAUSED vs STOPPED
+        if (currentState == State::STOPPED) {
+            // Cleanup UNIQUEMENT si STOPPED (pas PAUSED)
+            std::lock_guard<std::mutex> lock(m_mutex);
+            
+            if (m_currentDecoder || m_nextDecoder) {
+                std::cout << "[AudioEngine] 🧹 Cleanup after STOP" << std::endl;
+                m_currentDecoder.reset();
+                m_nextDecoder.reset();
+                m_samplesPlayed = 0;
+                // ✅ NE PAS effacer m_currentURI - on veut redémarrer depuis le début
+                // Le decoder sera rouvert à position 0 au prochain play()
             }
+        } else if (currentState == State::PAUSED) {
+            // En PAUSED, on ne fait RIEN - on garde tout en mémoire
+            // Le décodeur reste ouvert à sa position actuelle
+            // Prêt à reprendre instantanément
         }
         
-        // Continue processing after seek
+        return false;
     }
     
-    std::lock_guard<std::mutex> lock(m_mutex);    
+    std::lock_guard<std::mutex> lock(m_mutex);
+    
     // Double vérification avec mutex
     if (m_state.load() != State::PLAYING) {
         return false;
@@ -1298,26 +1218,9 @@ bool AudioEngine::process(size_t samplesNeeded) {
         std::cout << "[AudioEngine] Pending next URI applied (gapless)" << std::endl;
     }
 
-    // Safety net: auto-reopen if decoder null while PLAYING
     if (!m_currentDecoder) {
-        if (!m_currentURI.empty()) {
-            if (!openCurrentTrack()) {
-                std::cerr << "[AudioEngine] Failed to reopen track" << std::endl;
-                m_state = State::STOPPED;
-                if (m_trackEndCallback) {
-                    m_trackEndCallback();
-                }
-                return false;
-            }
-            m_samplesPlayed = 0;
-            m_silenceCount = 0;
-            m_isDraining = false;
-        } else {
-            return false;
-        }
-    }
-
-    // Determine output format
+        return false;
+    }    // ... reste du code ...    // Determine output format
     uint32_t outputRate = m_currentTrackInfo.sampleRate;
     uint32_t outputBits = m_currentTrackInfo.bitDepth;
     uint32_t outputChannels = m_currentTrackInfo.channels;
@@ -1381,39 +1284,6 @@ bool AudioEngine::process(size_t samplesNeeded) {
             transitionToNextTrack();
             return true;  // Continue playback with new track
         } 
-        
-        // ⭐ NEW (v1.0.16): Check if next track exists but decoder was cleared (format change)
-        if (!m_nextURI.empty()) {
-            std::cout << "[AudioEngine] 🔄 Next track with format change detected" << std::endl;
-            std::cout << "[AudioEngine] Transitioning with stop/start sequence..." << std::endl;
-            
-            // Save next URI before stopping
-            std::string nextURI = m_nextURI;
-            std::string nextMetadata = m_nextMetadata;
-            
-            // Signal track end to allow clean transition
-            if (m_trackEndCallback) {
-                m_trackEndCallback();
-            }
-            
-            // Apply next URI as current
-            m_currentURI = nextURI;
-            m_currentMetadata = nextMetadata;
-            m_nextURI.clear();
-            m_nextMetadata.clear();
-            
-            // Reset for new track
-            m_isDraining = false;
-            m_samplesPlayed = 0;
-            m_trackNumber++;
-            
-            // Stop current playback (will close DirettaOutput)
-            std::cout << "[AudioEngine] Stopping for format change..." << std::endl;
-            m_currentDecoder.reset();
-            
-            // Reopen with new track (will be done in next process() call via openCurrentTrack())
-            return true;  // Continue playback state
-        }
         
         // No next track - drain buffer and stop
         std::cout << "[AudioEngine] 🔇 No next track, draining buffer..." << std::endl;
@@ -1512,7 +1382,7 @@ bool AudioEngine::preloadNextTrack() {
     );
 
     if (formatWillChange) {
-        DEBUG_LOG("[AudioEngine] ⚠️  FORMAT CHANGE DETECTED - Gapless disabled");
+        DEBUG_LOG("[AudioEngine] FORMAT CHANGE DETECTED - Gapless disabled");
         DEBUG_LOG("[AudioEngine] Current: "
                   << m_currentTrackInfo.sampleRate << "Hz/"
                   << m_currentTrackInfo.bitDepth << "bit/"
@@ -1523,17 +1393,11 @@ bool AudioEngine::preloadNextTrack() {
                   << nextInfo.bitDepth << "bit/"
                   << nextInfo.channels << "ch"
                   << (nextInfo.isDSD ? " (DSD)" : ""));
-        DEBUG_LOG("[AudioEngine] 🔄 Will use stop/start sequence instead of gapless");
 
         // Don't keep nextDecoder - force stop/start sequence
         m_nextDecoder.reset();
-        
-        // ⭐ CRITICAL FIX (v1.0.16): Keep m_nextURI!
-        // Do NOT clear m_nextURI - it will be used for non-gapless transition
-        // The EOF handler will see format change and trigger proper reopen
-        // m_nextURI.clear();     // ❌ REMOVED - was causing next track to be lost
-        // m_nextMetadata.clear(); // ❌ REMOVED
-        
+        m_nextURI.clear();
+        m_nextMetadata.clear();
         return false;
     }
 
@@ -1616,38 +1480,47 @@ bool AudioDecoder::seek(double seconds) {
 // ============================================================================
 
 bool AudioEngine::seek(double seconds) {
-    // ⭐⭐⭐ CRITICAL FIX: Async seek to avoid deadlock
-    // The UPnP thread calling this should not block waiting for mutex
-    // Instead, we set atomic flags and let the audio thread handle the seek
+    std::lock_guard<std::mutex> lock(m_mutex);
     
-    std::cout << "[AudioEngine] ⏩ Seek requested to " << seconds << " seconds (async)" << std::endl;
+    std::cout << "[AudioEngine] ⏩ Seek to " << seconds << " seconds" << std::endl;
     
-    // Quick validation without mutex
-    if (m_state.load(std::memory_order_acquire) != State::PLAYING) {
-        std::cerr << "[AudioEngine] ❌ Cannot seek when not playing" << std::endl;
+    // Vérifier qu'on a un décodeur actif
+    if (!m_currentDecoder) {
+        std::cerr << "[AudioEngine] Cannot seek: no active decoder" << std::endl;
         return false;
     }
     
-    // Clamp to valid range (optimistic check, will be validated in audio thread)
+    // Vérifier que la position est valide
     const TrackInfo& info = m_currentTrackInfo;
-    if (info.sampleRate > 0 && info.duration > 0) {
-        double maxSeconds = static_cast<double>(info.duration) / info.sampleRate;
-        if (seconds < 0) {
-            seconds = 0;
-        }
-        if (seconds > maxSeconds) {
-            DEBUG_LOG("[AudioEngine] Seek position clamped to " << maxSeconds << "s");
-            seconds = maxSeconds;
-        }
+    if (info.sampleRate == 0 || info.duration == 0) {
+        std::cerr << "[AudioEngine] Cannot seek: invalid track info" << std::endl;
+        return false;
     }
     
-    // ⭐ Set seek request atomically (lock-free, non-blocking)
-    m_seekTarget.store(seconds, std::memory_order_release);
-    m_seekRequested.store(true, std::memory_order_release);
+    double maxSeconds = static_cast<double>(info.duration) / info.sampleRate;
+    if (seconds < 0) {
+        seconds = 0;
+    }
+    if (seconds > maxSeconds) {
+        DEBUG_LOG("[AudioEngine] Seek position clamped to " << maxSeconds << "s");
+        seconds = maxSeconds;
+    }
     
-    std::cout << "[AudioEngine] ✓ Seek queued, will be processed by audio thread" << std::endl;
+    // Effectuer le seek dans le décodeur
+    if (!m_currentDecoder->seek(seconds)) {
+        return false;
+    }
     
-    // Return immediately - UPnP thread doesn't wait
+    // Mettre à jour le compteur de samples
+    m_samplesPlayed = static_cast<uint64_t>(seconds * info.sampleRate);
+    
+    // Réinitialiser les compteurs de drainage
+    m_silenceCount = 0;
+    m_isDraining = false;
+    
+    DEBUG_LOG("[AudioEngine] ✓ Position updated to " 
+              << m_samplesPlayed << " samples (" << seconds << "s)")
+    
     return true;
 }
 

@@ -75,36 +75,12 @@ bool UPnPDevice::start() {
     
     DEBUG_LOG("[UPnPDevice] Starting...");
     
-// 1. Initialize libupnp
-// ⭐ MODIFIÉ: Bind to specific network interface if specified
-const char* interfaceName = m_config.networkInterface.empty() ? nullptr : m_config.networkInterface.c_str();
-
-if (interfaceName != nullptr) {
-    std::cout << "🌐 Binding UPnP to interface: " << interfaceName << std::endl;
-} else {
-    std::cout << "🌐 Using default interface for UPnP (auto-detect)" << std::endl;
-}
-
-int ret = UpnpInit2(interfaceName, m_config.port);  // ← interfaceName au lieu de nullptr
-if (ret != UPNP_E_SUCCESS) {
-    std::cerr << "[UPnPDevice] UpnpInit2 failed: " << ret << std::endl;
-    
-    // ⭐ NOUVEAU: Message d'aide pour multi-homed systems
-    if (interfaceName != nullptr) {
-        std::cerr << "\n💡 Troubleshooting:" << std::endl;
-        std::cerr << "  - Verify interface exists: ip link show" << std::endl;
-        std::cerr << "  - Check IP is assigned: ip addr show " << interfaceName << std::endl;
-        std::cerr << "  - Or try IP address instead: --bind-ip 192.168.x.x" << std::endl;
+    // 1. Initialize libupnp
+    int ret = UpnpInit2(nullptr, m_config.port);
+    if (ret != UPNP_E_SUCCESS) {
+        std::cerr << "[UPnPDevice] UpnpInit2 failed: " << ret << std::endl;
+        return false;
     }
-    
-    return false;
-}
-
-// Afficher l'IP et port utilisés
-char* ipAddress = UpnpGetServerIpAddress();
-unsigned short port = UpnpGetServerPort();
-std::cout << "✓ UPnP initialized on " << (ipAddress ? ipAddress : "unknown") 
-          << ":" << port << std::endl;
     
     // 2. Get server info
     m_ipAddress = UpnpGetServerIpAddress();
@@ -313,7 +289,7 @@ int UPnPDevice::handleActionRequest(UpnpActionRequest* request) {
             IXML_Document* response = createActionResponse("GetProtocolInfo");
             addResponseArg(response, "Source", "");
             
-             // Liste explicite des formats supportés
+            // Liste explicite des formats supportés
             // Requis par certains contrôleurs stricts comme Audirvana
             std::string sinkProtocols = 
                 // WAV (requis par Audirvana)

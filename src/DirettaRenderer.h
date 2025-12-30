@@ -5,8 +5,6 @@
 #include <thread>
 #include <atomic>
 #include <mutex>
-#include <condition_variable>
-#include <iostream>
 
 // Forward declarations
 class UPnPDevice;
@@ -20,15 +18,9 @@ public:
         int port;
         std::string uuid;
         bool gaplessEnabled;
-        float bufferSeconds;  // Changed from int to float (v1.0.9)
+        int bufferSeconds;
         int targetIndex;  // -1 = interactive selection, >= 0 = specific target
-     // ⭐ NEW: Advanced Diretta SDK settings
-    int threadMode;      // THRED_MODE in SDK
-    int cycleTime;       // CycleTime
-    int cycleMinTime;    // CycleMinTime
-    int infoCycle;       // InfoCycle
-    int mtuOverride;     // MTU override (0 = auto)
-    std::string networkInterface;  // Empty = auto-detect       
+        
         Config();
     };
     
@@ -83,6 +75,4 @@ private:
     std::string m_currentMetadata;
     std::string m_nextURI;
     std::string m_nextMetadata;
-
-    // Callback synchronization - prevents race with close()
 };

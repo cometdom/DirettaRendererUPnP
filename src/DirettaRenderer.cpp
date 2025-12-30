@@ -55,7 +55,6 @@ static std::string generateUUID() {
 DirettaRenderer::Config::Config() {
     uuid = generateUUID();
     targetIndex = -1;  // Default: interactive selection
-    networkInterface = "";  // (vide = auto-detect)
 }
 
 // ============================================================================
@@ -147,14 +146,14 @@ bool DirettaRenderer::start() {
         upnpConfig.modelName = "Diretta UPnP Renderer";
         upnpConfig.uuid = m_config.uuid;
         upnpConfig.port = m_config.port;
-        upnpConfig.networkInterface = m_config.networkInterface;
-        
+
         m_upnp = std::make_unique<UPnPDevice>(upnpConfig);        
         
         m_audioEngine = std::make_unique<AudioEngine>();
 
         
         
+        // Setup callbacks from AudioEngine to DirettaOutput
         m_audioEngine->setAudioCallback(
     [this](const AudioBuffer& buffer, size_t samples, 
            uint32_t sampleRate, uint32_t bitDepth, uint32_t channels) -> bool {
@@ -280,8 +279,7 @@ bool DirettaRenderer::start() {
         return m_direttaOutput->sendAudio(buffer.data(), samples);
     }
 );        
-
-		m_audioEngine->setTrackChangeCallback(
+        m_audioEngine->setTrackChangeCallback(
             [this](int trackNumber, const TrackInfo& info, const std::string& uri, const std::string& metadata) {
                 if (g_verbose) {
                     std::cout << "[DirettaRenderer] 🎵 Track " << trackNumber 
@@ -313,57 +311,20 @@ bool DirettaRenderer::start() {
         
         // Setup callbacks from UPnP to AudioEngine
   
-        // Track last stop time for DAC stabilization delay
+        // Track last stop time to handle Stop+Play race condition
         static std::chrono::steady_clock::time_point lastStopTime;
+        static std::mutex stopTimeMutex;
   
 UPnPDevice::Callbacks callbacks;
 
 callbacks.onSetURI = [this](const std::string& uri, const std::string& metadata) {
+    std::lock_guard<std::mutex> lock(m_mutex);  // Serialize UPnP actions
     DEBUG_LOG("[DirettaRenderer] SetURI: " << uri);
     
-    // v1.1.3: Simplified synchronization (v1.0.6 style)
-    std::lock_guard<std::mutex> lock(m_mutex);
-    
-    auto currentState = m_audioEngine->getState();
-    
-    // ⭐ Auto-STOP if playing (JPlay iOS compatibility - added in v1.0.8)
-    if (currentState == AudioEngine::State::PLAYING || 
-        currentState == AudioEngine::State::PAUSED ||
-        currentState == AudioEngine::State::TRANSITIONING) {
-        
-        std::cout << "════════════════════════════════════════" << std::endl;
-        std::cout << "[DirettaRenderer] ⚠️  SetURI while " 
-                  << (currentState == AudioEngine::State::PLAYING ? "PLAYING" :
-                      currentState == AudioEngine::State::PAUSED ? "PAUSED" : "TRANSITIONING")
-                  << std::endl;
-        std::cout << "[DirettaRenderer] 🛑 Auto-STOP before URI change (JPlay iOS compatibility)" << std::endl;
-        std::cout << "════════════════════════════════════════" << std::endl;
-
-        // Stop AudioEngine
-        m_audioEngine->stop();
-        
-        // ⭐ v1.1.3: Removed callback mutex synchronization (v1.0.6 style)
-        // waitForCallbackComplete();
-
-        // Stop and close DirettaOutput
-        if (m_direttaOutput) {
-            if (m_direttaOutput->isPlaying()) {
-                m_direttaOutput->stop(true);
-            }
-            if (m_direttaOutput->isConnected()) {
-                m_direttaOutput->close();
-            }
-        }
-        
-        // Notify state change
-        m_upnp->notifyStateChange("STOPPED");
-        
-        DEBUG_LOG("[DirettaRenderer] ✓ Auto-STOP completed");
-    }
-    
-    // ⭐ v1.1.2: Update URI with mutex still held - no race condition
+    // ⭐ Sauvegarder l'URI courante
     this->m_currentURI = uri;
     this->m_currentMetadata = metadata;
+    
     m_audioEngine->setCurrentURI(uri, metadata);
 };
 
@@ -374,52 +335,41 @@ callbacks.onSetNextURI = [this](const std::string& uri, const std::string& metad
     m_audioEngine->setNextURI(uri, metadata);
 };
 
-callbacks.onPlay = [&lastStopTime, this]() {
+callbacks.onPlay = [&lastStopTime, &stopTimeMutex, this]() {
     std::cout << "[DirettaRenderer] ✓ Play command received" << std::endl;
     
     std::lock_guard<std::mutex> lock(m_mutex);  // Serialize UPnP actions
-    
-    // ⭐ CRITICAL: Check if connected FIRST, before checking pause state
-    // After STOP, DirettaOutput is closed (not connected), so isPaused() is meaningless
-    if (m_direttaOutput && m_direttaOutput->isConnected() && m_direttaOutput->isPaused()) {
-        // TRUE RESUME: DirettaOutput is connected AND paused
-        DEBUG_LOG("[DirettaRenderer] 🔄 Resuming from pause...");
-        try {
-            // Resume DirettaOutput first
-            m_direttaOutput->resume();
-            
-            // Then AudioEngine
-            if (m_audioEngine) {
-                m_audioEngine->play();
-            }
-            
-            m_upnp->notifyStateChange("PLAYING");
-            DEBUG_LOG("[DirettaRenderer] ✓ Resumed from pause");
-        } catch (const std::exception& e) {
-            std::cerr << "❌ Exception resuming: " << e.what() << std::endl;
-        }
-        return;
-    }
-    
-    // ⭐ Not connected or not paused → Need to open/reopen track
-    if (!m_direttaOutput->isConnected() && !m_currentURI.empty()) {
-        DEBUG_LOG("[DirettaRenderer] ⚠️  DirettaOutput not connected after STOP");
-        DEBUG_LOG("[DirettaRenderer] Reopening track: " << m_currentURI);
+    // ⭐ NOUVEAU : Gérer Resume si en pause
+if (m_direttaOutput && m_direttaOutput->isPaused()) {
+    DEBUG_LOG("[DirettaRenderer] 🔄 Resuming from pause...");
+    try {
+        // ⭐ Reprendre DirettaOutput d'abord
+        m_direttaOutput->resume();
         
-        // Reopen the track in AudioEngine
-        m_audioEngine->setCurrentURI(m_currentURI, m_currentMetadata, true);
-        DEBUG_LOG("[DirettaRenderer] ✓ Track reopened");
+        // ⭐ Puis AudioEngine
+        if (m_audioEngine) {
+            m_audioEngine->play();  // ⭐ AJOUTER CETTE LIGNE
+        }
+        
+        m_upnp->notifyStateChange("PLAYING");
+        DEBUG_LOG("[DirettaRenderer] ✓ Resumed from pause");
+    } catch (const std::exception& e) {
+        std::cerr << "❌ Exception resuming: " << e.what() << std::endl;
     }
-    
-    // DAC stabilization delay after recent Stop
+    return;
+}    
+    // ⚠️  SAFETY: Conditional delay to avoid race condition with Stop
+    // Only add delay if Stop was called very recently (< 100ms ago)
+    // This prevents gapless issues while still protecting against Stop+Play races
     {
+        std::lock_guard<std::mutex> lock(stopTimeMutex);
         auto now = std::chrono::steady_clock::now();
         auto timeSinceStop = std::chrono::duration_cast<std::chrono::milliseconds>(now - lastStopTime);
         
         if (timeSinceStop.count() < 100) {
             DEBUG_LOG("[DirettaRenderer] ⚠️  Stop was " << timeSinceStop.count() 
                       << "ms ago, adding safety delay");
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
         }
     }
     
@@ -454,20 +404,21 @@ callbacks.onPause = [this]() {
         std::cerr << "❌ Exception in Pause callback: " << e.what() << std::endl;
     }
 };
-callbacks.onStop = [&lastStopTime, this]() {
+callbacks.onStop = [&lastStopTime, &stopTimeMutex, this]() {
     std::lock_guard<std::mutex> lock(m_mutex);  // Serialize UPnP actions
     std::cout << "════════════════════════════════════════" << std::endl;
     std::cout << "[DirettaRenderer] ⛔ STOP REQUESTED" << std::endl;
     std::cout << "════════════════════════════════════════" << std::endl;
     
-    // Record stop time for DAC stabilization delay
-    lastStopTime = std::chrono::steady_clock::now();
+    // Record stop time for Play race condition detection
+    {
+        std::lock_guard<std::mutex> lock(stopTimeMutex);
+        lastStopTime = std::chrono::steady_clock::now();
+    }
     
     try {
-        // v1.1.3: Simplified stop (v1.0.6 style - no callback mutex)
         DEBUG_LOG("[DirettaRenderer] Calling AudioEngine::stop()...");
         m_audioEngine->stop();
-        // waitForCallbackComplete(); // v1.1.3: Removed
         DEBUG_LOG("[DirettaRenderer] ✓ AudioEngine stopped");
         
        // ⭐ RESET position: Recharger l'URI pour revenir au début
@@ -509,6 +460,7 @@ callbacks.onSeek = [this](const std::string& target) {  // ⭐ Enlever unit
         double seconds = parseTimeString(target);
         
         std::cout << "[DirettaRenderer] Parsed time: " << seconds << "s" << std::endl;
+        
         // Seek dans AudioEngine
         if (m_audioEngine) {
             std::cout << "[DirettaRenderer] Seeking AudioEngine..." << std::endl;
@@ -516,15 +468,29 @@ callbacks.onSeek = [this](const std::string& target) {  // ⭐ Enlever unit
                 std::cerr << "[DirettaRenderer] ❌ AudioEngine seek failed" << std::endl;
                 return;
             }
-            DEBUG_LOG("[DirettaRenderer] ✓ Seek request sent to AudioEngine (async)");        }
+            std::cout << "[DirettaRenderer] ✓ AudioEngine seeked" << std::endl;
+        }
         
-            DEBUG_LOG("[DirettaRenderer] ✓ Seek complete");
+        // Seek dans DirettaOutput
+        if (m_direttaOutput && m_audioEngine) {
+    uint32_t sampleRate = m_audioEngine->getCurrentSampleRate();  // ⭐ Obtenir depuis AudioEngine
+    if (sampleRate > 0) {
+        int64_t samplePosition = static_cast<int64_t>(seconds * sampleRate);
+            
+            std::cout << "[DirettaRenderer] Seeking DirettaOutput to sample " << samplePosition << "..." << std::endl;
+            if (!m_direttaOutput->seek(samplePosition)) {
+                std::cerr << "[DirettaRenderer] ❌ DirettaOutput seek failed" << std::endl;
+                return;
+            }
+            std::cout << "[DirettaRenderer] ✓ DirettaOutput seeked" << std::endl;
+        }
+	}
+        std::cout << "[DirettaRenderer] ✓ Seek complete" << std::endl;
         
     } catch (const std::exception& e) {
         std::cerr << "❌ Exception in Seek callback: " << e.what() << std::endl;
     }
 	};
-        
 
 m_upnp->setCallbacks(callbacks);       
       
@@ -683,33 +649,11 @@ void DirettaRenderer::audioThreadFunc() {
             nextProcessTime += lastInterval;
             
             if (!success) {
-                // Compteur pour réduire le spam de logs
-                static int failCount = 0;
-                static int totalFails = 0;
-                
-                failCount++;
-                totalFails++;
-                
-                // Logger seulement tous les 100 échecs (ou le premier)
-                if (failCount == 1 || failCount % 100 == 0) {
-                    std::cout << "[Audio Thread] ⚠️  process() returned false"
-                              << " (" << totalFails << " total, " 
-                              << failCount << " consecutive)" << std::endl;
-                }
-                
-                // ⭐ CRITICAL FIX: Ajouter une pause pour éviter le spam CPU
-                // Sans cette pause, la boucle repart immédiatement et spam
-                // des milliers de fois par seconde !
-                std::this_thread::sleep_for(std::chrono::milliseconds(10));
-                
-                // Reset le temps de prochain process
+                // ← AJOUTER : Log quand process échoue
+                std::cout << "[Audio Thread] ⚠️  process() returned false" << std::endl;
                 nextProcessTime = std::chrono::steady_clock::now();
-            } else {
-                // Reset le compteur d'échecs consécutifs quand ça réussit
-                static int failCount = 0;
-                failCount = 0;
             }
-                   
+            
         } else {
             // ← AJOUTER : Log quand en attente
             static int waitCount = 0;

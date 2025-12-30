@@ -43,7 +43,6 @@ public:
         std::string modelName;
         std::string uuid;
         int port;
-        std::string networkInterface;
         
         Config() 
             : friendlyName("Diretta Renderer")
@@ -51,7 +50,6 @@ public:
             , modelName("UPnP Diretta Renderer")
             , uuid("uuid:diretta-renderer-12345")
             , port(0)  // 0 = auto
-            , networkInterface("")  // Empty = auto-detect
         {}
     };
     
