@@ -46,7 +46,7 @@ void DirettaOutput::setMTU(uint32_t mtu) {
 
 
 
-bool DirettaOutput::open(const AudioFormat& format, float bufferSeconds) {
+bool DirettaOutput::open(const AudioFormat& format, int bufferSeconds) {
     DEBUG_LOG("[DirettaOutput] Opening: " 
               << format.sampleRate << "Hz/" 
               << format.bitDepth << "bit/" 
@@ -66,43 +66,32 @@ bool DirettaOutput::open(const AudioFormat& format, float bufferSeconds) {
     // This matches Dominique's insight: Diretta can handle uncompressed 
     // formats as efficiently as DSD, since both skip the decode step!
     
-    // ═══════════════════════════════════════════════════════════
-// TEST 4.3: DIAGNOSTIC LOGS
-// ═══════════════════════════════════════════════════════════
-std::cout << "\n════════════════════════════════════════" << std::endl;
-std::cout << "[DirettaOutput::open] 🔍 DIAGNOSTIC:" << std::endl;
-std::cout << "  format.isDSD = " << format.isDSD << std::endl;
-std::cout << "  format.isCompressed = " << format.isCompressed << std::endl;
-std::cout << "  format.sampleRate = " << format.sampleRate << std::endl;
-std::cout << "  format.bitDepth = " << format.bitDepth << std::endl;
-std::cout << "  format.channels = " << format.channels << std::endl;
-std::cout << "  bufferSeconds = " << bufferSeconds << std::endl;
-std::cout << "  m_mtu = " << m_mtu << std::endl;
-std::cout << "════════════════════════════════════════" << std::endl;
-// ═══════════════════════════════════════════════════════════
-
-float effectiveBuffer;
+    float effectiveBuffer;
     
-if (format.isDSD) {
-    // Bloc 1 : DSD
-    effectiveBuffer = std::min(bufferSeconds, 0.8f);
-    DEBUG_LOG("[DirettaOutput] 🎵 DSD: raw bitstream path");
-    
-} else if (!format.isCompressed) {
-    // Bloc 2 : PCM non-compressé (SIMPLIFIÉ)
-    effectiveBuffer = std::min(bufferSeconds, 0.8f);
-    DEBUG_LOG("[DirettaOutput] ✓ Uncompressed PCM: low-latency path");
-    DEBUG_LOG("[DirettaOutput]   Buffer: " << effectiveBuffer << "s");
-    
-} else {
-    // Bloc 3 : Compressed (GARDE !)
-    effectiveBuffer = std::max(bufferSeconds, 0.8f);
-    DEBUG_LOG("[DirettaOutput] ℹ️  Compressed PCM: decoding required");
-    
-    if (bufferSeconds < 2) {
-        DEBUG_LOG("[DirettaOutput]   Using 2s minimum for decode stability");
+    if (format.isDSD) {
+        // DSD: Raw bitstream, zero decode overhead
+        effectiveBuffer = std::min(static_cast<float>(bufferSeconds), 0.8f);
+        DEBUG_LOG("[DirettaOutput] 🎵 DSD: raw bitstream path");
+        
+    } else if (!format.isCompressed) {
+        // WAV/AIFF: Uncompressed PCM, minimal overhead (just format conversion)
+        effectiveBuffer = std::min(static_cast<float>(bufferSeconds), 0.8f);
+        DEBUG_LOG("[DirettaOutput] ✓ Uncompressed PCM (WAV/AIFF): low-latency path");
+        DEBUG_LOG("[DirettaOutput]   Buffer: " << effectiveBuffer 
+                  << "s (similar to DSD!)");
+        
+    } else {
+        // FLAC/ALAC/etc: Compressed, needs decoding buffer
+        effectiveBuffer = std::max(static_cast<float>(bufferSeconds), 0.8f);
+        DEBUG_LOG("[DirettaOutput] ℹ️  Compressed PCM (FLAC/ALAC): decoding required");
+        
+        if (bufferSeconds < 2) {
+            DEBUG_LOG("[DirettaOutput]   Using 2s minimum for decode stability");
+        }
     }
-}
+    
+    m_bufferSeconds = effectiveBuffer;
+    DEBUG_LOG("[DirettaOutput] → Effective buffer: " << m_bufferSeconds << "s");
     
     // Find Diretta target
     DEBUG_LOG("[DirettaOutput] Finding Diretta target...");
@@ -922,14 +911,18 @@ if (format.dsdFormat == AudioFormat::DSDFormat::DFF) {
             std::cout << "DSD256 (11289600 Hz)" << std::endl;
             formatID |= DIRETTA::FormatID::RAT_44100 | DIRETTA::FormatID::RAT_MP256;
             DEBUG_LOG("[DirettaOutput]    ✅ DSD256 configured");
-                 } else if (format.sampleRate == 22579200) {
+		        } else if (format.sampleRate == 11289600) {
+            std::cout << "DSD256 (11289600 Hz)" << std::endl;
+            formatID |= DIRETTA::FormatID::RAT_44100 | DIRETTA::FormatID::RAT_MP256;
+            DEBUG_LOG("[DirettaOutput]    ✅ DSD256 configured");
+        } else if (format.sampleRate == 22579200) {
             std::cout << "DSD512 (22579200 Hz)" << std::endl;
             formatID |= DIRETTA::FormatID::RAT_44100 | DIRETTA::FormatID::RAT_MP512;
             DEBUG_LOG("[DirettaOutput]    ✅ DSD512 configured");
         } else if (format.sampleRate == 45158400) {
             std::cout << "DSD1024 (45158400 Hz)" << std::endl;
             formatID |= DIRETTA::FormatID::RAT_44100 | DIRETTA::FormatID::RAT_MP1024;
-            DEBUG_LOG("[DirettaOutput]    ✅ DSD1024 configured");   
+            DEBUG_LOG("[DirettaOutput]    ✅ DSD1024 configured");	
         } else {
             std::cerr << "[DirettaOutput]    ⚠️  Unknown DSD rate: " << format.sampleRate << std::endl;
             formatID |= DIRETTA::FormatID::RAT_44100 | DIRETTA::FormatID::RAT_MP64;
