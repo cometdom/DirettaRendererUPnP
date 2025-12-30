@@ -1103,12 +1103,12 @@ m_syncBuffer->setupBuffer(fs1sec * m_bufferSeconds, 4, false);
 // ═══════════════════════════════════════════════════════════════
 // ⭐ v1.2.0 Stable: Network optimization by format
 // ═══════════════════════════════════════════════════════════════
-/*
+
 void DirettaOutput::optimizeNetworkConfig(const AudioFormat& format) {
     if (!m_syncBuffer) {
         return;
     }
-    
+   /* 
     // ⭐ v1.2.0 Stable: Use v1.0.6 proven configuration
     // The issue was: v1.2.0 used m_cycleTime (10000µs) instead of 200µs
     // This caused 50× slower packet timing → DSD delay 1min40s!
