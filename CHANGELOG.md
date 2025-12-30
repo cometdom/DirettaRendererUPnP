@@ -11,8 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.1.2] - 2025-12-29
 
 ### Fixed
-Some bugs correction
+Some bugs fixes
+
 DSD files playback after a delay of 1 mnminute 40.
+
 **Simplified structure - mutex held throughout callback:**
 
 ## [1.1.1] - 2025-12-25
