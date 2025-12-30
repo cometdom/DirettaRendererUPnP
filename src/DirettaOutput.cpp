@@ -79,22 +79,21 @@ bool DirettaOutput::open(const AudioFormat& format, float bufferSeconds) {
     
     float effectiveBuffer;
     
-    if (format.isDSD) {
+if (format.isDSD) {
         // DSD: Raw bitstream, zero decode overhead
-        effectiveBuffer = std::min(bufferSeconds, 0.8f);
+        effectiveBuffer = std::min(static_cast<float>(bufferSeconds), 0.8f);
         DEBUG_LOG("[DirettaOutput] 🎵 DSD: raw bitstream path");
         
-} else if (!format.isCompressed) {
+    } else if (!format.isCompressed) {
         // WAV/AIFF: Uncompressed PCM, minimal overhead (just format conversion)
-        // ⭐ v1.2.0 Stable: Simplified buffer logic (same as DSD - proven stable)
-        effectiveBuffer = std::min(bufferSeconds, 0.8f);
+        effectiveBuffer = std::min(static_cast<float>(bufferSeconds), 0.8f);
         DEBUG_LOG("[DirettaOutput] ✓ Uncompressed PCM (WAV/AIFF): low-latency path");
         DEBUG_LOG("[DirettaOutput]   Buffer: " << effectiveBuffer 
                   << "s (similar to DSD!)");
-                
+        
     } else {
         // FLAC/ALAC/etc: Compressed, needs decoding buffer
-        effectiveBuffer = std::max(bufferSeconds, 0.8f);
+        effectiveBuffer = std::max(static_cast<float>(bufferSeconds), 0.8f);
         DEBUG_LOG("[DirettaOutput] ℹ️  Compressed PCM (FLAC/ALAC): decoding required");
         
         if (bufferSeconds < 2) {
@@ -1104,19 +1103,20 @@ m_syncBuffer->setupBuffer(fs1sec * m_bufferSeconds, 4, false);
 // ═══════════════════════════════════════════════════════════════
 // ⭐ v1.2.0 Stable: Network optimization by format
 // ═══════════════════════════════════════════════════════════════
-
+/*
 void DirettaOutput::optimizeNetworkConfig(const AudioFormat& format) {
     if (!m_syncBuffer) {
         return;
     }
     
     // ⭐ v1.2.0 Stable: Use v1.0.6 proven configuration
-    // CRITICAL: cycleTime must be 200µs, NOT 10000µs (50× difference!)
+    // The issue was: v1.2.0 used m_cycleTime (10000µs) instead of 200µs
+    // This caused 50× slower packet timing → DSD delay 1min40s!
     
     bool isLowBitrate = (format.bitDepth <= 16 && format.sampleRate <= 48000 && !format.isDSD);
 
     if (isLowBitrate) {
-        // Low bitrate: smaller packets to avoid drops
+        // Low bitrate (16bit ≤48kHz): smaller packets to avoid drops
         DEBUG_LOG("[DirettaOutput] ⚠️  Low bitrate format detected (" 
                   << format.bitDepth << "bit/" << format.sampleRate << "Hz)");
         DEBUG_LOG("[DirettaOutput] Using configTransferAuto (smaller packets)");
@@ -1135,11 +1135,11 @@ void DirettaOutput::optimizeNetworkConfig(const AudioFormat& format) {
         DEBUG_LOG("[DirettaOutput] Using configTransferVarMax (jumbo frames)");
         
         m_syncBuffer->configTransferVarMax(
-            ACQUA::Clock::MicroSeconds(200)   // 200µs - CRITICAL!
+            ACQUA::Clock::MicroSeconds(200)   // limitCycle = 200µs (CRITICAL!)
         );
         DEBUG_LOG("[DirettaOutput] ✓ configTransferVarMax (Packet Full mode, ~16k)");
     }
-}
+}*/
 
 bool DirettaOutput::seek(int64_t samplePosition) {
     DEBUG_LOG("[DirettaOutput] 🔍 Seeking to sample " << samplePosition);
