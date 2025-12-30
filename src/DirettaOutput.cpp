@@ -74,10 +74,6 @@ bool DirettaOutput::open(const AudioFormat& format, int bufferSeconds) {
         DEBUG_LOG("[DirettaOutput] 🎵 DSD: raw bitstream path");
         
 } else if (!format.isCompressed) {
-    // ═══════════════════════════════════════════════════════════
-    // TEST 4: Add complex buffer logic with loopback detection (v1.1.2)
-    // ═══════════════════════════════════════════════════════════
-    
     // WAV/AIFF: Uncompressed PCM - intelligent buffer sizing
     
     // ⚠️  LOOPBACK DETECTION (v1.0.10)
@@ -96,7 +92,7 @@ bool DirettaOutput::open(const AudioFormat& format, int bufferSeconds) {
         if (isLoopback && format.sampleRate <= 96000) {
             // Loopback + Hi-Res ≤96kHz: needs larger buffer
             // Reason: Data arrives in bursts, need extra buffer to prevent underruns
-            effectiveBuffer = std::max(std::min(bufferSeconds, 2.5f), 1.5f);
+            effectiveBuffer = std::max(std::min(static_cast<float>(bufferSeconds), 2.5f), 1.5f);
             DEBUG_LOG("[DirettaOutput] ⚠️  Loopback Hi-Res detected (" << format.bitDepth 
                       << "bit/" << format.sampleRate << "Hz)");
             DEBUG_LOG("[DirettaOutput]   Using 2-2.5s buffer (burst protection)");
@@ -104,7 +100,7 @@ bool DirettaOutput::open(const AudioFormat& format, int bufferSeconds) {
             DEBUG_LOG("[DirettaOutput]        or enable oversampling in your player");
         } else {
             // Network or high sample rate: normal buffer
-            effectiveBuffer = std::max(std::min(bufferSeconds, 1.5f), 1.2f);
+            effectiveBuffer = std::max(std::min(static_cast<float>(bufferSeconds), 1.5f), 1.2f);
             DEBUG_LOG("[DirettaOutput] ✓ Hi-Res PCM (" << format.bitDepth 
                       << "bit/" << format.sampleRate << "Hz): enhanced buffer");
             DEBUG_LOG("[DirettaOutput]   Buffer: " << effectiveBuffer 
@@ -112,23 +108,12 @@ bool DirettaOutput::open(const AudioFormat& format, int bufferSeconds) {
         }
     } else {
         // Standard PCM: low latency
-        effectiveBuffer = std::min(bufferSeconds, 1.0f);
+        effectiveBuffer = std::min(static_cast<float>(bufferSeconds), 1.0f);
         DEBUG_LOG("[DirettaOutput] ✓ Uncompressed PCM: low-latency path");
         DEBUG_LOG("[DirettaOutput]   Buffer: " << effectiveBuffer << "s");
     }
-        
-    } else {
-        // FLAC/ALAC/etc: Compressed, needs decoding buffer
-        effectiveBuffer = std::max(static_cast<float>(bufferSeconds), 0.8f);
-        DEBUG_LOG("[DirettaOutput] ℹ️  Compressed PCM (FLAC/ALAC): decoding required");
-        
-        if (bufferSeconds < 2) {
-            DEBUG_LOG("[DirettaOutput]   Using 2s minimum for decode stability");
-        }
-    }
     
-    m_bufferSeconds = effectiveBuffer;
-    DEBUG_LOG("[DirettaOutput] → Effective buffer: " << m_bufferSeconds << "s");
+// ═══════════════════════════════════════════════════════════
     
     // Find Diretta target
     DEBUG_LOG("[DirettaOutput] Finding Diretta target...");
