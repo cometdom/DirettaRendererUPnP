@@ -66,14 +66,31 @@ bool DirettaOutput::open(const AudioFormat& format, float bufferSeconds) {
     // This matches Dominique's insight: Diretta can handle uncompressed 
     // formats as efficiently as DSD, since both skip the decode step!
     
+    // ═══════════════════════════════════════════════════════════
+// TEST 4.3: DIAGNOSTIC LOGS
+// ═══════════════════════════════════════════════════════════
+std::cout << "\n════════════════════════════════════════" << std::endl;
+std::cout << "[DirettaOutput::open] 🔍 DIAGNOSTIC:" << std::endl;
+std::cout << "  format.isDSD = " << format.isDSD << std::endl;
+std::cout << "  format.isCompressed = " << format.isCompressed << std::endl;
+std::cout << "  format.sampleRate = " << format.sampleRate << std::endl;
+std::cout << "  format.bitDepth = " << format.bitDepth << std::endl;
+std::cout << "  format.channels = " << format.channels << std::endl;
+std::cout << "  bufferSeconds = " << bufferSeconds << std::endl;
+std::cout << "  m_mtu = " << m_mtu << std::endl;
+std::cout << "════════════════════════════════════════" << std::endl;
+// ═══════════════════════════════════════════════════════════
+
     float effectiveBuffer;
     
     if (format.isDSD) {
+        std::cout << "[DirettaOutput] ✅ ENTERING DSD BLOCK" << std::endl;  // ← AJOUTE
         // DSD: Raw bitstream, zero decode overhead
         effectiveBuffer = std::min(bufferSeconds, 0.8f);
         DEBUG_LOG("[DirettaOutput] 🎵 DSD: raw bitstream path");
         
     } else if (!format.isCompressed) {
+        std::cout << "[DirettaOutput] ⚠️  ENTERING PCM BLOCK" << std::endl;  // ← AJOUTE
         // WAV/AIFF: Uncompressed PCM - intelligent buffer sizing
         
         // ⚠️  LOOPBACK DETECTION (v1.0.10)
@@ -99,6 +116,7 @@ bool DirettaOutput::open(const AudioFormat& format, float bufferSeconds) {
                 DEBUG_LOG("[DirettaOutput]   💡 TIP: For lower latency, use remote player");
                 DEBUG_LOG("[DirettaOutput]        or enable oversampling in your player");
             } else {
+                std::cout << "[DirettaOutput] ⚠️  ENTERING COMPRESSED BLOCK" << std::endl;  // ← AJOUTE
                 // Network or high sample rate: normal buffer
                 effectiveBuffer = std::max(std::min(bufferSeconds, 1.5f), 1.2f);
                 DEBUG_LOG("[DirettaOutput] ✓ Hi-Res PCM (" << format.bitDepth 
