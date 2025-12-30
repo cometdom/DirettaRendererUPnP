@@ -101,13 +101,7 @@ std::cout << "══════════════════════
         // Real network would use jumbo frames (16128)
         // This is a simple heuristic - not perfect but works in most cases
         if (m_mtu <= 1500) {
-            isLoopback = true;*/
-
-         } else if (!format.isCompressed) {
-    // TEST INVERSE: Back to v1.0.6 simple logic
-    effectiveBuffer = std::min(bufferSeconds, 0.8f);
-    DEBUG_LOG("[DirettaOutput] ✓ Uncompressed PCM (WAV/AIFF): low-latency path");
-    DEBUG_LOG("[DirettaOutput]   Buffer: " << effectiveBuffer << "s (similar to DSD!)");   
+            isLoopback = true;  
         }
         
         if (format.bitDepth >= 24 && format.sampleRate >= 88200) {
@@ -134,7 +128,13 @@ std::cout << "══════════════════════
             // Standard PCM: low latency
             effectiveBuffer = std::min(bufferSeconds, 1.0f);
             DEBUG_LOG("[DirettaOutput] ✓ Uncompressed PCM: low-latency path");
-            DEBUG_LOG("[DirettaOutput]   Buffer: " << effectiveBuffer << "s");
+            DEBUG_LOG("[DirettaOutput]   Buffer: " << effectiveBuffer << "s");*/
+
+                     } else if (!format.isCompressed) {
+    // TEST INVERSE: Back to v1.0.6 simple logic
+    effectiveBuffer = std::min(bufferSeconds, 0.8f);
+    DEBUG_LOG("[DirettaOutput] ✓ Uncompressed PCM (WAV/AIFF): low-latency path");
+    DEBUG_LOG("[DirettaOutput]   Buffer: " << effectiveBuffer << "s (similar to DSD!)"); 
         }
         
     } else {
