@@ -103,7 +103,7 @@ bool DirettaOutput::open(const AudioFormat& format, float bufferSeconds) {
             if (isLoopback && format.sampleRate <= 96000) {
                 // Loopback + Hi-Res ≤96kHz: needs larger buffer
                 // Reason: Data arrives in bursts, need extra buffer to prevent underruns
-                effectiveBuffer = std::max(std::min(bufferSeconds, 0.05f), 0.02f);
+                effectiveBuffer = std::max(std::min(bufferSeconds, 1.5f), 1.2f);
                 DEBUG_LOG("[DirettaOutput] ⚠️  Loopback Hi-Res detected (" << format.bitDepth 
                           << "bit/" << format.sampleRate << "Hz)");
                 DEBUG_LOG("[DirettaOutput]   Using 2-2.5s buffer (burst protection)");
@@ -111,7 +111,7 @@ bool DirettaOutput::open(const AudioFormat& format, float bufferSeconds) {
                 DEBUG_LOG("[DirettaOutput]        or enable oversampling in your player");
             } else {
                 // Network or high sample rate: normal buffer
-                effectiveBuffer = std::max(std::min(bufferSeconds, 0.05f), 0.02f);
+                effectiveBuffer = std::max(std::min(bufferSeconds, 1.5f), 1.2f);
                 DEBUG_LOG("[DirettaOutput] ✓ Hi-Res PCM (" << format.bitDepth 
                           << "bit/" << format.sampleRate << "Hz): enhanced buffer");
                 DEBUG_LOG("[DirettaOutput]   Buffer: " << effectiveBuffer 
