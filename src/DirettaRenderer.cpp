@@ -249,49 +249,27 @@ m_audioEngine->setAudioCallback(
                 m_callbackCV.notify_all();
                 DEBUG_LOG("[Callback] ✓ Callback flag released early (anti-deadlock)");
                 
-                // ⭐⭐⭐ USE changeFormat() FOR PROPER TRANSITION ⭐⭐⭐
+                // ⭐⭐⭐ v1.2.0 FIXED: SDK Gapless Pro handles EVERYTHING ⭐⭐⭐
                 std::cout << "[Callback] 🔄 Executing format change sequence..." << std::endl;
+                std::cout << "[Callback] 💡 SDK Diretta manages drain/disconnect/reconnect internally" << std::endl;
                 
-                // ⭐ v1.2.0 Stable: Explicit buffer draining before stop
-                if (m_direttaOutput->isConnected()) {
-                    std::cout << "[Callback]    0. Draining buffer before format change..." << std::endl;
-                    
-                    int timeout = 50;  // 500ms max
-                    int drained = 0;
-                    
-                    while (!m_direttaOutput->isBufferEmpty() && timeout-- > 0) {
-                        std::this_thread::sleep_for(std::chrono::milliseconds(10));
-                        drained += 10;
-                    }
-                    
-                    if (timeout <= 0) {
-                        std::cout << "[Callback]    ⚠️  Buffer drain timeout after 500ms" << std::endl;
-                    } else {
-                        std::cout << "[Callback]    ✓ Buffer drained in " << drained << "ms" << std::endl;
-                    }
-                }
-                
-                // STEP 1: Stop playback (graceful drain)
-                std::cout << "[Callback]    1. Stopping..." << std::endl;
-                m_direttaOutput->stop(false);  // ✅ false = graceful drain
-                
-                // STEP 2: Change format
-                std::cout << "[Callback]    2. Changing format..." << std::endl;
+                // ✅ STEP 1: Change format (SDK handles stop/drain/disconnect/reconfigure)
+                std::cout << "[Callback]    1. Changing format (SDK-managed transition)..." << std::endl;
                 if (!m_direttaOutput->changeFormat(currentFormat)) {
                     std::cerr << "[Callback] ❌ Format change failed!" << std::endl;
                     m_direttaOutput->close();
                     return false;
                 }
                 
-                // STEP 3: Restart playback
-                std::cout << "[Callback]    3. Restarting playback..." << std::endl;
+                // ✅ STEP 2: Restart playback
+                std::cout << "[Callback]    2. Restarting playback..." << std::endl;
                 if (!m_direttaOutput->play()) {
                     std::cerr << "[Callback] ❌ Failed to restart!" << std::endl;
                     return false;
                 }
                 
-                // STEP 4: Wait for DAC lock
-                std::cout << "[Callback]    4. Waiting for DAC lock (300ms)..." << std::endl;
+                // ✅ STEP 3: Wait for DAC lock
+                std::cout << "[Callback]    3. Waiting for DAC lock (300ms)..." << std::endl;
                 std::this_thread::sleep_for(std::chrono::milliseconds(300));
                 
                 std::cout << "[Callback] ✅ Format change completed successfully" << std::endl;
