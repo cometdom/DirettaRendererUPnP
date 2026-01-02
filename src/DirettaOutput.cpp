@@ -132,48 +132,6 @@ bool DirettaOutput::open(const AudioFormat& format, float bufferSeconds) {
     return true;
 }
 
-    
-    DEBUG_LOG("[DirettaOutput] ✓ Found Diretta target");
-    
-// Configure and connect (with retry for slow DACs)
-const int CONFIG_MAX_RETRIES = 3;
-bool configured = false;
-int attempt = 1;
-
-for (attempt = 1; attempt <= CONFIG_MAX_RETRIES && !configured; attempt++) {
-    if (attempt > 1) {
-        std::cout << "[DirettaOutput] ⚠️  Configuration attempt " << attempt 
-                  << "/" << CONFIG_MAX_RETRIES << " (DAC may be initializing...)" << std::endl;
-        std::this_thread::sleep_for(std::chrono::seconds(1));
-    }
-    
-    configured = configureDiretta(format);
-    
-    if (!configured && attempt < CONFIG_MAX_RETRIES) {
-        DEBUG_LOG("[DirettaOutput] Configuration failed, retrying...");
-    }
-}
-
-if (!configured) {
-    std::cerr << "[DirettaOutput] ❌ Failed to configure Diretta after " 
-              << CONFIG_MAX_RETRIES << " attempts" << std::endl;
-    std::cerr << "[DirettaOutput] 💡 Possible causes:" << std::endl;
-    std::cerr << "[DirettaOutput]    - DAC not fully initialized (wait 30s after power-on)" << std::endl;
-    std::cerr << "[DirettaOutput]    - Unsupported audio format" << std::endl;
-    std::cerr << "[DirettaOutput]    - DAC firmware issue" << std::endl;
-    return false;
-}
-
-if (attempt > 2) {  // Si on a réussi après plus d'une tentative
-    std::cout << "[DirettaOutput] ✅ Configuration succeeded on attempt " << (attempt - 1) << std::endl;
-}
-    
-    m_connected = true;
-    std::cout << "[DirettaOutput] ✓ Connected and configured" << std::endl;
-    
-    return true;
-}
-
 void DirettaOutput::close() {
     // ⭐ v1.2.0 Stable: Protection contre double close
     if (!m_connected) {
