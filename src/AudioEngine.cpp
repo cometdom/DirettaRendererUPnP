@@ -148,9 +148,7 @@ bool AudioDecoder::open(const std::string& url) {
     
     AVStream* audioStream = m_formatContext->streams[m_audioStreamIndex];
     AVCodecParameters* codecpar = audioStream->codecpar;
-    
-
-    
+     
     // Find decoder
     const AVCodec* codec = avcodec_find_decoder(codecpar->codec_id);
     if (!codec) {
@@ -216,23 +214,9 @@ bool AudioDecoder::open(const std::string& url) {
         codecpar->codec_id == AV_CODEC_ID_DSD_MSBF_PLANAR ||
         codecpar->codec_id == AV_CODEC_ID_DSD_LSBF_PLANAR) {
         
-        // ⚠️  Check if this is Audirvana (which pre-decodes/wraps DSD strangely)
-        if (isAudirvana) {
+
             // ════════════════════════════════════════════════════════
-            // AUDIRVANA DSD: Use FFmpeg decoding (NOT raw mode)
-            // ════════════════════════════════════════════════════════
-            std::cout << "[AudioDecoder] ⚠️  Audirvana DSD: Using FFmpeg decoding" << std::endl;
-            std::cout << "[AudioDecoder]     (Audirvana sends DSD with strange wrapper)" << std::endl;
-            
-            m_rawDSD = false;  // Let FFmpeg decode
-            m_trackInfo.isDSD = false;  // Treat as PCM for Diretta
-            
-            // Will fall through to standard PCM decoding below
-            // FFmpeg will convert the "fltp" format to PCM
-            
-        } else {
-            // ════════════════════════════════════════════════════════
-            // OTHER SOURCES: Use DSD native mode
+            // DSD native mode
             // ════════════════════════════════════════════════════════
             std::cout << "[AudioDecoder] ════════════════════════════════════════" << std::endl;
             std::cout << "[AudioDecoder] 🎵 DSD NATIVE MODE ACTIVATED!" << std::endl;
@@ -280,7 +264,7 @@ bool AudioDecoder::open(const std::string& url) {
             std::cout << "[AudioDecoder] ✓ Opened successfully (DSD NATIVE)" << std::endl;
             
             return true;  // ⭐ Exit early - no codec opening needed!
-        }  // End of else (non-Audirvana DSD native mode)
+        }
     }  // End of DSD detection
     
     // ══════════════════════════════════════════════════════════════
@@ -617,14 +601,7 @@ size_t AudioDecoder::readSamples(AudioBuffer& buffer, size_t numSamples,
     // ✅ CRITICAL: Convert DFF for Diretta (Bit reversal ONLY, no byte swap)
     // According to SDK: FMT_DSD_SIZ_32 uses Little Endian for BOTH DSF and DFF
     // Only the BIT order differs (LSB vs MSB)
-    // ⚠️  EXCEPTION: Audirvana serves DSF with .dff URL, skip bit reversal
-    bool isAudirvana = false;
-    if (m_formatContext && m_formatContext->url) {
-        std::string url(m_formatContext->url);
-        isAudirvana = (url.find("audirvana") != std::string::npos);
-    }
-
-    if (m_trackInfo.codec.find("msbf") != std::string::npos && !isAudirvana) {
+    if (m_trackInfo.codec.find("msbf") != std::string::npos) {
         uint8_t* data = buffer.data();
         
         // Lookup table for bit reversal
@@ -656,13 +633,6 @@ size_t AudioDecoder::readSamples(AudioBuffer& buffer, size_t numSamples,
             std::cout << "[AudioDecoder] 🔄 DFF: Bit reversal ONLY (MSB→LSB, keep LE)" << std::endl;
             m_bitReversalLogged = true;
         }
-      }else if (isAudirvana) {
-
-        if (!m_resamplingLogged) {
-        std::cout << "[AudioDecoder] ⚠️  Audirvana detected: Skipping bit reversal" << std::endl;
-        std::cout << "[AudioDecoder]     (DSF data with .dff URL - already LSB)" << std::endl;
-        m_resamplingLogged = true;
-      }    
     }
         return (totalBytesRead * 8) / m_trackInfo.channels;
     }
