@@ -148,7 +148,7 @@ bool AudioDecoder::open(const std::string& url) {
     
     AVStream* audioStream = m_formatContext->streams[m_audioStreamIndex];
     AVCodecParameters* codecpar = audioStream->codecpar;
-     
+
     // Find decoder
     const AVCodec* codec = avcodec_find_decoder(codecpar->codec_id);
     if (!codec) {
@@ -379,7 +379,6 @@ DEBUG_LOG("[AudioDecoder] 🎵 PCM: " << m_trackInfo.codec
     std::cout << "[AudioDecoder] ✓ Opened successfully" << std::endl;
     
     return true;
-}
 
 void AudioDecoder::close() {
     if (m_swrContext) {
