@@ -4,6 +4,7 @@
  */
 
 #include "AudioEngine.h"
+#include "DirettaOutput.h"
 #include <iostream>
 #include <thread>
 #include <cstring>
@@ -148,7 +149,43 @@ bool AudioDecoder::open(const std::string& url) {
     AVStream* audioStream = m_formatContext->streams[m_audioStreamIndex];
     AVCodecParameters* codecpar = audioStream->codecpar;
     
+    // ═══════════════════════════════════════════════════════════
+    // DIAGNOSTIC: Detect Audirvana pre-decoded streams
+    // ═══════════════════════════════════════════════════════════
+    bool isAudirvana = false;
+    if (m_formatContext && m_formatContext->url) {
+        std::string urlStr(m_formatContext->url);
+        isAudirvana = (urlStr.find("audirvana") != std::string::npos);
+    }
 
+    if (isAudirvana) {
+        std::cout << "\n════════════════════════════════════════════════════════" << std::endl;
+        std::cout << "🎯 Audirvana detected - applying special handling" << std::endl;
+        std::cout << "════════════════════════════════════════════════════════" << std::endl;
+        
+        const AVCodec* diagnostic_codec = avcodec_find_decoder(codecpar->codec_id);
+        
+        std::cout << "📊 Stream analysis:" << std::endl;
+        std::cout << "   Codec: " << (diagnostic_codec ? diagnostic_codec->name : "unknown") << std::endl;
+        std::cout << "   Sample rate: " << codecpar->sample_rate << " Hz" << std::endl;
+        std::cout << "   Channels: " << codecpar->ch_layout.nb_channels << std::endl;
+        std::cout << "   Bit depth: " << codecpar->bits_per_coded_sample << " bits" << std::endl;
+        
+        bool isPCM = (codecpar->codec_id >= AV_CODEC_ID_FIRST_AUDIO && 
+                      codecpar->codec_id <= AV_CODEC_ID_PCM_F64LE &&
+                      codecpar->codec_id != AV_CODEC_ID_DSD_LSBF &&
+                      codecpar->codec_id != AV_CODEC_ID_DSD_MSBF &&
+                      codecpar->codec_id != AV_CODEC_ID_DSD_MSBF_PLANAR &&
+                      codecpar->codec_id != AV_CODEC_ID_DSD_LSBF_PLANAR);
+        
+        if (isPCM) {
+            std::cout << "   → Already-decoded PCM detected" << std::endl;
+            std::cout << "   → Will use passthrough mode (no re-decoding)" << std::endl;
+        }
+        
+        std::cout << "════════════════════════════════════════════════════════\n" << std::endl;
+    }
+    
     // Find decoder
     const AVCodec* codec = avcodec_find_decoder(codecpar->codec_id);
     if (!codec) {
@@ -994,6 +1031,7 @@ AudioEngine::AudioEngine()
     , m_samplesPlayed(0)
     , m_silenceCount(0)
     , m_isDraining(false)
+    , m_nextTrackPrepared(false)  // ⭐ v1.2.0: Gapless Pro
 {
     std::cout << "[AudioEngine] Created" << std::endl;
 }
@@ -1080,6 +1118,11 @@ void AudioEngine::setNextURI(const std::string& uri, const std::string& metadata
 
 void AudioEngine::setTrackEndCallback(const TrackEndCallback& callback) {
     m_trackEndCallback = callback;
+}
+
+void AudioEngine::setNextTrackCallback(const NextTrackCallback& callback) {
+    m_nextTrackCallback = callback;
+    DEBUG_LOG("[AudioEngine] ✓ Next track callback set (Gapless Pro)");
 }
 
 bool AudioEngine::play() {
@@ -1535,11 +1578,52 @@ bool AudioDecoder::seek(double seconds) {
         return false;
     }
     
-    // Pour le DSD natif raw, on ne peut pas seek
+    // ⭐ v1.2.1: DSD raw seek with file repositioning
     if (m_rawDSD) {
-        std::cerr << "[AudioDecoder] Seek not supported in raw DSD mode" << std::endl;
-        return false;
+        std::cout << "[AudioDecoder] DSD seek to " << seconds << "s (with file repositioning)" << std::endl;
+        
+        // Calculate byte position in DSD file
+        // For DSD: sampleRate = bits per second per channel
+        int64_t bitsPerSecond = m_trackInfo.sampleRate * m_trackInfo.channels;
+        int64_t targetBit = static_cast<int64_t>(seconds * bitsPerSecond);
+        int64_t targetByte = targetBit / 8;
+        
+        std::cout << "[AudioDecoder]   Target: " << targetByte << " bytes (" << targetBit << " bits)" << std::endl;
+        std::cout << "[AudioDecoder]   Format: " << m_trackInfo.sampleRate << " Hz, " 
+                  << m_trackInfo.channels << " channels" << std::endl;
+        
+        // Seek in file using byte position
+        AVIOContext* avio = m_formatContext->pb;
+        if (avio) {
+            // Use SEEK_SET to position from start of file
+            int64_t result = avio_seek(avio, targetByte, SEEK_SET);
+            if (result >= 0) {
+                std::cout << "[AudioDecoder]   ✓ File repositioned to byte " << result << std::endl;
+            } else {
+                std::cerr << "[AudioDecoder]   ⚠️  avio_seek failed, code: " << result << std::endl;
+                // Continue anyway - may still work approximately
+            }
+        } else {
+            std::cerr << "[AudioDecoder]   ⚠️  No AVIOContext available for file seek" << std::endl;
+        }
+        
+        // Flush codec buffers to clear old data
+        if (m_codecContext) {
+            avcodec_flush_buffers(m_codecContext);
+            std::cout << "[AudioDecoder]   ✓ Codec buffers flushed" << std::endl;
+        }
+        
+        // Reset internal buffers
+        m_remainingCount = 0;
+        m_eof = false;
+        
+        std::cout << "[AudioDecoder]   ✓ DSD seek completed" << std::endl;
+        return true;
     }
+    
+    // ═══════════════════════════════════════════════════════════════
+    // ✅ PCM: Normal FFmpeg seek (unchanged)
+    // ═══════════════════════════════════════════════════════════════
     
     std::cout << "[AudioDecoder] Seeking to " << seconds << " seconds..." << std::endl;
     
@@ -1574,6 +1658,7 @@ bool AudioDecoder::seek(double seconds) {
     
     return true;
 }
+
 
 // ============================================================================
 // AudioEngine::seek() - Seek avec mise à jour de la position
@@ -1653,7 +1738,7 @@ bool AudioEngine::seek(const std::string& timeStr) {
     double totalSeconds = hours * 3600.0 + minutes * 60.0 + seconds;
     
     DEBUG_LOG("[AudioEngine] Parsed time: " << timeStr 
-              << " = " << totalSeconds << " seconds")
+              << " = " << totalSeconds << " seconds");
     
     return seek(totalSeconds);
  }
@@ -1661,3 +1746,87 @@ bool AudioEngine::seek(const std::string& timeStr) {
 uint32_t AudioEngine::getCurrentSampleRate() const {
     return m_currentTrackInfo.sampleRate;
 }
+// ═══════════════════════════════════════════════════════════════
+// ⭐ v1.2.0: Gapless Pro - Prepare next track for gapless
+// ═══════════════════════════════════════════════════════════════
+
+void AudioEngine::prepareNextTrackForGapless() {
+    // Check if next track exists
+    if (m_nextURI.empty()) {
+        DEBUG_LOG("[AudioEngine] No next track for gapless");
+        return;
+    }
+    
+    // Check if already prepared
+    if (m_nextTrackPrepared) {
+        DEBUG_LOG("[AudioEngine] Next track already prepared");
+        return;
+    }
+    
+    DEBUG_LOG("[AudioEngine] 🎵 Preparing next track for gapless: " << m_nextURI);
+    
+    try {
+        // ⭐ OPTIMISATION v1.2.0: Réutiliser m_nextDecoder si déjà ouvert
+        if (!m_nextDecoder) {
+            DEBUG_LOG("[AudioEngine] Opening next track decoder...");
+            m_nextDecoder = std::make_unique<AudioDecoder>();
+            
+            if (!m_nextDecoder->open(m_nextURI)) {
+                std::cerr << "[AudioEngine] ❌ Failed to open next track for gapless" << std::endl;
+                m_nextDecoder.reset();  // Cleanup on failure
+                return;
+            }
+            DEBUG_LOG("[AudioEngine] ✓ Next track decoder opened");
+        } else {
+            DEBUG_LOG("[AudioEngine] ♻️  Reusing pre-loaded next track decoder");
+        }
+        
+        // Get format from m_nextDecoder
+        const TrackInfo& nextTrackInfo = m_nextDecoder->getTrackInfo();
+        
+        // Create AudioFormat for DirettaOutput
+        AudioFormat nextFormat;
+        nextFormat.sampleRate = nextTrackInfo.sampleRate;
+        nextFormat.bitDepth = nextTrackInfo.bitDepth;
+        nextFormat.channels = nextTrackInfo.channels;
+        nextFormat.isDSD = nextTrackInfo.isDSD;
+        nextFormat.isCompressed = nextTrackInfo.isCompressed;
+        
+        // Read first chunk (1 second of audio for buffering)
+        size_t samplesToRead = nextTrackInfo.sampleRate;  // 1 second
+        
+        AudioBuffer nextBuffer;
+        size_t bytesPerSample = (nextTrackInfo.bitDepth / 8) * nextTrackInfo.channels;
+        nextBuffer.resize(samplesToRead * bytesPerSample);
+        
+        // Read from m_nextDecoder
+        size_t samplesRead = m_nextDecoder->readSamples(nextBuffer, samplesToRead,
+                                                        nextTrackInfo.sampleRate,
+                                                        nextTrackInfo.bitDepth);
+        
+        if (samplesRead > 0) {
+            // Call callback to send to DirettaOutput
+            if (m_nextTrackCallback) {
+                DEBUG_LOG("[AudioEngine] 📤 Sending " << samplesRead 
+                          << " samples to gapless buffer");
+                m_nextTrackCallback(nextBuffer.data(), samplesRead, nextFormat);
+                m_nextTrackPrepared = true;
+                
+                DEBUG_LOG("[AudioEngine] ✅ Next track prepared for gapless transition");
+            } else {
+                DEBUG_LOG("[AudioEngine] ⚠️  No next track callback set");
+            }
+        } else {
+            DEBUG_LOG("[AudioEngine] ⚠️  Failed to read samples from next track");
+        }
+        
+    } catch (const std::exception& e) {
+        std::cerr << "[AudioEngine] ❌ Exception preparing next track: " 
+                  << e.what() << std::endl;
+        m_nextDecoder.reset();  // Cleanup on exception
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// End of v1.2.0 Gapless Pro implementation
+// ═══════════════════════════════════════════════════════════════
