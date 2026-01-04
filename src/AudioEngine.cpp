@@ -149,42 +149,7 @@ bool AudioDecoder::open(const std::string& url) {
     AVStream* audioStream = m_formatContext->streams[m_audioStreamIndex];
     AVCodecParameters* codecpar = audioStream->codecpar;
     
-    // ═══════════════════════════════════════════════════════════
-    // DIAGNOSTIC: Detect Audirvana pre-decoded streams
-    // ═══════════════════════════════════════════════════════════
-    bool isAudirvana = false;
-    if (m_formatContext && m_formatContext->url) {
-        std::string urlStr(m_formatContext->url);
-        isAudirvana = (urlStr.find("audirvana") != std::string::npos);
-    }
 
-    if (isAudirvana) {
-        std::cout << "\n════════════════════════════════════════════════════════" << std::endl;
-        std::cout << "🎯 Audirvana detected - applying special handling" << std::endl;
-        std::cout << "════════════════════════════════════════════════════════" << std::endl;
-        
-        const AVCodec* diagnostic_codec = avcodec_find_decoder(codecpar->codec_id);
-        
-        std::cout << "📊 Stream analysis:" << std::endl;
-        std::cout << "   Codec: " << (diagnostic_codec ? diagnostic_codec->name : "unknown") << std::endl;
-        std::cout << "   Sample rate: " << codecpar->sample_rate << " Hz" << std::endl;
-        std::cout << "   Channels: " << codecpar->ch_layout.nb_channels << std::endl;
-        std::cout << "   Bit depth: " << codecpar->bits_per_coded_sample << " bits" << std::endl;
-        
-        bool isPCM = (codecpar->codec_id >= AV_CODEC_ID_FIRST_AUDIO && 
-                      codecpar->codec_id <= AV_CODEC_ID_PCM_F64LE &&
-                      codecpar->codec_id != AV_CODEC_ID_DSD_LSBF &&
-                      codecpar->codec_id != AV_CODEC_ID_DSD_MSBF &&
-                      codecpar->codec_id != AV_CODEC_ID_DSD_MSBF_PLANAR &&
-                      codecpar->codec_id != AV_CODEC_ID_DSD_LSBF_PLANAR);
-        
-        if (isPCM) {
-            std::cout << "   → Already-decoded PCM detected" << std::endl;
-            std::cout << "   → Will use passthrough mode (no re-decoding)" << std::endl;
-        }
-        
-        std::cout << "════════════════════════════════════════════════════════\n" << std::endl;
-    }
     
     // Find decoder
     const AVCodec* codec = avcodec_find_decoder(codecpar->codec_id);
