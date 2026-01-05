@@ -970,51 +970,58 @@ if (format.dsdFormat == AudioFormat::DSDFormat::DFF) {
     }
     std::cout << " " << format.channels << "ch" << std::endl;
 
-// Détecter si on était en DSD en regardant le format actuel
-DIRETTA::FormatID currentFormat = m_syncBuffer->getSinkConfigure();
-bool wasDSD = (static_cast<uint32_t>(currentFormat) & static_cast<uint32_t>(DIRETTA::FormatID::FMT_DSD1)) != 0;
-
-if (wasDSD) {
-    // DSD → autre format : envoyer 100 buffers de silence DSD
-    DEBUG_LOG("[DirettaOutput] 🔇 Sending 100 DSD silence buffers before format change...");
+// Vérifier qu'on a déjà un format configuré (pas la première fois)
+if (m_syncBuffer && m_isConfigured) {  // ⭐ CRITIQUE : Seulement si déjà configuré !
     
-    std::vector<uint8_t> silenceBuffer(8192, 0x69);  // DSD silence = 0x69
+    // Détecter si on était en DSD en regardant le format actuel
+    DIRETTA::FormatID currentFormat = m_syncBuffer->getSinkConfigure();
+    bool wasDSD = (static_cast<uint32_t>(currentFormat) & 
+                   static_cast<uint32_t>(DIRETTA::FormatID::FMT_DSD1)) != 0;
     
-    for (int i = 0; i < 100; i++) {
-        DIRETTA::Stream stream;
-        stream.resize(silenceBuffer.size());
-        memcpy(stream.get(), silenceBuffer.data(), silenceBuffer.size());
-        m_syncBuffer->setStream(stream);
+    if (wasDSD) {
+        // DSD → autre format : envoyer 100 buffers de silence DSD
+        DEBUG_LOG("[DirettaOutput] 🔇 Sending 100 DSD silence buffers before format change...");
         
-        // Petit délai tous les 10 buffers
-        if (i % 10 == 0) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        std::vector<uint8_t> silenceBuffer(8192, 0x69);  // DSD silence = 0x69
+        
+        for (int i = 0; i < 100; i++) {
+            DIRETTA::Stream stream;
+            stream.resize(silenceBuffer.size());
+            memcpy(stream.get(), silenceBuffer.data(), silenceBuffer.size());
+            m_syncBuffer->setStream(stream);
+            
+            // Petit délai tous les 10 buffers
+            if (i % 10 == 0) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(5));
+            }
         }
+        
+        // Attendre que tout soit envoyé
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        DEBUG_LOG("[DirettaOutput] ✅ DSD silence buffers sent");
+        
+    } else {
+        // PCM → autre format : envoyer 30 buffers de silence PCM
+        DEBUG_LOG("[DirettaOutput] 🔇 Sending 30 PCM silence buffers before format change...");
+        
+        std::vector<uint8_t> silenceBuffer(4096, 0x00);  // PCM silence = 0x00
+        
+        for (int i = 0; i < 30; i++) {
+            DIRETTA::Stream stream;
+            stream.resize(silenceBuffer.size());
+            memcpy(stream.get(), silenceBuffer.data(), silenceBuffer.size());
+            m_syncBuffer->setStream(stream);
+            
+            if (i % 10 == 0) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(5));
+            }
+        }
+        
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        DEBUG_LOG("[DirettaOutput] ✅ PCM silence buffers sent");
     }
-    
-    // Attendre que tout soit envoyé
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    DEBUG_LOG("[DirettaOutput] ✅ DSD silence buffers sent");
-    
 } else {
-    // PCM → autre format : envoyer 30 buffers de silence PCM
-    DEBUG_LOG("[DirettaOutput] 🔇 Sending 30 PCM silence buffers before format change...");
-    
-    std::vector<uint8_t> silenceBuffer(4096, 0x00);  // PCM silence = 0x00
-    
-    for (int i = 0; i < 30; i++) {
-        DIRETTA::Stream stream;
-        stream.resize(silenceBuffer.size());
-        memcpy(stream.get(), silenceBuffer.data(), silenceBuffer.size());
-        m_syncBuffer->setStream(stream);
-        
-        if (i % 10 == 0) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(5));
-        }
-    }
-    
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
-    DEBUG_LOG("[DirettaOutput] ✅ PCM silence buffers sent");
+    DEBUG_LOG("[DirettaOutput] ℹ️  First configuration, skipping silence buffers");
 }
     m_syncBuffer->setSinkConfigure(formatID);
     
