@@ -866,8 +866,9 @@ bool DirettaOutput::configureDiretta(const AudioFormat& format) {
         // ⭐ v1.2.3 : Configuration intelligente basée sur format source
         
         // Détecter format source (DSF = LSB, DFF = MSB)
-        bool sourceIsLSB = (format.dsdSourceFormat == DSDSourceFormat::DSF);
-        bool sourceIsMSB = (format.dsdSourceFormat == DSDSourceFormat::DFF);
+            bool sourceIsLSB = (format.dsdSourceFormat == TrackInfo::DSDSourceFormat::DSF);
+            bool sourceIsMSB = (format.dsdSourceFormat == TrackInfo::DSDSourceFormat::DFF);
+
         
         // Pour l'instant, on configure toujours en LSB+LITTLE (compatible avec la majorité des DACs)
         // et on fait le bit reversal si nécessaire dans sendAudio()
