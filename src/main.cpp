@@ -46,7 +46,6 @@ DirettaRenderer::Config parseArguments(int argc, char* argv[]) {
     config.name = "Diretta Renderer";
     config.port = 0;
     config.gaplessEnabled = true;
-    config.bufferSeconds = 2.0f;
 
     for (int i = 1; i < argc; i++) {
         std::string arg = argv[i];
@@ -62,9 +61,6 @@ DirettaRenderer::Config parseArguments(int argc, char* argv[]) {
         }
         else if (arg == "--no-gapless") {
             config.gaplessEnabled = false;
-        }
-        else if ((arg == "--buffer" || arg == "-b") && i + 1 < argc) {
-            config.bufferSeconds = std::atof(argv[++i]);
         }
         else if ((arg == "--target" || arg == "-t") && i + 1 < argc) {
             config.targetIndex = std::atoi(argv[++i]) - 1;
@@ -101,7 +97,6 @@ DirettaRenderer::Config parseArguments(int argc, char* argv[]) {
                       << "  --port, -p <port>     UPnP port (default: auto)\n"
                       << "  --uuid <uuid>         Device UUID (default: auto-generated)\n"
                       << "  --no-gapless          Disable gapless playback\n"
-                      << "  --buffer, -b <secs>   Buffer size in seconds (default: 2.0)\n"
                       << "  --target, -t <index>  Select Diretta target by index (1, 2, 3...)\n"
                       << "  --interface <name>    Network interface to bind (e.g., eth0)\n"
                       << "  --list-targets, -l    List available Diretta targets and exit\n"
@@ -136,7 +131,6 @@ int main(int argc, char* argv[]) {
     std::cout << "  Name:     " << config.name << std::endl;
     std::cout << "  Port:     " << (config.port == 0 ? "auto" : std::to_string(config.port)) << std::endl;
     std::cout << "  Gapless:  " << (config.gaplessEnabled ? "enabled" : "disabled") << std::endl;
-    std::cout << "  Buffer:   " << config.bufferSeconds << " seconds" << std::endl;
     if (!config.networkInterface.empty()) {
         std::cout << "  Network:  " << config.networkInterface << std::endl;
     }

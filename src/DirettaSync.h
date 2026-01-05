@@ -187,7 +187,7 @@ public:
     /**
      * @brief Open connection with specified format
      */
-    bool open(const AudioFormat& format, float bufferSeconds = 2.0f);
+    bool open(const AudioFormat& format);
 
     /**
      * @brief Close connection

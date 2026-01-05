@@ -178,7 +178,7 @@ bool DirettaRenderer::start() {
                 // Check isPlaying() not isOpen() - after stopPlayback(), isOpen() is true
                 // but we still need to call open() to trigger quick resume
                 if (!m_direttaSync->isPlaying()) {
-                    if (!m_direttaSync->open(format, m_config.bufferSeconds)) {
+                    if (!m_direttaSync->open(format)) {
                         std::cerr << "[Callback] Failed to open DirettaSync" << std::endl;
                         return false;
                     }

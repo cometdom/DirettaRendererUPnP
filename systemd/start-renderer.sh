@@ -7,7 +7,6 @@ set -e
 # Default values (can be overridden by config file)
 TARGET="${TARGET:-1}"
 PORT="${PORT:-4005}"
-BUFFER="${BUFFER:-2.0}"
 GAPLESS="${GAPLESS:-}"
 VERBOSE="${VERBOSE:-}"
 NETWORK_INTERFACE="${NETWORK_INTERFACE:-}"
@@ -24,7 +23,6 @@ CMD="$RENDERER_BIN"
 
 # Basic options
 CMD="$CMD --target $TARGET"
-CMD="$CMD --buffer $BUFFER"
 
 # Network interface option (CRITICAL for multi-homed systems)
 if [ -n "$NETWORK_INTERFACE" ]; then
@@ -76,7 +74,6 @@ echo "════════════════════════�
 echo ""
 echo "Configuration:"
 echo "  Target:           $TARGET"
-echo "  Buffer:           $BUFFER seconds"
 echo "  Network Interface: ${NETWORK_INTERFACE:-auto-detect}"
 echo ""
 echo "Command:"

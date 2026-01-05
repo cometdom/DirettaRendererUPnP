@@ -274,8 +274,7 @@ void DirettaSync::logSinkCapabilities() {
 // Open/Close (Connection Management)
 //=============================================================================
 
-bool DirettaSync::open(const AudioFormat& format, float bufferSeconds) {
-    (void)bufferSeconds;
+bool DirettaSync::open(const AudioFormat& format) {
 
     std::cout << "[DirettaSync] ========== OPEN ==========" << std::endl;
     std::cout << "[DirettaSync] Format: " << format.sampleRate << "Hz/"

@@ -30,7 +30,6 @@ public:
         int port = 49152;
         std::string uuid;
         bool gaplessEnabled = true;
-        float bufferSeconds = 2.0f;
         int targetIndex = -1;  // -1 = interactive, >= 0 = specific
         std::string networkInterface;  // Empty = auto-detect
 

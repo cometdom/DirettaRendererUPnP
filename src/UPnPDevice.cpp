@@ -75,36 +75,36 @@ bool UPnPDevice::start() {
     
     DEBUG_LOG("[UPnPDevice] Starting...");
     
-// 1. Initialize libupnp
-// ⭐ MODIFIÉ: Bind to specific network interface if specified
-const char* interfaceName = m_config.networkInterface.empty() ? nullptr : m_config.networkInterface.c_str();
-
-if (interfaceName != nullptr) {
-    std::cout << "🌐 Binding UPnP to interface: " << interfaceName << std::endl;
-} else {
-    std::cout << "🌐 Using default interface for UPnP (auto-detect)" << std::endl;
-}
-
-int ret = UpnpInit2(interfaceName, m_config.port);  // ← interfaceName au lieu de nullptr
-if (ret != UPNP_E_SUCCESS) {
-    std::cerr << "[UPnPDevice] UpnpInit2 failed: " << ret << std::endl;
+    // 1. Initialize libupnp
+    // ⭐ MODIFIÉ: Bind to specific network interface if specified
+    const char* interfaceName = m_config.networkInterface.empty() ? nullptr : m_config.networkInterface.c_str();
     
-    // ⭐ NOUVEAU: Message d'aide pour multi-homed systems
     if (interfaceName != nullptr) {
-        std::cerr << "\n💡 Troubleshooting:" << std::endl;
-        std::cerr << "  - Verify interface exists: ip link show" << std::endl;
-        std::cerr << "  - Check IP is assigned: ip addr show " << interfaceName << std::endl;
-        std::cerr << "  - Or try IP address instead: --bind-ip 192.168.x.x" << std::endl;
+        std::cout << "🌐 Binding UPnP to interface: " << interfaceName << std::endl;
+    } else {
+        std::cout << "🌐 Using default interface for UPnP (auto-detect)" << std::endl;
     }
     
-    return false;
-}
+    int ret = UpnpInit2(interfaceName, m_config.port);  // ← interfaceName au lieu de nullptr
+    if (ret != UPNP_E_SUCCESS) {
+        std::cerr << "[UPnPDevice] UpnpInit2 failed: " << ret << std::endl;
+        
+        // ⭐ NOUVEAU: Message d'aide pour multi-homed systems
+        if (interfaceName != nullptr) {
+            std::cerr << "\n💡 Troubleshooting:" << std::endl;
+            std::cerr << "  - Verify interface exists: ip link show" << std::endl;
+            std::cerr << "  - Check IP is assigned: ip addr show " << interfaceName << std::endl;
+            std::cerr << "  - Or try IP address instead: --bind-ip 192.168.x.x" << std::endl;
+        }
+        
+        return false;
+    }
 
-// Afficher l'IP et port utilisés
-char* ipAddress = UpnpGetServerIpAddress();
-unsigned short port = UpnpGetServerPort();
-std::cout << "✓ UPnP initialized on " << (ipAddress ? ipAddress : "unknown") 
-          << ":" << port << std::endl;
+    // Afficher l'IP et port utilisés
+    char* ipAddress = UpnpGetServerIpAddress();
+    unsigned short port = UpnpGetServerPort();
+    std::cout << "✓ UPnP initialized on " << (ipAddress ? ipAddress : "unknown") 
+              << ":" << port << std::endl;
     
     // 2. Get server info
     m_ipAddress = UpnpGetServerIpAddress();
@@ -414,22 +414,22 @@ int UPnPDevice::actionSetAVTransportURI(UpnpActionRequest* request) {
     
     DEBUG_LOG("[UPnPDevice] SetAVTransportURI: " << uri);
     
-{
-    std::lock_guard<std::mutex> lock(m_stateMutex);
-    m_currentURI = uri;
-    m_currentMetadata = metadata;
-    m_currentTrackURI = uri;
-    m_currentTrackMetadata = metadata;
-    m_currentPosition = 0;
-    m_trackDuration = 0;
-    
-    // Effacer l'ancienne queue gapless (nouveau contexte)
-    if (!m_nextURI.empty()) {
-        DEBUG_LOG("[UPnPDevice] ✓ Clearing old gapless queue (new context)");
-        m_nextURI.clear();
-        m_nextMetadata.clear();
+    {
+        std::lock_guard<std::mutex> lock(m_stateMutex);
+        m_currentURI = uri;
+        m_currentMetadata = metadata;
+        m_currentTrackURI = uri;
+        m_currentTrackMetadata = metadata;
+        m_currentPosition = 0;
+        m_trackDuration = 0;
+        
+        // Effacer l'ancienne queue gapless (nouveau contexte)
+        if (!m_nextURI.empty()) {
+            DEBUG_LOG("[UPnPDevice] ✓ Clearing old gapless queue (new context)");
+            m_nextURI.clear();
+            m_nextMetadata.clear();
+        }
     }
-}
     
     // Callback
     if (m_callbacks.onSetURI) {
@@ -527,20 +527,20 @@ int UPnPDevice::actionStop(UpnpActionRequest* request) {
     std::cout << "[UPnPDevice] ⛔ STOP ACTION RECEIVED" << std::endl;
     std::cout << "════════════════════════════════════════" << std::endl;
     
-{
-    std::lock_guard<std::mutex> lock(m_stateMutex);
-    DEBUG_LOG("[UPnPDevice] Changing state: " << m_transportState 
-              << " → STOPPED");
-    m_transportState = "STOPPED";
-    m_currentPosition = 0;
-    
-    // Effacer la queue gapless
-    if (!m_nextURI.empty()) {
-        DEBUG_LOG("[UPnPDevice] ✓ Clearing gapless queue: " << m_nextURI);
-        m_nextURI.clear();
-        m_nextMetadata.clear();
+    {
+        std::lock_guard<std::mutex> lock(m_stateMutex);
+        DEBUG_LOG("[UPnPDevice] Changing state: " << m_transportState 
+                  << " → STOPPED");
+        m_transportState = "STOPPED";
+        m_currentPosition = 0;
+        
+        // Effacer la queue gapless
+        if (!m_nextURI.empty()) {
+            DEBUG_LOG("[UPnPDevice] ✓ Clearing gapless queue: " << m_nextURI);
+            m_nextURI.clear();
+            m_nextMetadata.clear();
+        }
     }
-}
     
     // Callback
     if (m_callbacks.onStop) {
@@ -770,6 +770,7 @@ std::string UPnPDevice::formatTime(int seconds) const {
        << std::setw(2) << s;
     return ss.str();
 }
+
 // ============================================================================
 // Part 3 : Helper Functions & XML Generation - MISSING IMPLEMENTATIONS
 // ============================================================================

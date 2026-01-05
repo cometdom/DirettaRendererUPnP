@@ -1,6 +1,5 @@
 ## README.md
 
-```markdown
 # Diretta UPnP Renderer (Community Fork)
 
 > 🍴 **This is a community fork of [DirettaRendererUPnP](https://github.com/cometdom/DirettaRendererUPnP) by Dominique COMET**
@@ -56,11 +55,7 @@ This is a community-maintained fork of the original DirettaRendererUPnP project.
 
 ### Differences from Original
 
-<!-- List the key differences -->
-| Feature | Original | This Fork |
-|---------|----------|-----------|
-| Example | Value | Value |
-
+Please see FORK_CHANGES.md
 ---
 
 ## 📖 Table of Contents
@@ -111,8 +106,6 @@ Diretta is a proprietary audio streaming protocol developed by Yu Harada that en
 
 ### Complete Signal Path
 
-```
-
 ┌─────────────────────────┐
 │  UPnP Control Point     │  (JPlay, BubbleUPnP, etc.)
 │  (Phone/Tablet/PC)      │
@@ -149,25 +142,25 @@ Diretta is a proprietary audio streaming protocol developed by Yu Harada that en
             ▼
         🔊 Speakers
 
-```
+
 ### Why This Architecture?
 
 **Traditional Renderer → DAC:**
-```
+
 
 Renderer → OS Audio Stack → USB Driver → DAC
            ↑ Adds latency, jitter, potential quality loss
 
-```
+
 **Diretta Renderer → Target → DAC:**
-```
+
 
 Renderer → Ethernet (Diretta) → Target → DAC
            ↑ Bypasses OS audio stack
            ↑ Bit-perfect transmission
            ↑ Ultra-low latency
 
-```
+
 The **Diretta Target** acts as a dedicated audio endpoint that receives the pristine digital stream and outputs it directly to your DAC, completely bypassing the OS audio subsystem.
 
 ---
@@ -201,7 +194,7 @@ The **Diretta Target** acts as a dedicated audio endpoint that receives the pris
 ### Supported Architectures
 
 - **x64** (Intel/AMD): v2 (baseline), v3 (AVX2), v4 (AVX512), zen4 (AMD Ryzen 7000+)
-- **ARM64**: Raspberry Pi 4+, Apple Silicon
+- **ARM64**: Raspberry Pi 4+
 - **RISC-V**: Experimental support
 
 ### Platform Support
@@ -211,7 +204,7 @@ The **Diretta Target** acts as a dedicated audio endpoint that receives the pris
 | **Linux x64** | ✅ Supported |
 | **Linux ARM64** | ✅ Supported |
 | **Windows** | ❌ Not supported |
-| **macOS** | ❌ Not tested |
+| **macOS** | ❌ Not supported |
 
 ### Hardware
 - **Minimum**: Dual-core CPU, 1GB RAM, Gigabit Ethernet
@@ -317,25 +310,14 @@ Open your UPnP control point (JPlay, BubbleUPnP, etc.) and look for "Diretta Ren
 
 ## Performance
 
-### Buffer Settings
-
-| Buffer Size | Latency     | Stability | Use Case                     |
-| ----------- | ----------- | --------- | ---------------------------- |
-| 1.0s        | Low         | Good      | Local network, CD-quality    |
-| 2.0s        | Medium      | Better    | **Recommended default**      |
-| 3.0s        | Medium-High | Best      | Hi-Res, problematic networks |
-| 4.0s+       | High        | Maximum   | DSD512+, maximum stability   |
-
----
-
 ## Compatible Control Points
 
 | Control Point  | Platform    | Rating |
 | -------------- | ----------- | ------ |
-| **JPlay iOS**  | iOS         | ⭐⭐⭐⭐⭐  |
-| **BubbleUPnP** | Android     | ⭐⭐⭐⭐⭐  |
-| **mConnect**   | iOS/Android | ⭐⭐⭐⭐   |
-| **Linn Kazoo** | iOS/Android | ⭐⭐⭐⭐   |
+| **JPlay iOS**  | iOS         | ⭐⭐⭐⭐⭐ |
+| **BubbleUPnP** | Android     | Not tested  |
+| **mConnect**   | iOS/Android | ⭐⭐⭐⭐⭐ |
+| **Linn Kazoo** | iOS/Android | Not tested  |
 
 ---
 
@@ -346,7 +328,6 @@ Open your UPnP control point (JPlay, BubbleUPnP, etc.) and look for "Diretta Ren
 ```bash
 --name, -n <name>       Renderer name (default: Diretta Renderer)
 --port, -p <port>       UPnP port (default: auto)
---buffer, -b <seconds>  Buffer size in seconds (default: 2.0)
 --target, -t <index>    Select Diretta target by index (1, 2, 3...)
 --no-gapless            Disable gapless playback
 --verbose               Enable verbose debug output
