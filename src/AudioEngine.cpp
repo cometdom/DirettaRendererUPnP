@@ -225,6 +225,35 @@ bool AudioDecoder::open(const std::string& url) {
             m_trackInfo.isDSD = true;
             m_trackInfo.bitDepth = 1; // DSD is 1-bit
             
+        // ⭐ v1.2.1 : Détecter DSF vs DFF
+        if (m_formatContext && m_formatContext->url) {
+            std::string url(m_formatContext->url);
+            
+            // Détecter par extension fichier
+            if (url.find(".dsf") != std::string::npos || 
+                url.find(".DSF") != std::string::npos) {
+                m_trackInfo.dsdSourceFormat = DSDSourceFormat::DSF;
+                DEBUG_LOG("[AudioDecoder] 📀 DSD source format: DSF (LSB first)");
+            }
+            else if (url.find(".dff") != std::string::npos || 
+                     url.find(".DFF") != std::string::npos) {
+                m_trackInfo.dsdSourceFormat = DSDSourceFormat::DFF;
+                DEBUG_LOG("[AudioDecoder] 📀 DSD source format: DFF (MSB first)");
+            }
+            else {
+                // Fallback : détecter par codec ID
+                if (codecpar->codec_id == AV_CODEC_ID_DSD_LSBF ||
+                    codecpar->codec_id == AV_CODEC_ID_DSD_LSBF_PLANAR) {
+                    m_trackInfo.dsdSourceFormat = DSDSourceFormat::DSF;
+                    DEBUG_LOG("[AudioDecoder] 📀 DSD source format: DSF (detected from codec)");
+                }
+                else {
+                    m_trackInfo.dsdSourceFormat = DSDSourceFormat::DFF;
+                    DEBUG_LOG("[AudioDecoder] 📀 DSD source format: DFF (detected from codec)");
+                }
+            }
+        }
+
             // CRITICAL: FFmpeg reports packet rate, not DSD bit rate!
             // For DSD: bit_rate = packet_rate × 8 (8 bits per byte)
             // DSD64 = 2822400 Hz, but FFmpeg reports 352800 Hz (packet rate)

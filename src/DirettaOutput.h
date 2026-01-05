@@ -278,6 +278,9 @@ private:
     // Prevent copying
     DirettaOutput(const DirettaOutput&) = delete;
     DirettaOutput& operator=(const DirettaOutput&) = delete;
+
+    / ⭐ v1.2.1 : DSD bit reversal flag
+    bool m_needDsdBitReversal = false;
 };
 
 #endif // DIRETTA_OUTPUT_H
