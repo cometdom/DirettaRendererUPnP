@@ -970,8 +970,11 @@ if (format.dsdFormat == AudioFormat::DSDFormat::DFF) {
     }
     std::cout << " " << format.channels << "ch" << std::endl;
 
+// Variable statique pour détecter la première configuration
+static bool isFirstConfiguration = true;
+
 // Vérifier qu'on a déjà un format configuré (pas la première fois)
-if (m_syncBuffer && m_isConfigured) {  // ⭐ CRITIQUE : Seulement si déjà configuré !
+if (m_syncBuffer && !isFirstConfiguration) {
     
     // Détecter si on était en DSD en regardant le format actuel
     DIRETTA::FormatID currentFormat = m_syncBuffer->getSinkConfigure();
@@ -1021,7 +1024,9 @@ if (m_syncBuffer && m_isConfigured) {  // ⭐ CRITIQUE : Seulement si déjà con
         DEBUG_LOG("[DirettaOutput] ✅ PCM silence buffers sent");
     }
 } else {
-    DEBUG_LOG("[DirettaOutput] ℹ️  First configuration, skipping silence buffers");
+    if (isFirstConfiguration) {
+        DEBUG_LOG("[DirettaOutput] ℹ️  First configuration, skipping silence buffers");
+    }
 }
     m_syncBuffer->setSinkConfigure(formatID);
     
