@@ -1000,48 +1000,7 @@ bool DirettaOutput::configureDiretta(const AudioFormat& format) {
     }
     std::cout << " " << format.channels << "ch" << std::endl;
 
-// ════════════════════════════════════════════════════════════════
-// ⭐ v1.2.1 : Silence SEULEMENT lors de VRAIS changements de format
-// ════════════════════════════════════════════════════════════════
 
-// Variable statique pour mémoriser le dernier format configuré
-static DIRETTA::FormatID lastConfiguredFormat = static_cast<DIRETTA::FormatID>(0);
-
-// Vérifier si c'est un VRAI changement de format
-bool isFirstConfiguration = (lastConfiguredFormat == static_cast<DIRETTA::FormatID>(0));
-bool isFormatChange = !isFirstConfiguration && (lastConfiguredFormat != formatID);
-
-if (m_syncBuffer && isFormatChange) {
-    // ⭐ VRAI changement de format détecté !
-    
-    // Détecter si on était en DSD en regardant le format PRÉCÉDENT
-    DIRETTA::FormatID previousFormat = lastConfiguredFormat;
-    bool wasDSD = (static_cast<uint32_t>(previousFormat) & 
-                   static_cast<uint32_t>(DIRETTA::FormatID::FMT_DSD1)) != 0;
-    
-    // Calculer nombre de silence buffers nécessaires
-    int silenceCount = wasDSD ? 100 : 30;
-    uint8_t silenceValue = wasDSD ? 0x69 : 0x00;
-    
-    DEBUG_LOG("[DirettaOutput] 🔇 Format change detected, sending " 
-              << silenceCount << " silence buffers...");
-    DEBUG_LOG("[DirettaOutput]   Previous: 0x" << std::hex 
-              << static_cast<uint32_t>(previousFormat) << std::dec);
-    DEBUG_LOG("[DirettaOutput]   New: 0x" << std::hex 
-              << static_cast<uint32_t>(formatID) << std::dec);
-    
-    // Envoyer silence buffers
-    for (int i = 0; i < silenceCount; i++) {
-        DIRETTA::Stream stream;
-        stream.resize(8192);
-        std::memset(stream.get(), silenceValue, 8192);
-        m_syncBuffer->setStream(stream);
-        
-        // Petit délai tous les 10 buffers
-        if (i > 0 && i % 10 == 0) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(5));
-        }
-    }
     
     // Attendre stabilisation DAC
     std::this_thread::sleep_for(std::chrono::milliseconds(wasDSD ? 100 : 50));
@@ -1124,6 +1083,49 @@ m_syncBuffer->setupBuffer(fs1sec * m_bufferSeconds, 4, false);
         return false;
     }
     
+    // ════════════════════════════════════════════════════════════════
+// ⭐ v1.2.1 : Silence SEULEMENT lors de VRAIS changements de format
+// ════════════════════════════════════════════════════════════════
+
+// Variable statique pour mémoriser le dernier format configuré
+static DIRETTA::FormatID lastConfiguredFormat = static_cast<DIRETTA::FormatID>(0);
+
+// Vérifier si c'est un VRAI changement de format
+bool isFirstConfiguration = (lastConfiguredFormat == static_cast<DIRETTA::FormatID>(0));
+bool isFormatChange = !isFirstConfiguration && (lastConfiguredFormat != formatID);
+
+if (m_syncBuffer && isFormatChange) {
+    // ⭐ VRAI changement de format détecté !
+    
+    // Détecter si on était en DSD en regardant le format PRÉCÉDENT
+    DIRETTA::FormatID previousFormat = lastConfiguredFormat;
+    bool wasDSD = (static_cast<uint32_t>(previousFormat) & 
+                   static_cast<uint32_t>(DIRETTA::FormatID::FMT_DSD1)) != 0;
+    
+    // Calculer nombre de silence buffers nécessaires
+    int silenceCount = wasDSD ? 100 : 30;
+    uint8_t silenceValue = wasDSD ? 0x69 : 0x00;
+    
+    DEBUG_LOG("[DirettaOutput] 🔇 Format change detected, sending " 
+              << silenceCount << " silence buffers...");
+    DEBUG_LOG("[DirettaOutput]   Previous: 0x" << std::hex 
+              << static_cast<uint32_t>(previousFormat) << std::dec);
+    DEBUG_LOG("[DirettaOutput]   New: 0x" << std::hex 
+              << static_cast<uint32_t>(formatID) << std::dec);
+    
+    // Envoyer silence buffers
+    for (int i = 0; i < silenceCount; i++) {
+        DIRETTA::Stream stream;
+        stream.resize(8192);
+        std::memset(stream.get(), silenceValue, 8192);
+        m_syncBuffer->setStream(stream);
+        
+        // Petit délai tous les 10 buffers
+        if (i > 0 && i % 10 == 0) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        }
+    }
+
     DEBUG_LOG("[DirettaOutput] ✓ Connected: " << format.sampleRate 
               << "Hz/" << format.bitDepth << "bit/" << format.channels << "ch");
     
