@@ -1150,7 +1150,7 @@ void DirettaOutput::optimizeNetworkConfig(const AudioFormat& format) {
     if (!m_syncBuffer) {
         return;
     }
-    
+}
     DEBUG_LOG("[DirettaOutput] 🔧 Configuring network: VarMax (maximum throughput)");
     
     // ⭐ v1.2.0: Use VarMax for all formats (best performance with jumbo frames)
