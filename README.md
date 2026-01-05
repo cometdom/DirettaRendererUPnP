@@ -46,13 +46,6 @@ This is a community-maintained fork of the original DirettaRendererUPnP project.
 | **Fork Maintainer** | [@SwissMontainsBear](https://github.com/SwissMontainsBear) |
 | **Purpose** | Personal use, shared with community as courtesy |
 
-### Why This Fork?
-
-<!-- Describe what makes your fork different. For example: -->
-- [Describe your modifications here]
-- [Bug fixes, new features, or different approach]
-- [Any specific use case you're targeting]
-
 ### Differences from Original
 
 Please see FORK_CHANGES.md
@@ -100,70 +93,7 @@ Diretta is a proprietary audio streaming protocol developed by Yu Harada that en
 - ✅ **UPnP/DLNA compatible** - Works with any UPnP control point
 - ✅ **Network optimization** - Adaptive packet sizing with jumbo frame support
 
----
 
-## Architecture
-
-### Complete Signal Path
-
-┌─────────────────────────┐
-│  UPnP Control Point     │  (JPlay, BubbleUPnP, etc.)
-│  (Phone/Tablet/PC)      │
-└───────────┬─────────────┘
-            │ UPnP/DLNA Protocol
-            ▼
-┌─────────────────────────┐
-│  Diretta UPnP Renderer  │
-│  ┌───────────────────┐  │
-│  │  UPnP Device      │  │  Handles UPnP protocol
-│  ├───────────────────┤  │
-│  │  AudioEngine      │  │  Manages playback, FFmpeg decoding
-│  ├───────────────────┤  │
-│  │  DirettaOutput    │  │  Interfaces with Diretta SDK
-│  └───────────────────┘  │
-└───────────┬─────────────┘
-            │ Diretta Protocol (UDP/Ethernet)
-            │ Bit-perfect audio samples
-            ▼
-┌─────────────────────────┐
-│     Diretta TARGET      │  
-│  - Receives packets     │
-│  - Clock synchronization│
-│                         │
-└───────────┬─────────────┘
-            |
-            |
-            ▼
-┌─────────────────────────┐
-│          DAC            │  
-│  - D/A conversion       │
-└───────────┬─────────────┘
-            │
-            ▼
-        🔊 Speakers
-
-
-### Why This Architecture?
-
-**Traditional Renderer → DAC:**
-
-
-Renderer → OS Audio Stack → USB Driver → DAC
-           ↑ Adds latency, jitter, potential quality loss
-
-
-**Diretta Renderer → Target → DAC:**
-
-
-Renderer → Ethernet (Diretta) → Target → DAC
-           ↑ Bypasses OS audio stack
-           ↑ Bit-perfect transmission
-           ↑ Ultra-low latency
-
-
-The **Diretta Target** acts as a dedicated audio endpoint that receives the pristine digital stream and outputs it directly to your DAC, completely bypassing the OS audio subsystem.
-
----
 
 ## Features
 
@@ -185,7 +115,6 @@ The **Diretta Target** acts as a dedicated audio endpoint that receives the pris
 - **Adaptive packet sizing**: Optimized for different audio formats
 - **Jumbo frame support**: Up to 16k MTU for maximum performance
 - **Network interface detection**: Automatic MTU configuration
-- **Buffer management**: Configurable buffer size (1-5 seconds)
 
 ---
 
@@ -203,7 +132,7 @@ The **Diretta Target** acts as a dedicated audio endpoint that receives the pris
 |----------|--------|
 | **Linux x64** | ✅ Supported |
 | **Linux ARM64** | ✅ Supported |
-| **Windows** | ❌ Not supported |
+| **Windows** | ❌ Not supported at this stage |
 | **macOS** | ❌ Not supported |
 
 ### Hardware
@@ -279,7 +208,7 @@ sudo nmcli connection up "Your Connection"
 ### 5. Run
 
 ```bash
-sudo ./bin/DirettaRendererUPnP --port 4005 --buffer 2.0
+sudo ./bin/DirettaRendererUPnP --port 4005
 ```
 
 ### 6. List and Select Diretta Targets
@@ -289,7 +218,7 @@ sudo ./bin/DirettaRendererUPnP --port 4005 --buffer 2.0
 sudo ./bin/DirettaRendererUPnP --list-targets
 
 # Run with specific target
-sudo ./bin/DirettaRendererUPnP --target 1 --port 4005 --buffer 2.0
+sudo ./bin/DirettaRendererUPnP --target 1 --port 4005
 ```
 
 ### 7. Connect from Control Point
@@ -393,14 +322,7 @@ sudo firewall-cmd --list-all
 
 1. Verify Diretta Target is running
 2. Check network connectivity
-3. Try increasing buffer size
 
-### Audio Dropouts
-
-```bash
-# Increase buffer
-./bin/DirettaRendererUPnP --buffer 3.0
-```
 
 ---
 
