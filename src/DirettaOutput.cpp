@@ -78,7 +78,7 @@ void DirettaOutput::setMTU(uint32_t mtu) {
 
 
 
-bool DirettaOutput::open(const AudioFormat& format, float bufferSeconds) {
+bool DirettaOutput::open(const AudioFormat& format, int bufferSeconds) {
     DEBUG_LOG("[DirettaOutput] Opening: " 
               << format.sampleRate << "Hz/" 
               << format.bitDepth << "bit/" 
@@ -912,7 +912,7 @@ bool DirettaOutput::configureDiretta(const AudioFormat& format) {
         } else if (format.sampleRate == 45158400) {
             std::cout << "DSD1024 (45158400 Hz)" << std::endl;
             formatID |= DIRETTA::FormatID::RAT_44100 | DIRETTA::FormatID::RAT_MP1024;
-            DEBUG_LOG("[DirettaOutput]    ✅ DSD1024 configured");   
+            DEBUG_LOG("[DirettaOutput]    ✅ DSD1024 configured");	
         } else {
             std::cerr << "[DirettaOutput]    ⚠️  Unknown DSD rate: " << format.sampleRate << std::endl;
             formatID |= DIRETTA::FormatID::RAT_44100 | DIRETTA::FormatID::RAT_MP64;

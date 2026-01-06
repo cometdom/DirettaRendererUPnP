@@ -330,7 +330,7 @@ make
    sudo ./bin/DirettaRendererUPnP --target 1 --verbose (+other options you need)
    ```
 
-# Before installing service (if updating to version 1.0.9 - settings will be lost - not needed if you update from v1.1.0 to v1.1.1)
+# Before installing service (if updating to version 1.0.9 - settings will be lost - not needed if you update from v1.1.1 to v1.1.2)
 sudo rm /opt/diretta-renderer-upnp/diretta-renderer.conf
 
 sudo systemctl stop diretta-renderer
@@ -1213,4 +1213,4 @@ This software is provided "as is" without warranty. While designed for high-qual
 
 **Enjoy bit-perfect, high-resolution audio streaming! 🎵**
 
-*Last updated: 2025-12-25*
+*Last updated: 2025-12-30*
