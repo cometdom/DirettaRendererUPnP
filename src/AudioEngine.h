@@ -24,7 +24,7 @@ extern "C" {
  * @brief Audio track information
  */
 struct TrackInfo {
-    // ⭐ v1.2.3 : DSD source format enum (défini ici pour éviter dépendances)
+    // ⭐ v1.2.0 : DSD source format enum (défini ici pour éviter dépendances)
     enum class DSDSourceFormat {
         DSF,      // LSB first
         DFF,      // MSB first  
@@ -42,7 +42,7 @@ struct TrackInfo {
     int dsdRate;
     bool isCompressed;
     
-    // ⭐ v1.2.3 : Format source DSD
+    // ⭐ v1.2.0 : Format source DSD
     DSDSourceFormat dsdSourceFormat;
 
     TrackInfo() : sampleRate(0), bitDepth(0), channels(2), duration(0), 
