@@ -56,12 +56,20 @@ class AudioBuffer {
 public:
     AudioBuffer(size_t size = 0);
     ~AudioBuffer();
-    
+
+    // ⭐ Rule of Three: Prevent copying (would cause double-delete)
+    AudioBuffer(const AudioBuffer&) = delete;
+    AudioBuffer& operator=(const AudioBuffer&) = delete;
+
+    // Allow moving (safe)
+    AudioBuffer(AudioBuffer&& other) noexcept;
+    AudioBuffer& operator=(AudioBuffer&& other) noexcept;
+
     void resize(size_t size);
     size_t size() const { return m_size; }
     uint8_t* data() { return m_data; }
     const uint8_t* data() const { return m_data; }
-    
+
 private:
     uint8_t* m_data;
     size_t m_size;

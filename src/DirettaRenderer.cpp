@@ -862,35 +862,29 @@ void DirettaRenderer::audioThreadFunc() {
             
             std::this_thread::sleep_until(nextProcessTime);
             
-            bool success = m_audioEngine->process(currentSamplesPerCall);
+bool success = m_audioEngine->process(currentSamplesPerCall);
             
             nextProcessTime += lastInterval;
             
+            // ⭐ Static counters OUTSIDE if/else to avoid shadow variable bug
+            static int failCount = 0;
+            static int totalFails = 0;
+            
             if (!success) {
-                // Compteur pour réduire le spam de logs
-                static int failCount = 0;
-                static int totalFails = 0;
-                
                 failCount++;
                 totalFails++;
                 
-                // Logger seulement tous les 100 échecs (ou le premier)
                 if (failCount == 1 || failCount % 100 == 0) {
                     std::cout << "[Audio Thread] ⚠️  process() returned false"
-                              << " (" << totalFails << " total, " 
+                              << " (" << totalFails << " total, "
                               << failCount << " consecutive)" << std::endl;
                 }
                 
-                // ⭐ CRITICAL FIX: Ajouter une pause pour éviter le spam CPU
-                // Sans cette pause, la boucle repart immédiatement et spam
-                // des milliers de fois par seconde !
                 std::this_thread::sleep_for(std::chrono::milliseconds(10));
-                
-                // Reset le temps de prochain process
                 nextProcessTime = std::chrono::steady_clock::now();
+                
             } else {
                 // Reset le compteur d'échecs consécutifs quand ça réussit
-                static int failCount = 0;
                 failCount = 0;
             }
                    
