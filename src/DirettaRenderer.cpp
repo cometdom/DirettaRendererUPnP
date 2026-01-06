@@ -209,7 +209,7 @@ m_audioEngine->setAudioCallback(
         if (trackInfo.isDSD) {
             currentFormat.bitDepth = 1;  // DSD = 1 bit
             
-            // ⭐ v1.2.1 : Utiliser la détection depuis AudioEngine (plus précise)
+            // ⭐ v1.2.0 : Utiliser la détection depuis AudioEngine (plus précise)
             if (trackInfo.dsdSourceFormat == TrackInfo::DSDSourceFormat::DSF) {
                 currentFormat.dsdFormat = AudioFormat::DSDFormat::DSF;
                 DEBUG_LOG("[Callback] DSD format: DSF (LSB) - from file detection");
@@ -353,7 +353,7 @@ if (trackInfo.isDSD) {
     format.bitDepth = 1;  // DSD = 1 bit
     format.sampleRate = sampleRate;
     
-    // ⭐ v1.2.3 : Utiliser la détection depuis AudioEngine (même code que callback)
+    // ⭐ v1.2.0 : Utiliser la détection depuis AudioEngine (même code que callback)
     if (trackInfo.dsdSourceFormat == TrackInfo::DSDSourceFormat::DSF) {
         format.dsdFormat = AudioFormat::DSDFormat::DSF;
         DEBUG_LOG("[DirettaRenderer] 🎵 DSD format: DSF (LSB) - from file detection");
