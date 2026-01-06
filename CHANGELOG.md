@@ -2,8 +2,7 @@
 
 ## [1.2.1] - 2026-01-06
 
-### 🎵 DSD Format Enhancement Thanks to [SwissMountainBear ](https://github.com/[SwissMontainsBear](https://github.com/SwissMontainsBear))
-
+### 🎵 DSD Format Enhancement Thanks to @SwissMontainsBear
 **Improved DSD File Detection**
 - **Smart DSF vs DFF detection**: Automatic detection of DSD source format based on file extension (`.dsf` or `.dff`)
 - **Bit order handling**: Proper bit reversal flag (`m_needDsdBitReversal`) to handle LSB-first (DSF) vs MSB-first (DFF) formats
