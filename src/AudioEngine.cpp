@@ -1261,10 +1261,10 @@ bool AudioEngine::process(size_t samplesNeeded) {
                 }
             }
        
-     }
+        }
         // Continue processing after seek
     }
-    
+}
     std::lock_guard<std::mutex> lock(m_mutex);    
     // Double vérification avec mutex
     if (m_state.load() != State::PLAYING) {
