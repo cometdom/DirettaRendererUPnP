@@ -296,20 +296,21 @@ void DirettaOutput::resume() {
         return;
     }
     
-    DEBUG_LOG("[DirettaOutput] ▶️  Resuming from sample " << m_pausedPosition << "...");
+    DEBUG_LOG("[DirettaOutput] ▶️  Resuming...");
     
     if (m_syncBuffer) {
-        // Seek à la position sauvegardée
-        m_syncBuffer->seek(m_pausedPosition);
-        
-        // Redémarrer la lecture
+        // DSD: Just play
+        // PCM: Seek then play
+        if (!m_currentFormat.isDSD) {
+            m_syncBuffer->seek(m_pausedPosition);
+        }
         m_syncBuffer->play();
     }
     
     m_isPaused = false;
     m_playing = true;
     
-    std::cout << "[DirettaOutput] ✓ Resumed" << std::endl;
+    DEBUG_LOG("[DirettaOutput] ✓ Resumed");
 }
 
 
