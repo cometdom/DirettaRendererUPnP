@@ -1158,37 +1158,7 @@ void DirettaOutput::optimizeNetworkConfig(const AudioFormat& format) {
     
     DEBUG_LOG("[DirettaOutput] ✓ Network configured");
 }
-/*
-bool DirettaOutput::seek(int64_t samplePosition) {
-    DEBUG_LOG("[DirettaOutput] 🔍 Seeking to sample " << samplePosition);
 
-    if (!m_syncBuffer) {
-        std::cerr << "[DirettaOutput] ⚠️  No SyncBuffer available for seek" << std::endl;
-        return false;
-    }
-
-    // DSD: Silent ignore (prevents distortion)
-    if (m_currentFormat.isDSD) {
-        return true;
-    }
-
-    // PCM: Execute seek
-    bool wasPlaying = m_playing;
-    
-    if (wasPlaying && m_syncBuffer) {
-        m_syncBuffer->stop();
-    }
-    
-    m_syncBuffer->seek(samplePosition);
-    m_totalSamplesSent = samplePosition;
-    
-    if (wasPlaying && m_syncBuffer) {
-        m_syncBuffer->play();
-    }
-   
-    DEBUG_LOG("[DirettaOutput] ✓ Seeked to position " << samplePosition);
-    return true;
-}*/
 // ═══════════════════════════════════════════════════════════════
 // ⭐ v1.2.0: Gapless Pro - Implementation
 // ═══════════════════════════════════════════════════════════════
