@@ -1260,7 +1260,7 @@ bool AudioEngine::process(size_t samplesNeeded) {
                     std::cerr << "[AudioEngine] ❌ Seek failed in decoder" << std::endl;
                 }
             }
-        }
+       
         
         // Continue processing after seek
     }
