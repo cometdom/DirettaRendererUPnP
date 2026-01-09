@@ -153,7 +153,6 @@ DirettaRenderer::Config parseArguments(int argc, char* argv[]) {
                       << "  --name, -n <name>     Renderer name (default: Diretta Renderer)\n"
                       << "  --port, -p <port>     UPnP port (default: auto)\n"
                       << "  --uuid <uuid>         Device UUID (default: auto-generated)\n"
-                      << "  --no-gapless          Disable gapless playback\n"
                       << "  --buffer, -b <secs>   Buffer size in seconds (default: 2.0)\n"
                       << "  --target, -t <index>  Select Diretta target by index (1, 2, 3...)\n"
                       << "  --list-targets, -l    List available Diretta targets and exit\n"
