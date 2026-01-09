@@ -1,5 +1,13 @@
 # Changelog
+## [1.2.2] - 2026-01-09
 
+--no-gapless option removed.
+The --no-gapless option is no longer supported.
+Gapless works perfectly with all standard UPnP control points.
+
+For Audirvana users, simply setting Universal Gapless in Audirvana might work, though with some limitations. If you want Audirvana to work with the Diretta Host SDK, please reach out to the Audirvana Team.
+
+No functional changes - gapless continues to work perfectly.
 ## [1.2.1] - 2026-01-06
 
 ### 🎵 DSD Format Enhancement Thanks to @SwissMontainsBear

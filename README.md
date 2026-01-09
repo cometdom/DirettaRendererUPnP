@@ -642,7 +642,8 @@ Tested and working with:
 ## AUDIRVANA
 - **Universal gapless enabled**: if you notice pink noise after few seconds of playback
 - **DSD**: DSD isn’t functioning properly, as the DAC plays PCM instead (e.g., DSD64 → PCM 352.4 kHz). So you can set NO DSD.
-
+- **The --no-gapless option is no longer supported.**
+If you want Audirvana to work with the Diretta Host SDK, please reach out to the Audirvana Team.
 ---
 
 ## System Optimization
