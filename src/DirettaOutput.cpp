@@ -45,6 +45,7 @@ DirettaOutput::DirettaOutput()
     , m_pausedPosition(0)
     , m_gaplessEnabled(true)       // ⭐ v1.2.0: Gapless enabled by default
     , m_nextTrackPrepared(false)   // ⭐ v1.2.0
+    , m_transferMode(DirettaRenderer::TransferMode::VarMax)
     , m_thredMode(1)
     , m_cycleMinTime(333)
     , m_infoCycle(100000)
@@ -74,8 +75,20 @@ void DirettaOutput::setMTU(uint32_t mtu) {
     
     std::cout << std::endl;
 }
-
-
+void DirettaOutput::setTransferMode(DirettaRenderer::TransferMode mode) {
+    if (m_connected) {
+        std::cerr << "[DirettaOutput] ⚠️  Cannot change transfer mode while connected" << std::endl;
+        return;
+    }
+    
+    m_transferMode = mode;
+    
+    if (mode == DirettaRenderer::TransferMode::VarMax) {
+        DEBUG_LOG("[DirettaOutput] ✓ Transfer mode: VarMax (adaptive)");
+    } else {
+        DEBUG_LOG("[DirettaOutput] ✓ Transfer mode: Fix (precise timing)");
+    }
+}
 
 bool DirettaOutput::open(const AudioFormat& format, float bufferSeconds) {
     DEBUG_LOG("[DirettaOutput] Opening: " 
@@ -1135,30 +1148,73 @@ void DirettaOutput::optimizeNetworkConfig(const AudioFormat& format) {
         return;
     }
     
-    // ⭐ v1.3.0: Calculate optimal cycle time dynamically
-    DirettaCycleCalculator calculator(m_mtu);
-    
-    // For DSD, use 1 bit per sample; for PCM use actual bit depth
-    int bitsPerSample = format.isDSD ? 1 : format.bitDepth;
-    
-    unsigned int cycleTime = calculator.calculate(
-        format.sampleRate, 
-        format.channels, 
-        bitsPerSample
-    );
-    
     DEBUG_LOG("[DirettaOutput] 🔧 Network optimization:");
     DEBUG_LOG("[DirettaOutput]    MTU: " << m_mtu << " bytes");
-    DEBUG_LOG("[DirettaOutput]    Cycle time: " << cycleTime << " µs");
-    DEBUG_LOG("[DirettaOutput]    Mode: VarMax (maximum throughput)");
     
-    // Configure transfer with calculated cycle time
+    // ═══════════════════════════════════════════════════════════════
+    // ⭐ v1.3.1: Determine cycle time (dynamic or user-specified)
+    // ═══════════════════════════════════════════════════════════════
+    
+    unsigned int cycleTime;
+    
+    // In Fix mode with user-specified cycle-time, use that value
+    // Otherwise calculate optimal cycle time dynamically
+    if (m_transferMode == TransferMode::Fix && m_cycleTime != 10000) {
+        // User specified --cycle-time for precise control
+        cycleTime = m_cycleTime;
+        DEBUG_LOG("[DirettaOutput]    Cycle time: " << cycleTime 
+                  << " µs (user-specified)");
+    } else {
+        // Calculate optimal cycle time dynamically (v1.3.0 feature)
+        DirettaCycleCalculator calculator(m_mtu);
+        
+        // For DSD, use 1 bit per sample; for PCM use actual bit depth
+        int bitsPerSample = format.isDSD ? 1 : format.bitDepth;
+        
+        cycleTime = calculator.calculate(
+            format.sampleRate, 
+            format.channels, 
+            bitsPerSample
+        );
+        DEBUG_LOG("[DirettaOutput]    Cycle time: " << cycleTime 
+                  << " µs (calculated)");
+    }
+    
+    // ═══════════════════════════════════════════════════════════════
+    // ⭐ v1.3.1: Configure transfer mode
+    // ═══════════════════════════════════════════════════════════════
+    
     ACQUA::Clock cycle(cycleTime);
-    m_syncBuffer->configTransferVarMax(cycle);
+    
+    if (m_transferMode == TransferMode::VarMax) {
+        // VarMax: Adaptive cycle time (variable between min and max)
+        m_syncBuffer->configTransferVarMax(cycle);
+        
+        DEBUG_LOG("[DirettaOutput]    Mode: VarMax (adaptive)");
+        std::cout << "[DirettaOutput] ✓ Transfer: VarMax (adaptive)" << std::endl;
+        
+    } else {
+        // Fix: Fixed cycle time (precise timing control)
+        bool success = m_syncBuffer->configTransferFix(cycle, 0);
+        
+        if (success) {
+            // Calculate frequency: freq = 1 / (cycle_time_seconds)
+            double freq_hz = 1000000.0 / cycleTime;
+            
+            DEBUG_LOG("[DirettaOutput]    Mode: Fix (precise timing)");
+            std::cout << "[DirettaOutput] ✓ Transfer: Fix (precise timing)" << std::endl;
+            std::cout << "[DirettaOutput]    Fixed cycle: " << cycleTime 
+                      << " µs (" << std::fixed << std::setprecision(2) 
+                      << freq_hz << " Hz)" << std::endl;
+        } else {
+            std::cerr << "[DirettaOutput] ❌ configTransferFix failed!" << std::endl;
+            std::cerr << "[DirettaOutput]    Falling back to VarMax..." << std::endl;
+            m_syncBuffer->configTransferVarMax(cycle);
+        }
+    }
     
     DEBUG_LOG("[DirettaOutput] ✓ Network configured");
 }
-
 // ═══════════════════════════════════════════════════════════════
 // ⭐ v1.2.0: Gapless Pro - Implementation
 // ═══════════════════════════════════════════════════════════════

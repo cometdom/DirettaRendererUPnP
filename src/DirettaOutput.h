@@ -73,6 +73,27 @@ private:
     int m_efficientMTU;
 };  // ← ⭐ CE POINT-VIRGULE EST OBLIGATOIRE !
 
+// ═══════════════════════════════════════════════════════════════════════════
+// ⭐ v1.3.1: Transfer modes for Diretta SDK
+// ═══════════════════════════════════════════════════════════════════════════
+/**
+ * @brief Transfer modes for Diretta SDK
+ * 
+ * VarMax: Variable/adaptive packet timing (default)
+ *         - Cycle time varies adaptively
+ *         - Optimal bandwidth usage
+ *         - SDK: configTransferVarMax()
+ * 
+ * Fix: Fixed packet timing (precise control)
+ *      - Cycle time is fixed at user-specified value
+ *      - Precise timing for audiophile applications
+ *      - SDK: configTransferFix()
+ */
+enum class TransferMode {
+    VarMax,  // Variable/adaptive (default)
+    Fix      // Fixed (precise timing)
+};
+
 /**
  * @brief Diretta output handler
  * 
@@ -256,6 +277,18 @@ public:
     void setCycleMinTime(int time) { m_cycleMinTime = time; }
     void setInfoCycle(int time) { m_infoCycle = time; }
     
+    /**
+     * @brief Set transfer mode (VarMax or Fix)
+     * 
+     * VarMax (default): Adaptive cycle time, optimal bandwidth usage
+     * Fix: Fixed cycle time for precise timing control
+     * 
+     * Must be called BEFORE open()
+     * 
+     * @param mode Transfer mode (VarMax or Fix)
+     */
+    void setTransferMode(TransferMode mode);
+    
 private:
     // Network
     std::unique_ptr<ACQUA::UDPV6> m_udp;
@@ -287,6 +320,9 @@ private:
     int m_cycleTime;
     int m_cycleMinTime;
     int m_infoCycle;
+    
+    // ⭐ v1.3.1: Transfer mode
+    TransferMode m_transferMode;
     
     // Helper functions
     bool findTarget();

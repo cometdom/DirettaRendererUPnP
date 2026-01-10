@@ -10,9 +10,10 @@
 #include <memory>
 #include <thread>
 #include <chrono>
+#include <iomanip>    // ⭐ v1.3.1: Pour std::fixed, std::setprecision
 
 // Version information
-#define RENDERER_VERSION "1.3.0"    // ← MISE À JOUR VERSION
+#define RENDERER_VERSION "1.3.1"    // ⭐ v1.3.1: Transfer mode option (VarMax/Fix)
 #define RENDERER_BUILD_DATE __DATE__
 #define RENDERER_BUILD_TIME __TIME__
 // Global renderer instance for signal handler
@@ -57,6 +58,9 @@ DirettaRenderer::Config parseArguments(int argc, char* argv[]) {
     config.port = 0;  // 0 = auto
     config.gaplessEnabled = true;
     config.bufferSeconds = 2.0f;  // Default 2 seconds (v1.0.9)
+    
+    // ⭐ v1.3.1: Transfer mode default
+    config.transferMode = TransferMode::VarMax;
     
     // ⭐ NEW: Advanced Diretta SDK settings
     config.threadMode = 1;        // Default: Critical only
@@ -117,6 +121,19 @@ DirettaRenderer::Config parseArguments(int argc, char* argv[]) {
                 std::cerr << "⚠️  Warning: MTU < 1500 may cause issues" << std::endl;
             }
         }
+        // ⭐ v1.3.1: Transfer mode option
+        else if (arg == "--transfer-mode" && i + 1 < argc) {
+            std::string mode = argv[++i];
+            if (mode == "varmax") {
+                config.transferMode = TransferMode::VarMax;
+            } else if (mode == "fix") {
+                config.transferMode = TransferMode::Fix;
+            } else {
+                std::cerr << "❌ Invalid transfer mode: " << mode << std::endl;
+                std::cerr << "   Valid values: varmax, fix" << std::endl;
+                exit(1);
+            }
+        }
         // ⭐ NOUVEAU: Options pour interface réseau
         else if (arg == "--interface" && i + 1 < argc) {
             config.networkInterface = argv[++i];
@@ -150,7 +167,7 @@ DirettaRenderer::Config parseArguments(int argc, char* argv[]) {
             std::cout << "Diretta UPnP Renderer\n\n"
                       << "Usage: " << argv[0] << " [options]\n\n"
                       << "Options:\n"
-                      << "  --name, -n <name>     Renderer name (default: Diretta Renderer)\n"
+                      << "  --name, -n <n>     Renderer name (default: Diretta Renderer)\n"
                       << "  --port, -p <port>     UPnP port (default: auto)\n"
                       << "  --uuid <uuid>         Device UUID (default: auto-generated)\n"
                       << "  --buffer, -b <secs>   Buffer size in seconds (default: 2.0)\n"
@@ -161,7 +178,7 @@ DirettaRenderer::Config parseArguments(int argc, char* argv[]) {
                       << "  --help, -h            Show this help\n"
                       << "\n"
                       << "Network Interface Options (for multi-homed systems):\n"  // ⭐ NOUVEAU
-                      << "  --interface <name>    Network interface to bind (e.g., eth0, eno1)\n"
+                      << "  --interface <n>    Network interface to bind (e.g., eth0, eno1)\n"
                       << "  --bind-ip <ip>        IP address to bind (e.g., 192.168.1.10)\n"
                       << "\n"
                       << "  For systems with multiple network interfaces (3-tier architecture):\n"
@@ -170,6 +187,15 @@ DirettaRenderer::Config parseArguments(int argc, char* argv[]) {
                       << "\n"
                       << "    " << argv[0] << " --interface eth0 --target 1\n"
                       << "\n"
+                      << "Transfer Mode Options:\n"
+                      << "  --transfer-mode <mode>  Transfer timing mode (default: varmax)\n"
+                      << "                          varmax = Adaptive timing (optimal bandwidth)\n"
+                      << "                          fix    = Fixed timing (precise cycle control)\n"
+                      << "\n"
+                      << "  When using 'fix' mode, you MUST specify --cycle-time:\n"
+                      << "    Example: --transfer-mode fix --cycle-time 1893\n"
+                      << "             (1893 µs = 528 Hz - precise audiophile timing)\n"
+                      << "\n"
                       << "Advanced Diretta SDK Options:\n"
                       << "  --thread-mode <value>   Thread mode bitmask (default: 1)\n"
                       << "                          1=Critical, 2=NoShortSleep, 4=NoSleep4Core,\n"
@@ -177,7 +203,10 @@ DirettaRenderer::Config parseArguments(int argc, char* argv[]) {
                       << "                          256=NOFASTFEEDBACK, 512=IDLEONE, 1024=IDLEALL,\n"
                       << "                          2048=NOSLEEPFORCE, 4096=LIMITRESEND,\n"
                       << "                          8192=NOJUMBOFRAME, 16384=NOFIREWALL, 32768=NORAWSOCKET\n"
-                      << "  --cycle-time <µs>       Transfer packet cycle max time (default: 10000)\n"
+                      << "  --cycle-time <µs>       Transfer packet cycle time (default: 10000)\n"
+                      << "                          VarMax mode: Maximum cycle time (optional)\n"
+                      << "                          Fix mode: Fixed cycle time (REQUIRED)\n"
+                      << "                          Examples: 1893 (528 Hz), 2000 (500 Hz)\n"
                       << "  --cycle-min-time <µs>   Transfer packet cycle min time (default: 333)\n"
                       << "  --info-cycle <µs>       Information packet cycle time (default: 5000)\n"
                       << "  --mtu <bytes>           Override MTU (default: auto-detect)\n"
@@ -205,6 +234,34 @@ DirettaRenderer::Config parseArguments(int argc, char* argv[]) {
         }
     }
     
+    // ═══════════════════════════════════════════════════════════════
+    // ⭐ v1.3.1: Validate Fix mode requires explicit cycle-time
+    // ═══════════════════════════════════════════════════════════════
+    if (config.transferMode == TransferMode::Fix) {
+        // Check if user explicitly set cycle-time
+        bool cycleTimeWasSet = false;
+        for (int j = 1; j < argc; j++) {
+            if (std::string(argv[j]) == "--cycle-time") {
+                cycleTimeWasSet = true;
+                break;
+            }
+        }
+        
+        if (!cycleTimeWasSet) {
+            std::cerr << "\n❌ Error: --transfer-mode fix requires --cycle-time\n" << std::endl;
+            std::cerr << "Fix mode uses a precise, fixed cycle time that YOU must specify." << std::endl;
+            std::cerr << "\nExample usage:" << std::endl;
+            std::cerr << "  " << argv[0] << " --target 1 --transfer-mode fix --cycle-time 1893" 
+                      << std::endl;
+            std::cerr << "\nThe cycle-time value determines the fixed timing:" << std::endl;
+            std::cerr << "  1893 µs = 528 Hz  (audiophile frequency)" << std::endl;
+            std::cerr << "  2000 µs = 500 Hz" << std::endl;
+            std::cerr << "  1000 µs = 1000 Hz" << std::endl;
+            std::cerr << "\nNote: In VarMax mode (default), --cycle-time is optional." << std::endl;
+            exit(1);
+        }
+    }
+    
     return config;
 }
 
@@ -228,6 +285,11 @@ int main(int argc, char* argv[]) {
     std::cout << "  Gapless:     " << (config.gaplessEnabled ? "enabled" : "disabled") << std::endl;
     std::cout << "  Buffer:      " << config.bufferSeconds << " seconds" << std::endl;
     
+    // ⭐ v1.3.1: Display transfer mode
+    std::cout << "  Transfer:    " 
+              << (config.transferMode == TransferMode::VarMax ? "VarMax (adaptive)" : "Fix (precise)") 
+              << std::endl;
+    
     // ⭐ NOUVEAU: Afficher interface réseau
     if (!config.networkInterface.empty()) {
         std::cout << "  Network:     " << config.networkInterface << " (specific interface)" << std::endl;
@@ -237,15 +299,22 @@ int main(int argc, char* argv[]) {
     
     std::cout << "  UUID:        " << config.uuid << std::endl;
     
-    // ⭐ Display advanced settings only if modified from defaults
+    // ⭐ Display advanced settings only if modified from defaults OR if Fix mode
     if (config.threadMode != 1 || config.cycleTime != 10000 || 
         config.cycleMinTime != 333 || config.infoCycle != 100000 || 
-        config.mtuOverride != 0) {
+        config.mtuOverride != 0 || config.transferMode == TransferMode::Fix) {
         std::cout << "\nAdvanced Diretta Settings:" << std::endl;
         if (config.threadMode != 1)
             std::cout << "  Thread Mode: " << config.threadMode << std::endl;
-        if (config.cycleTime != 10000)
-            std::cout << "  Cycle Time:  " << config.cycleTime << " µs" << std::endl;
+        // ⭐ v1.3.1: Always show cycle time in Fix mode with frequency
+        if (config.transferMode == TransferMode::Fix) {
+            double freq_hz = 1000000.0 / config.cycleTime;
+            std::cout << "  Cycle Time:  " << config.cycleTime << " µs (" 
+                      << std::fixed << std::setprecision(2) << freq_hz << " Hz - FIXED)" 
+                      << std::endl;
+        } else if (config.cycleTime != 10000) {
+            std::cout << "  Cycle Time:  " << config.cycleTime << " µs (max)" << std::endl;
+        }
         if (config.cycleMinTime != 333)
             std::cout << "  Cycle Min:   " << config.cycleMinTime << " µs" << std::endl;
         if (config.infoCycle != 100000)

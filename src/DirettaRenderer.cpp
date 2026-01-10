@@ -56,6 +56,7 @@ DirettaRenderer::Config::Config() {
     uuid = generateUUID();
     targetIndex = -1;  // Default: interactive selection
     networkInterface = "";  // (vide = auto-detect)
+    transferMode = TransferMode::VarMax;  // ← ADD: Default to VarMax
 }
 
 // ============================================================================
@@ -113,6 +114,8 @@ bool DirettaRenderer::start() {
         // Create DirettaOutput first to verify target
         m_direttaOutput = std::make_unique<DirettaOutput>();
         m_direttaOutput->setTargetIndex(m_config.targetIndex);
+         // ⭐ NEW: Set transfer mode
+        m_direttaOutput->setTransferMode(m_config.transferMode);
         
         // ⭐ Verify target is available by attempting discovery
         if (!m_direttaOutput->verifyTargetAvailable()) {
