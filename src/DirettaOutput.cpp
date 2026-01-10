@@ -84,7 +84,7 @@ void DirettaOutput::setTransferMode(TransferMode mode) {
     
     m_transferMode = mode;
     
-    if (mode == DirettaRenderer::TransferMode::VarMax) {
+    if (mode == TransferMode::VarMax) {
         DEBUG_LOG("[DirettaOutput] ✓ Transfer mode: VarMax (adaptive)");
     } else {
         DEBUG_LOG("[DirettaOutput] ✓ Transfer mode: Fix (precise timing)");
