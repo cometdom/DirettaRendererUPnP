@@ -46,7 +46,7 @@ DirettaOutput::DirettaOutput()
     , m_pausedPosition(0)
     , m_gaplessEnabled(true)       // ⭐ v1.2.0: Gapless enabled by default
     , m_nextTrackPrepared(false)   // ⭐ v1.2.0
-    , m_transferMode(DirettaRenderer::TransferMode::VarMax)
+    , m_transferMode(TransferMode::VarMax)
     , m_thredMode(1)
     , m_cycleMinTime(333)
     , m_infoCycle(100000)
