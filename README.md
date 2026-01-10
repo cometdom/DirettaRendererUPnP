@@ -332,12 +332,13 @@ make
    ```
 
 # Before installing service (if updating to version 1.2.2 - settings will be lost)
+```bash
 sudo rm /opt/diretta-renderer-upnp/diretta-renderer.conf
 
 sudo rm /opt/diretta-renderer-upnp/start-renderer.sh
 
 sudo systemctl stop diretta-renderer
-
+```
 # Install service
 ```bash
 cd systemd
