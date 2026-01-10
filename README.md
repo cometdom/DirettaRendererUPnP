@@ -339,8 +339,10 @@ sudo rm /opt/diretta-renderer-upnp/start-renderer.sh
 sudo systemctl stop diretta-renderer
 
 # Install service
+```bash
 cd systemd
 chmod +x install-systemd.sh
+
 sudo ./install-systemd.sh
 
 #Next steps:
@@ -362,7 +364,7 @@ sudo ./install-systemd.sh
      sudo systemctl disable diretta-renderer       
 ```
 ## 🎵 What's New in v1.2.0 - Gapless Pro Edition
-
+---
 ### Seamless Track Transitions
 DirettaRendererUPnP now features **Gapless Pro** - true seamless playback using native Diretta SDK methods:
 
@@ -405,6 +407,7 @@ sudo ./bin/DirettaRendererUPnP --target 1
 ```
 
 Gapless works automatically with compatible control points (Roon, BubbleUPnP, etc.)
+
 
 ### Low Latency Setup
 
