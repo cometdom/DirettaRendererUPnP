@@ -11,6 +11,7 @@ BUFFER="${BUFFER:-2.0}"
 GAPLESS="${GAPLESS:-}"
 VERBOSE="${VERBOSE:-}"
 NETWORK_INTERFACE="${NETWORK_INTERFACE:-}"
+TRANSFER_MODE="${TRANSFER_MODE:-}"          # ⭐ v1.3.1: Transfer mode
 THREAD_MODE="${THREAD_MODE:-}"
 CYCLE_TIME="${CYCLE_TIME:-}"
 CYCLE_MIN_TIME="${CYCLE_MIN_TIME:-}"
@@ -48,6 +49,13 @@ if [ -n "$VERBOSE" ]; then
     CMD="$CMD $VERBOSE"
 fi
 
+# ═══════════════════════════════════════════════════════════════
+# ⭐ v1.3.1: Transfer mode
+# ═══════════════════════════════════════════════════════════════
+if [ -n "$TRANSFER_MODE" ]; then
+    CMD="$CMD --transfer-mode $TRANSFER_MODE"
+fi
+
 # Advanced Diretta settings (only if specified)
 if [ -n "$THREAD_MODE" ]; then
     CMD="$CMD --thread-mode $THREAD_MODE"
@@ -70,19 +78,32 @@ if [ -n "$MTU_OVERRIDE" ]; then
 fi
 
 # Log the command being executed
-echo "════════════════════════════════════════════════════════"
+echo "═══════════════════════════════════════════════════════════"
 echo "  Starting Diretta UPnP Renderer"
-echo "════════════════════════════════════════════════════════"
+echo "═══════════════════════════════════════════════════════════"
 echo ""
 echo "Configuration:"
 echo "  Target:           $TARGET"
 echo "  Buffer:           $BUFFER seconds"
 echo "  Network Interface: ${NETWORK_INTERFACE:-auto-detect}"
+
+# ⭐ v1.3.1: Display transfer mode if specified
+if [ -n "$TRANSFER_MODE" ]; then
+    echo "  Transfer Mode:    $TRANSFER_MODE"
+    if [ "$TRANSFER_MODE" = "fix" ] && [ -n "$CYCLE_TIME" ]; then
+        # Calculate frequency: freq = 1000000 / cycle_time
+        FREQ=$(awk "BEGIN {printf \"%.2f\", 1000000/$CYCLE_TIME}")
+        echo "  Cycle Time:       $CYCLE_TIME µs ($FREQ Hz - FIXED)"
+    fi
+else
+    echo "  Transfer Mode:    varmax (adaptive - default)"
+fi
+
 echo ""
 echo "Command:"
 echo "  $CMD"
 echo ""
-echo "════════════════════════════════════════════════════════"
+echo "═══════════════════════════════════════════════════════════"
 echo ""
 
 # Execute
