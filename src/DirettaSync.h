@@ -259,12 +259,26 @@ private:
     void configureSinkDSD(uint32_t dsdBitRate, int channels, const AudioFormat& format);
     void configureRingPCM(int rate, int channels, int direttaBps, int inputBps);
     void configureRingDSD(uint32_t byteRate, int channels);
+    void beginReconfigure();
+    void endReconfigure();
 
     void applyTransferMode(DirettaTransferMode mode, ACQUA::Clock cycleTime);
     unsigned int calculateCycleTime(uint32_t sampleRate, int channels, int bitsPerSample);
     void requestShutdownSilence(int buffers);
     bool waitForOnline(unsigned int timeoutMs);
     void logSinkCapabilities();
+
+    // RAII guard for safe reconfiguration
+    class ReconfigureGuard {
+    public:
+        explicit ReconfigureGuard(DirettaSync& sync) : sync_(sync) { sync_.beginReconfigure(); }
+        ~ReconfigureGuard() { sync_.endReconfigure(); }
+        ReconfigureGuard(const ReconfigureGuard&) = delete;
+        ReconfigureGuard& operator=(const ReconfigureGuard&) = delete;
+
+    private:
+        DirettaSync& sync_;
+    };
 
     //=========================================================================
     // State
@@ -298,23 +312,24 @@ private:
     std::thread m_workerThread;
     std::mutex m_workerMutex;
     std::mutex m_configMutex;
-    std::mutex m_pushMutex;
+    std::atomic<bool> m_reconfiguring{false};
+    mutable std::atomic<int> m_ringUsers{0};
 
     // Ring buffer
     DirettaRingBuffer m_ringBuffer;
 
-    // Format parameters (protected by m_configMutex)
-    int m_sampleRate = 44100;
-    int m_channels = 2;
-    int m_bytesPerSample = 2;
-    int m_inputBytesPerSample = 2;
-    int m_bytesPerBuffer = 176;
-    bool m_need24BitPack = false;
-    bool m_need16To32Upsample = false;
-    bool m_isDsdMode = false;
-    bool m_needDsdBitReversal = false;
-    bool m_needDsdByteSwap = false;  // For LITTLE endian targets
-    bool m_isLowBitrate = false;
+    // Format parameters (atomic for lock-free reading)
+    std::atomic<int> m_sampleRate{44100};
+    std::atomic<int> m_channels{2};
+    std::atomic<int> m_bytesPerSample{2};
+    std::atomic<int> m_inputBytesPerSample{2};
+    std::atomic<int> m_bytesPerBuffer{176};
+    std::atomic<bool> m_need24BitPack{false};
+    std::atomic<bool> m_need16To32Upsample{false};
+    std::atomic<bool> m_isDsdMode{false};
+    std::atomic<bool> m_needDsdBitReversal{false};
+    std::atomic<bool> m_needDsdByteSwap{false};  // For LITTLE endian targets
+    std::atomic<bool> m_isLowBitrate{false};
 
     // Prefill and stabilization
     size_t m_prefillTarget = 0;

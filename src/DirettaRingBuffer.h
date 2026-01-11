@@ -25,6 +25,11 @@
  * - DSD planar-to-interleaved conversion with optional bit reversal
  */
 class DirettaRingBuffer {
+private:
+    // S24 format auto-detection (declared early for use in public methods)
+    enum class S24PackMode { Unknown, LsbAligned, MsbAligned };
+    S24PackMode m_s24PackMode = S24PackMode::Unknown;
+
 public:
     DirettaRingBuffer() = default;
 
@@ -37,6 +42,7 @@ public:
         silenceByte_ = silenceByte;
         clear();
         fillWithSilence();
+        m_s24PackMode = S24PackMode::Unknown;  // Reset S24 detection on resize
     }
 
     size_t size() const { return size_; }
@@ -55,6 +61,7 @@ public:
     void clear() {
         writePos_.store(0, std::memory_order_release);
         readPos_.store(0, std::memory_order_release);
+        m_s24PackMode = S24PackMode::Unknown;  // Reset S24 detection on clear
     }
 
     void fillWithSilence() {
@@ -87,6 +94,7 @@ public:
 
     /**
      * @brief Push with 24-bit packing (4 bytes in -> 3 bytes out, S24_P32 format)
+     * Auto-detects whether input is LSB-aligned (bytes 0-2) or MSB-aligned (bytes 1-3)
      * @return Input bytes consumed
      */
     size_t push24BitPacked(const uint8_t* data, size_t inputSize) {
@@ -100,10 +108,18 @@ public:
         }
         if (numSamples == 0) return 0;
 
+        // Auto-detect S24 format on first push after clear/resize
+        if (m_s24PackMode == S24PackMode::Unknown) {
+            m_s24PackMode = detectS24PackMode(data, numSamples);
+        }
+
         size_t wp = writePos_.load(std::memory_order_acquire);
 
+        // Byte offset: 0 for LSB-aligned (bytes 0-2), 1 for MSB-aligned (bytes 1-3)
+        const int byteOffset = (m_s24PackMode == S24PackMode::MsbAligned) ? 1 : 0;
+
         for (size_t i = 0; i < numSamples; i++) {
-            const uint8_t* src = data + i * 4;
+            const uint8_t* src = data + i * 4 + byteOffset;
             size_t dstPos = (wp + i * 3) % size_;
 
             buffer_[dstPos] = src[0];
@@ -242,6 +258,23 @@ public:
     const uint8_t* data() const { return buffer_.data(); }
 
 private:
+    /**
+     * @brief S24 format auto-detection
+     * Detects whether 24-bit samples are LSB-aligned (bytes 0-2) or MSB-aligned (bytes 1-3)
+     */
+    S24PackMode detectS24PackMode(const uint8_t* data, size_t numSamples) {
+        // Check first 32 samples to determine alignment
+        size_t checkSamples = std::min<size_t>(numSamples, 32);
+        for (size_t i = 0; i < checkSamples; i++) {
+            // If byte 0 is non-zero, data is in bytes 0-2 (LSB-aligned, standard S24_LE)
+            if (data[i * 4] != 0x00) {
+                return S24PackMode::LsbAligned;
+            }
+        }
+        // All byte 0s are zero, assume data is in bytes 1-3 (MSB-aligned, S24_32BE-style)
+        return S24PackMode::MsbAligned;
+    }
+
     std::vector<uint8_t> buffer_;
     size_t size_ = 0;
     std::atomic<size_t> writePos_{0};
