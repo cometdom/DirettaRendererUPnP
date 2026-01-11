@@ -1,6 +1,6 @@
 # Changelog
 
-## [1.3.0] - 2026-01-10
+## [1.3.0] - 2026-01-11
 ### 🚀 NEW FEATURES
  **Same-Format Fast Path (Thanks to SwissMountainsBear)**
  Track transitions within the same audio format are now dramatically faster.
@@ -164,6 +164,9 @@ Fix:
 - Added copy prevention: Copy constructor/assignment = delete
 - Implemented move semantics for safe ownership transfer
 - Move constructor and move assignment operator added
+
+### Fixed
+- No more crashes when Diretta target unavailable - service waits indefinitely and auto-connects (no reboot needed).
 
 ### ⚠️  BEHAVIOR CHANGES
  **DSD Seek Disabled**
