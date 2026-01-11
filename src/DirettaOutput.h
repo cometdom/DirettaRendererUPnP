@@ -10,7 +10,8 @@
 #include <mutex>
 #include <cmath>       
 #include <algorithm>
-
+const int TARGET_FIND_MAX_RETRIES = -1;      // -1 = infinite, 30 = ~60s, 90 = ~3min
+const int TARGET_FIND_RETRY_DELAY_MS = 2000; // 2 seconds between attempts
 
 /**
  * @brief Audio format specification
