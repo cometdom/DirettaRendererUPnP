@@ -208,7 +208,7 @@ DirettaRenderer::Config parseArguments(int argc, char* argv[]) {
                       << "                          Fix mode: Fixed cycle time (REQUIRED)\n"
                       << "                          Examples: 1893 (528 Hz), 2000 (500 Hz)\n"
                       << "  --cycle-min-time <µs>   Transfer packet cycle min time (default: 333)\n"
-                      << "  --info-cycle <µs>       Information packet cycle time (default: 5000)\n"
+                      << "  --info-cycle <µs>       Information packet cycle time (default: 100000)\n"
                       << "  --mtu <bytes>           Override MTU (default: auto-detect)\n"
                       << "\n"                     
                       << "Target Selection:\n"
