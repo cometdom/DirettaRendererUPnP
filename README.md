@@ -8,9 +8,8 @@
 
 ---
 
-![Version](https://img.shields.io/badge/version-1.3.0-blue.svg)
-![Gapless enhanced ](https://img.shields.io/badge/Gapless-enhanced-green.svg)
-![Transfer Mode ](https://img.shields.io/badge/Transfer-Mode-orange.svg)
+![Version](https://img.shields.io/badge/version-1.2.1-blue.svg)
+![Gapless-enhanced](https://img.shields.io/badge/Gapless-PRO-green.svg) ← NEW
 
 ---
 
@@ -331,8 +330,7 @@ make
    sudo ./bin/DirettaRendererUPnP --target 1 --verbose (+other options you need)
    ```
 
-# Before installing service (if updating to version 1.2.2 - settings will be lost)
-```bash
+# Before installing service (if updating to version 1.0.9 - settings will be lost - not needed if you update from v1.1.1 to v1.1.2)
 sudo rm /opt/diretta-renderer-upnp/diretta-renderer.conf
 
 sudo rm /opt/diretta-renderer-upnp/start-renderer.sh
@@ -645,7 +643,8 @@ Tested and working with:
 ## AUDIRVANA
 - **Universal gapless enabled**: if you notice pink noise after few seconds of playback
 - **DSD**: DSD isn’t functioning properly, as the DAC plays PCM instead (e.g., DSD64 → PCM 352.4 kHz). So you can set NO DSD.
-
+- **The --no-gapless option is no longer supported.**
+If you want Audirvana to work with the Diretta Host SDK, please reach out to the Audirvana Team.
 ---
 
 ## System Optimization
@@ -1238,4 +1237,4 @@ This software is provided "as is" without warranty. While designed for high-qual
 
 **Enjoy bit-perfect, high-resolution audio streaming! 🎵**
 
-*Last updated: 2025-12-25*
+*Last updated: 2025-12-30*

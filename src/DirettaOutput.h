@@ -119,7 +119,7 @@ public:
      * @param bufferSeconds Buffer size in seconds
      * @return true if successful, false otherwise
      */
-    bool open(const AudioFormat& format, float bufferSeconds = 2.0f);
+    bool open(const AudioFormat& format, int bufferSeconds = 2);
     
     /**
      * @brief Close connection

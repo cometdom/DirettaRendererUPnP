@@ -10,7 +10,7 @@
 #include <chrono>
 #include <iomanip> 
 // ════════════════════════════════════════════════════════════════
-// ⭐ v1.2.3 : Bit reversal lookup table for DSD MSB<->LSB conversion
+// ⭐ v1.2.0 : Bit reversal lookup table for DSD MSB<->LSB conversion
 // ════════════════════════════════════════════════════════════════
 
 static const uint8_t bitReverseTable[256] = {
@@ -91,7 +91,7 @@ void DirettaOutput::setTransferMode(TransferMode mode) {
     }
 }
 
-bool DirettaOutput::open(const AudioFormat& format, float bufferSeconds) {
+bool DirettaOutput::open(const AudioFormat& format, int bufferSeconds) {
     DEBUG_LOG("[DirettaOutput] Opening: " 
               << format.sampleRate << "Hz/" 
               << format.bitDepth << "bit/" 
@@ -110,7 +110,7 @@ bool DirettaOutput::open(const AudioFormat& format, float bufferSeconds) {
     if (format.isDSD) {
         // DSD: Minimal buffer optimal (SDK manages sync perfectly)
         // Even 0.02s works great, but we cap at 0.05s for safety
-        effectiveBuffer = std::min(bufferSeconds, 0.05f);
+        effectiveBuffer = std::min(static_cast<float>(bufferSeconds), 0.05f);
         std::cout << "[DirettaOutput] 🎵 DSD mode: minimal buffer " 
                   << effectiveBuffer << "s (SDK-managed)" << std::endl;
         
@@ -968,7 +968,7 @@ bool DirettaOutput::verifyTargetAvailable() {
 bool DirettaOutput::configureDiretta(const AudioFormat& format) {
     DEBUG_LOG("[DirettaOutput] Configuring SyncBuffer...");
     
-    // ⭐ v1.2.3 : TOUJOURS recréer m_syncBuffer pour éviter les blocages
+    // ⭐ v1.2.0 : TOUJOURS recréer m_syncBuffer pour éviter les blocages
     if (m_syncBuffer) {
         DEBUG_LOG("[DirettaOutput] Destroying existing SyncBuffer...");
         m_syncBuffer.reset();  // Détruire l'ancien
@@ -989,7 +989,7 @@ bool DirettaOutput::configureDiretta(const AudioFormat& format) {
         // ✅ Base DSD format - always use FMT_DSD1 and FMT_DSD_SIZ_32
         formatID = DIRETTA::FormatID::FMT_DSD1 | DIRETTA::FormatID::FMT_DSD_SIZ_32;
         
-        // ⭐ v1.2.3 : Configuration intelligente basée sur format source
+        // ⭐ v1.2.0 : Configuration intelligente basée sur format source
         
         // Détecter format source (DSF = LSB, DFF = MSB)
             bool sourceIsLSB = (format.dsdFormat == AudioFormat::DSDFormat::DSF);
@@ -1032,7 +1032,7 @@ bool DirettaOutput::configureDiretta(const AudioFormat& format) {
         } else if (format.sampleRate == 45158400) {
             std::cout << "DSD1024 (45158400 Hz)" << std::endl;
             formatID |= DIRETTA::FormatID::RAT_44100 | DIRETTA::FormatID::RAT_MP1024;
-            DEBUG_LOG("[DirettaOutput]    ✅ DSD1024 configured");   
+            DEBUG_LOG("[DirettaOutput]    ✅ DSD1024 configured");	
         } else {
             std::cerr << "[DirettaOutput]    ⚠️  Unknown DSD rate: " << format.sampleRate << std::endl;
             formatID |= DIRETTA::FormatID::RAT_44100 | DIRETTA::FormatID::RAT_MP64;
@@ -1127,7 +1127,7 @@ bool DirettaOutput::configureDiretta(const AudioFormat& format) {
     std::cout << " " << format.channels << "ch" << std::endl;
     DEBUG_LOG("[DirettaOutput] ⭐ Starting format configuration...");
     // ════════════════════════════════════════════════════════════════
-    // ⭐ v1.2.3 : Préparer détection changement de format
+    // ⭐ v1.2.0 : Préparer détection changement de format
     // ════════════════════════════════════════════════════════════════
     
     // Variable statique pour mémoriser le dernier format configuré
@@ -1143,8 +1143,8 @@ bool DirettaOutput::configureDiretta(const AudioFormat& format) {
                    static_cast<uint32_t>(DIRETTA::FormatID::FMT_DSD1)) != 0;
     
     // Calculer nombre de silence buffers nécessaires (utilisés plus tard)
-    int silenceCount = wasDSD ? 100 : 30;
-    uint8_t silenceValue = wasDSD ? 0x69 : 0x00;
+    // int silenceCount = wasDSD ? 100 : 30;
+    // uint8_t silenceValue = wasDSD ? 0x69 : 0x00;
     
     // ════════════════════════════════════════════════════════════════
     // Configurer le nouveau format
@@ -1223,7 +1223,7 @@ bool DirettaOutput::configureDiretta(const AudioFormat& format) {
     }
     
     // ════════════════════════════════════════════════════════════════
-    // ⭐ v1.2.3 : Silence buffers supprimés
+    // ⭐ v1.2.0 : Silence buffers supprimés
     // Inutiles car on fait toujours close()/reopen() pour les changements de format
     // Le DAC se réinitialise automatiquement
     // ════════════════════════════════════════════════════════════════
@@ -1250,7 +1250,7 @@ bool DirettaOutput::configureDiretta(const AudioFormat& format) {
 // ⭐ v1.2.0 Stable: Network optimization by format
 // ═══════════════════════════════════════════════════════════════
 
-void DirettaOutput::optimizeNetworkConfig(const AudioFormat& format) {
+void DirettaOutput::optimizeNetworkConfig(const AudioFormat& /*format*/) {
     if (!m_syncBuffer) {
         return;
     }
@@ -1483,7 +1483,7 @@ DIRETTA::Stream DirettaOutput::createStreamFromAudio(const uint8_t* data,
         
         DEBUG_LOG("[DirettaOutput::createStreamFromAudio] ✓ Converted S32→S24");
 } else if (m_currentFormat.isDSD && m_needDsdBitReversal) {
-        // ⭐ v1.2.3 : DSD with bit reversal (DFF → LSB conversion)
+        // ⭐ v1.2.0 : DSD with bit reversal (DFF → LSB conversion)
         uint8_t* output = stream.get();
         for (size_t i = 0; i < dataSize; i++) {
             output[i] = bitReverseTable[data[i]];

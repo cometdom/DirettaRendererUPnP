@@ -13,7 +13,7 @@
 #include <iomanip>    // ⭐ v1.3.0: Pour std::fixed, std::setprecision
 
 // Version information
-#define RENDERER_VERSION "1.3.0"    // ⭐ v1.3.0: Transfer mode option (VarMax/Fix)
+#define RENDERER_VERSION "1.2.2"  // --no-gapless option removed  // ← MISE À JOUR VERSION
 #define RENDERER_BUILD_DATE __DATE__
 #define RENDERER_BUILD_TIME __TIME__
 // Global renderer instance for signal handler
