@@ -57,8 +57,8 @@ else
     exit 1
 fi
 
-# Install dependencies based on distribution
-print_info "Installing dependencies..."
+# Install base dependencies based on distribution
+print_info "Installing base dependencies..."
 
 case $OS in
     fedora|rhel|centos)
@@ -67,47 +67,199 @@ case $OS in
             gcc-c++ \
             make \
             git \
-            ffmpeg-devel \
             libupnp-devel \
-            wget
+            wget \
+            nasm \
+            yasm
         ;;
-    
+
     ubuntu|debian)
         print_info "Using APT package manager..."
         sudo apt update
         sudo apt install -y \
             build-essential \
             git \
-            libavformat-dev \
-            libavcodec-dev \
-            libavutil-dev \
-            libswresample-dev \
             libupnp-dev \
-            wget
+            wget \
+            nasm \
+            yasm
         ;;
-    
+
     arch|manjaro)
         print_info "Using Pacman package manager..."
         sudo pacman -Sy --needed --noconfirm \
             base-devel \
             git \
-            ffmpeg \
             libupnp \
-            wget
+            wget \
+            nasm \
+            yasm
         ;;
-    
+
     *)
         print_error "Unsupported distribution: $OS"
         print_info "Please install dependencies manually:"
         print_info "  - gcc/g++ (C++ compiler)"
         print_info "  - make"
-        print_info "  - FFmpeg development libraries"
         print_info "  - libupnp development library"
         exit 1
         ;;
 esac
 
-print_success "Dependencies installed"
+print_success "Base dependencies installed"
+
+# FFmpeg installation
+echo ""
+print_info "FFmpeg is required for audio decoding."
+echo ""
+echo "FFmpeg installation options:"
+echo "  1) Build optimized FFmpeg from source (recommended for audio quality)"
+echo "     - Minimal build with only audio codecs needed"
+echo "     - Includes DSD, FLAC, ALAC, AAC, Vorbis decoders"
+echo "     - Takes 5-15 minutes to compile"
+echo ""
+echo "  2) Use system FFmpeg packages (faster installation)"
+echo "     - Uses distribution packages"
+echo "     - May lack some audio codecs (DSD support varies)"
+echo ""
+read -p "Choose option [1/2] (default: 1): " FFMPEG_OPTION
+FFMPEG_OPTION=${FFMPEG_OPTION:-1}
+
+if [ "$FFMPEG_OPTION" = "1" ]; then
+    print_info "Building optimized FFmpeg from source..."
+
+    # Install FFmpeg build dependencies
+    case $OS in
+        fedora|rhel|centos)
+            sudo dnf install -y \
+                gmp-devel \
+                gnutls-devel \
+                libdrm-devel \
+                fribidi-devel \
+                libsoxr-devel \
+                libvorbis-devel \
+                libxml2-devel
+            ;;
+        ubuntu|debian)
+            sudo apt install -y \
+                libgmp-dev \
+                libgnutls28-dev \
+                libdrm-dev \
+                libfribidi-dev \
+                libsoxr-dev \
+                libvorbis-dev \
+                libxml2-dev
+            ;;
+        arch|manjaro)
+            sudo pacman -Sy --needed --noconfirm \
+                gmp \
+                gnutls \
+                libdrm \
+                fribidi \
+                libsoxr \
+                libvorbis \
+                libxml2
+            ;;
+    esac
+
+    # Download and build FFmpeg
+    FFMPEG_VERSION="7.1"
+    FFMPEG_DIR="/tmp/ffmpeg-build"
+
+    mkdir -p "$FFMPEG_DIR"
+    cd "$FFMPEG_DIR"
+
+    if [ ! -f "ffmpeg-${FFMPEG_VERSION}.tar.xz" ]; then
+        print_info "Downloading FFmpeg ${FFMPEG_VERSION}..."
+        wget -q --show-progress "https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.xz"
+    fi
+
+    print_info "Extracting FFmpeg..."
+    tar xf "ffmpeg-${FFMPEG_VERSION}.tar.xz"
+    cd "ffmpeg-${FFMPEG_VERSION}"
+
+    print_info "Configuring FFmpeg (optimized for audio)..."
+    make distclean 2>/dev/null || true
+
+    ./configure \
+        --prefix=/usr \
+        --disable-debug \
+        --enable-shared \
+        --disable-stripping \
+        --disable-autodetect \
+        --enable-lto \
+        --enable-small \
+        --enable-gmp \
+        --enable-gnutls \
+        --enable-gpl \
+        --enable-libdrm \
+        --enable-libfribidi \
+        --enable-libsoxr \
+        --enable-libvorbis \
+        --enable-libxml2 \
+        --enable-postproc \
+        --enable-swresample \
+        --disable-encoders \
+        --disable-decoders \
+        --disable-hwaccels \
+        --disable-muxers \
+        --disable-demuxers \
+        --disable-parsers \
+        --disable-bsfs \
+        --disable-protocols \
+        --disable-indevs \
+        --disable-outdevs \
+        --disable-devices \
+        --disable-filters \
+        --disable-doc \
+        --disable-inline-asm \
+        --enable-muxer='flac,mov,ipod,wav,w64,ffmetadata' \
+        --enable-demuxer='flac,mov,wav,w64,ffmetadata,dsf,aac,hls,mpegts' \
+        --enable-encoder='alac,flac,pcm_*' \
+        --enable-decoder='alac,flac,pcm_*,dsd_*,vorbis,aac*' \
+        --enable-parser='aac,aac_latm,flac,vorbis' \
+        --enable-protocol='file,pipe,http,https,tcp' \
+        --enable-filter='aresample,hdcd' \
+        --enable-version3
+
+    print_info "Building FFmpeg (this may take a while)..."
+    make -j$(nproc)
+
+    print_info "Installing FFmpeg..."
+    sudo make install
+    sudo ldconfig
+
+    # Return to original directory
+    cd - > /dev/null
+
+    # Cleanup
+    rm -rf "$FFMPEG_DIR"
+
+    print_success "Optimized FFmpeg installed successfully"
+else
+    print_info "Installing FFmpeg from system packages..."
+
+    case $OS in
+        fedora|rhel|centos)
+            sudo dnf install -y ffmpeg-devel
+            ;;
+        ubuntu|debian)
+            sudo apt install -y \
+                libavformat-dev \
+                libavcodec-dev \
+                libavutil-dev \
+                libswresample-dev
+            ;;
+        arch|manjaro)
+            sudo pacman -Sy --needed --noconfirm ffmpeg
+            ;;
+    esac
+
+    print_success "System FFmpeg installed"
+    print_warning "Note: System FFmpeg may lack some audio codecs (e.g., DSD)"
+fi
+
+print_success "All dependencies installed"
 
 # Check for Diretta SDK
 print_info "Checking for Diretta Host SDK..."
