@@ -85,6 +85,40 @@ buffersNeeded = targetWarmupMs × 1000 / cycleTimeUs
 
 - **Files:** `src/DirettaSync.cpp` (lines 401-482)
 
+### 5. Install Script Restructuring
+
+Complete rewrite of `install.sh` with modular architecture and improved FFmpeg handling.
+
+**Structural improvements:**
+- Modular function-based architecture with clear section headers
+- CLI argument support: `--full`, `--deps`, `--build`, `--configure`, `--optimize`, `--help`
+- Interactive menu system with numbered options
+- `confirm()` helper for consistent yes/no prompts
+
+**FFmpeg changes:**
+- Removed FFmpeg 5.1.2 and 6.1.1 (both have DSD segfault issues with GCC 14+)
+- FFmpeg 7.1 is now the only source build option
+- Build flags: `--enable-lto` for link-time optimization
+- Added `mjpeg` and `png` decoders for embedded album art in DSF/DFF files
+- Options: Build from source (recommended), RPM Fusion (Fedora), System packages
+
+**Network buffer optimization:**
+- Added sysctl settings for high-resolution audio streaming:
+  - `net.core.rmem_max=16777216` (16MB receive buffer)
+  - `net.core.wmem_max=16777216` (16MB send buffer)
+- Available in both normal network config and aggressive optimization
+- Persistent via `/etc/sysctl.d/99-diretta.conf`
+
+**Fedora aggressive optimization (option 5):**
+- Integrated from `optimize_fedora_server.sh`
+- Removes: firewalld, SELinux, polkit, gssproxy
+- Disables: journald, oomd, homed, auditd
+- Replaces sshd with dropbear (lightweight SSH)
+- Double confirmation required (safety)
+- Intended for dedicated audio servers only
+
+- **Files:** `install.sh`
+
 ---
 
 ## 2026-01-13
