@@ -1,5 +1,41 @@
 # Changelog
 
+## 2026-01-14
+
+### 1. DSD Buffer Optimization - Pre-allocated Buffers
+
+- Eliminated per-call heap allocations in DSD hot path
+- Replaced `std::vector<uint8_t>` with pre-allocated `AudioBuffer` members
+- Added `m_dsdLeftBuffer`, `m_dsdRightBuffer`, `m_dsdBufferCapacity` to `AudioDecoder`
+- All `.insert()` operations replaced with `memcpy()` + offset tracking
+- Buffers only resize when capacity is insufficient (rare, typically once per session)
+- **Files:** `src/AudioEngine.h` (lines 141-144), `src/AudioEngine.cpp` (lines 552-661, 534)
+
+### 2. DSD Rate-Adaptive Chunk Sizing
+
+- Added `DirettaBuffer::calculateDsdSamplesPerCall()` function
+- DSD chunks now scale with sample rate to maintain ~12ms granularity
+- Previously fixed at 32768 samples regardless of DSD rate
+- Significantly reduces loop iterations for high-rate DSD (DSD256+)
+- **Files:** `src/DirettaSync.h` (lines 109-132), `src/DirettaRenderer.cpp` (lines 567-575)
+
+### Performance Impact
+
+| DSD Rate | Before (fixed 32768) | After (rate-adaptive) | Improvement |
+|----------|----------------------|-----------------------|-------------|
+| DSD64    | ~11.6ms/chunk        | ~12.1ms/chunk         | Similar |
+| DSD128   | ~5.8ms/chunk         | ~12.0ms/chunk         | 2x fewer iterations |
+| DSD256   | ~2.9ms/chunk         | ~11.6ms/chunk         | 4x fewer iterations |
+| DSD512   | ~1.45ms/chunk        | ~5.8ms/chunk          | 4x fewer iterations |
+| DSD1024  | ~0.7ms/chunk         | ~2.9ms/chunk          | 4x fewer iterations |
+
+| Metric | Before | After |
+|--------|--------|-------|
+| Heap allocations per DSD read | 2 (std::vector) | 0 (steady state) |
+| Memory pattern | Alloc/free every call | Pre-allocated, reused |
+
+---
+
 ## 2026-01-13
 
 ### 1. Full Integration of @leeeanh Optimizations
