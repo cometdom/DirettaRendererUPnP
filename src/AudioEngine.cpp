@@ -1109,12 +1109,28 @@ bool AudioEngine::play() {
         return false;
     }
     
-    // If paused, just resume
-    if (m_state == State::PAUSED && m_currentDecoder) {
-        std::cout << "[AudioEngine] Resume" << std::endl;
-        m_state = State::PLAYING;
-        return true;
+/// If paused, resume with proper state cleanup
+if (m_state == State::PAUSED && m_currentDecoder) {
+    std::cout << "════════════════════════════════════════" << std::endl;
+    std::cout << "[AudioEngine] 🔄 Resume (v1.3.1 fix)" << std::endl;
+    std::cout << "════════════════════════════════════════" << std::endl;
+    
+    // 🔥 CRITICAL FIX v1.3.1: Reset drainage state machine
+    if (m_isDraining) {
+        std::cout << "[AudioEngine] ⚠️  Was draining - resetting" << std::endl;
     }
+    if (m_silenceCount > 0) {
+        std::cout << "[AudioEngine] ⚠️  Silence count was " << m_silenceCount << " - resetting" << std::endl;
+    }
+    
+    m_isDraining = false;
+    m_silenceCount = 0;
+    
+    std::cout << "[AudioEngine] ✓ State machine reset complete" << std::endl;
+    m_state = State::PLAYING;
+    
+    return true;
+}
     
     std::cout << "[AudioEngine] Play" << std::endl;
     
