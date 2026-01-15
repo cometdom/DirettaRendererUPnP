@@ -451,40 +451,59 @@ install_ffmpeg() {
     echo ""
     echo "Installation options:"
     echo ""
-    echo "  1) Build FFmpeg 5.1.2 from source (recommended)"
+    echo "  1) Build FFmpeg 5.1.2 from source"
+    echo "     - Stable, widely tested"
+    echo "     - Requires matching headers for compilation (auto-downloaded)"
+    echo ""
+    echo "  2) Build FFmpeg 7.1 from source (recommended)"
     echo "     - Latest stable with LTO optimization"
     echo "     - Full DSD support, GCC 14/15 compatible"
+    echo "     - Better performance and codec support"
     echo ""
     if [ "$OS" = "fedora" ]; then
-    echo "  2) Install from RPM Fusion (Fedora)"
+    echo "  3) Install from RPM Fusion (Fedora)"
     echo "     - Pre-built packages with full codec support"
     echo "     - Quick installation"
     echo ""
-    echo "  3) Use system packages (minimal)"
+    echo "  4) Use system packages (minimal)"
     echo "     - Fastest installation"
     echo "     - May lack DSD and some codecs"
     echo ""
     else
-    echo "  2) Use system packages (minimal)"
+    echo "  3) Use system packages (minimal)"
     echo "     - Fastest installation"
     echo "     - May lack DSD and some codecs"
     echo ""
     fi
 
-    local max_option=2
-    [ "$OS" = "fedora" ] && max_option=3
+    local max_option=3
+    [ "$OS" = "fedora" ] && max_option=4
 
-    read -p "Choose option [1-$max_option] (default: 1): " FFMPEG_OPTION
-    FFMPEG_OPTION=${FFMPEG_OPTION:-1}
+    read -p "Choose option [1-$max_option] (default: 2): " FFMPEG_OPTION
+    FFMPEG_OPTION=${FFMPEG_OPTION:-2}
 
     case $FFMPEG_OPTION in
         1)
+            # FFmpeg 5.1.2
+            FFMPEG_TARGET_VERSION="5.1.2"
             build_ffmpeg_from_source "5.1.2"
             configure_ffmpeg_paths
             rm -rf "$FFMPEG_BUILD_DIR"
             test_ffmpeg_installation "/usr/local/bin/ffmpeg"
+            # Save selected version for header downloads
+            echo "$FFMPEG_TARGET_VERSION" > "$SCRIPT_DIR/.ffmpeg-version"
             ;;
         2)
+            # FFmpeg 7.1 (recommended)
+            FFMPEG_TARGET_VERSION="7.1"
+            build_ffmpeg_from_source "7.1"
+            configure_ffmpeg_paths
+            rm -rf "$FFMPEG_BUILD_DIR"
+            test_ffmpeg_installation "/usr/local/bin/ffmpeg"
+            # Save selected version for header downloads
+            echo "$FFMPEG_TARGET_VERSION" > "$SCRIPT_DIR/.ffmpeg-version"
+            ;;
+        3)
             if [ "$OS" = "fedora" ]; then
                 install_ffmpeg_rpm_fusion
                 test_ffmpeg_installation "$(which ffmpeg)"
@@ -493,7 +512,7 @@ install_ffmpeg() {
                 test_ffmpeg_installation "$(which ffmpeg)"
             fi
             ;;
-        3)
+        4)
             if [ "$OS" = "fedora" ]; then
                 install_ffmpeg_system
                 test_ffmpeg_installation "$(which ffmpeg)"
@@ -631,9 +650,44 @@ check_ffmpeg_abi_compatibility() {
     return 0
 }
 
+# Detect FFmpeg runtime version
+detect_ffmpeg_runtime_version() {
+    local runtime_ver=""
+    if command -v ffmpeg &> /dev/null; then
+        runtime_ver=$(ffmpeg -version 2>&1 | head -1 | grep -oP 'ffmpeg version \K[0-9]+\.[0-9]+(\.[0-9]+)?' || echo "")
+    fi
+    echo "$runtime_ver"
+}
+
+# Get target FFmpeg version (from saved file, runtime detection, or default)
+get_ffmpeg_target_version() {
+    # 1. Check if version was saved during install
+    if [ -f "$SCRIPT_DIR/.ffmpeg-version" ]; then
+        cat "$SCRIPT_DIR/.ffmpeg-version"
+        return 0
+    fi
+
+    # 2. Try to detect from runtime
+    local runtime_ver
+    runtime_ver=$(detect_ffmpeg_runtime_version)
+    if [ -n "$runtime_ver" ]; then
+        echo "$runtime_ver"
+        return 0
+    fi
+
+    # 3. Fall back to default
+    echo "$FFMPEG_TARGET_VERSION"
+}
+
 # Ensure FFmpeg headers are available for the target version
 ensure_ffmpeg_headers() {
-    local target_ver="${1:-$FFMPEG_TARGET_VERSION}"
+    local target_ver="${1:-}"
+
+    # Auto-detect version if not specified
+    if [ -z "$target_ver" ]; then
+        target_ver=$(get_ffmpeg_target_version)
+        print_info "Target FFmpeg version: $target_ver"
+    fi
 
     # Check if we already have matching headers
     if [ -d "$FFMPEG_HEADERS_DIR" ] && [ -f "$FFMPEG_HEADERS_DIR/.version" ]; then
@@ -642,6 +696,8 @@ ensure_ffmpeg_headers() {
         if [ "$existing_ver" = "$target_ver" ]; then
             print_success "Using FFmpeg $target_ver headers from $FFMPEG_HEADERS_DIR"
             return 0
+        else
+            print_info "Existing headers are v$existing_ver, need v$target_ver"
         fi
     fi
 
@@ -720,7 +776,7 @@ build_renderer() {
 
     # Ensure FFmpeg headers are available for ABI compatibility
     print_info "Checking FFmpeg header compatibility..."
-    ensure_ffmpeg_headers "$FFMPEG_TARGET_VERSION"
+    ensure_ffmpeg_headers  # Auto-detects version from .ffmpeg-version or runtime
 
     # Clean and build
     make clean 2>/dev/null || true

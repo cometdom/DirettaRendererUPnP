@@ -18,7 +18,15 @@
 #include <cstdlib>
 #include <new>
 #include <type_traits>
-#include <immintrin.h>
+
+// Architecture detection for SIMD support
+#if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
+    #define DIRETTA_HAS_AVX2 1
+    #include <immintrin.h>
+#else
+    #define DIRETTA_HAS_AVX2 0
+#endif
+
 #include "memcpyfast_audio.h"
 
 template <typename T, size_t Alignment>
@@ -262,6 +270,11 @@ public:
         return written;
     }
 
+    //=========================================================================
+    // Format conversion functions - with AVX2 optimization on x86
+    //=========================================================================
+
+#if DIRETTA_HAS_AVX2
     /**
      * Convert S24_P32 to packed 24-bit using AVX2
      * Input: 4 bytes per sample (24-bit in 32-bit container)
@@ -394,11 +407,54 @@ public:
         return outputBytes;
     }
 
+#else // !DIRETTA_HAS_AVX2 - Scalar implementations for ARM64 and other architectures
+
     /**
-     * Convert DSD planar to interleaved using AVX2 (stereo only)
+     * Convert S24_P32 to packed 24-bit (scalar version)
+     */
+    size_t convert24BitPacked_AVX2(uint8_t* dst, const uint8_t* src, size_t numSamples) {
+        size_t outputBytes = 0;
+        for (size_t i = 0; i < numSamples; i++) {
+            dst[outputBytes + 0] = src[i * 4 + 0];
+            dst[outputBytes + 1] = src[i * 4 + 1];
+            dst[outputBytes + 2] = src[i * 4 + 2];
+            outputBytes += 3;
+        }
+        return outputBytes;
+    }
+
+    size_t convert24BitPackedShifted_AVX2(uint8_t* dst, const uint8_t* src, size_t numSamples) {
+        size_t outputBytes = 0;
+        for (size_t i = 0; i < numSamples; i++) {
+            dst[outputBytes + 0] = src[i * 4 + 1];
+            dst[outputBytes + 1] = src[i * 4 + 2];
+            dst[outputBytes + 2] = src[i * 4 + 3];
+            outputBytes += 3;
+        }
+        return outputBytes;
+    }
+
+    /**
+     * Convert 16-bit to 32-bit (scalar version)
+     */
+    size_t convert16To32_AVX2(uint8_t* dst, const uint8_t* src, size_t numSamples) {
+        size_t outputBytes = 0;
+        for (size_t i = 0; i < numSamples; i++) {
+            dst[outputBytes + 0] = 0x00;
+            dst[outputBytes + 1] = 0x00;
+            dst[outputBytes + 2] = src[i * 2 + 0];
+            dst[outputBytes + 3] = src[i * 2 + 1];
+            outputBytes += 4;
+        }
+        return outputBytes;
+    }
+
+#endif // DIRETTA_HAS_AVX2
+
+    /**
+     * Convert DSD planar to interleaved
      * Input: [L channel bytes][R channel bytes] planar
      * Output: [4B L][4B R][4B L][4B R]... interleaved
-     * Falls back to scalar for non-stereo
      */
     size_t convertDSDPlanar_AVX2(
         uint8_t* dst,
@@ -411,6 +467,7 @@ public:
         size_t bytesPerChannel = totalInputBytes / static_cast<size_t>(numChannels);
         size_t outputBytes = 0;
 
+#if DIRETTA_HAS_AVX2
         if (numChannels == 2) {
             const uint8_t* srcL = src;
             const uint8_t* srcR = src + bytesPerChannel;
@@ -447,15 +504,14 @@ public:
                 outputBytes += 32;
             }
 
+            // Scalar tail for remaining bytes
             for (; i + 4 <= bytesPerChannel; i += 4) {
-                // Left channel - collect 4 bytes
                 uint8_t groupL[4];
                 for (int j = 0; j < 4; j++) {
                     uint8_t b = srcL[i + j];
                     if (bitReversalTable) b = bitReversalTable[b];
                     groupL[j] = b;
                 }
-                // Write with byte swap if needed
                 if (needByteSwap) {
                     dst[outputBytes++] = groupL[3];
                     dst[outputBytes++] = groupL[2];
@@ -468,14 +524,12 @@ public:
                     dst[outputBytes++] = groupL[3];
                 }
 
-                // Right channel - collect 4 bytes
                 uint8_t groupR[4];
                 for (int j = 0; j < 4; j++) {
                     uint8_t b = srcR[i + j];
                     if (bitReversalTable) b = bitReversalTable[b];
                     groupR[j] = b;
                 }
-                // Write with byte swap if needed
                 if (needByteSwap) {
                     dst[outputBytes++] = groupR[3];
                     dst[outputBytes++] = groupR[2];
@@ -494,6 +548,11 @@ public:
             outputBytes = convertDSDPlanar_Scalar(dst, src, totalInputBytes, numChannels,
                                                   bitReversalTable, needByteSwap);
         }
+#else
+        // Pure scalar implementation for ARM64 and other architectures
+        outputBytes = convertDSDPlanar_Scalar(dst, src, totalInputBytes, numChannels,
+                                              bitReversalTable, needByteSwap);
+#endif
 
         return outputBytes;
     }
@@ -608,6 +667,7 @@ private:
         return outputBytes;
     }
 
+#if DIRETTA_HAS_AVX2
     static __m256i simd_bit_reverse(__m256i x) {
         static const __m256i nibble_reverse = _mm256_setr_epi8(
             0x0, 0x8, 0x4, 0xC, 0x2, 0xA, 0x6, 0xE,
@@ -625,6 +685,7 @@ private:
 
         return _mm256_or_si256(_mm256_slli_epi16(lo_reversed, 4), hi_reversed);
     }
+#endif // DIRETTA_HAS_AVX2
 
     static size_t roundUpPow2(size_t value) {
         if (value < 2) {

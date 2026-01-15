@@ -22,8 +22,11 @@
    - Added `download_ffmpeg_headers()` - downloads FFmpeg source for headers only
    - Added `check_ffmpeg_abi_compatibility()` - detects runtime vs compile-time version mismatch
    - Added `ensure_ffmpeg_headers()` - auto-downloads correct headers when needed
+   - Added `detect_ffmpeg_runtime_version()` and `get_ffmpeg_target_version()` for auto-detection
    - `build_renderer()` now automatically uses `make FFMPEG_PATH=./ffmpeg-headers`
-   - New config variables: `FFMPEG_HEADERS_DIR`, `FFMPEG_TARGET_VERSION="5.1.2"`
+   - FFmpeg installation now offers both **5.1.2** and **7.1** (recommended) build options
+   - Selected version saved to `.ffmpeg-version` for future builds
+   - New config variables: `FFMPEG_HEADERS_DIR`, `FFMPEG_TARGET_VERSION`
 
 3. **Makefile** - Auto-detection and warnings:
    - Auto-detects `./ffmpeg-headers/` directory (created by install.sh)
@@ -53,6 +56,43 @@ make clean && make FFMPEG_PATH=/path/to/ffmpeg-5.1.2
 - `install.sh` (lines 721-734) - Build with correct headers
 - `Makefile` (lines 181-229) - FFmpeg path auto-detection
 - `.gitignore` - New file
+
+---
+
+### ARM64 Compilation Fix
+
+**Problem:** Build failed on ARM64 (aarch64) with `fatal error: immintrin.h: No such file or directory`. The `immintrin.h` header is x86-only (AVX/SSE intrinsics) and doesn't exist on ARM64 systems.
+
+**Solution:** Added architecture detection and conditional compilation throughout `DirettaRingBuffer.h`:
+
+1. **Architecture detection macro:**
+   ```cpp
+   #if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
+       #define DIRETTA_HAS_AVX2 1
+       #include <immintrin.h>
+   #else
+       #define DIRETTA_HAS_AVX2 0
+   #endif
+   ```
+
+2. **Conditional AVX2 functions:**
+   - `convert24BitPacked_AVX2()` - x86 AVX2 with scalar fallback
+   - `convert24BitPackedShifted_AVX2()` - x86 AVX2 with scalar fallback
+   - `convert16To32_AVX2()` - x86 AVX2 with scalar fallback
+   - `convertDSDPlanar_AVX2()` - x86 AVX2 with scalar fallback (uses `convertDSDPlanar_Scalar()`)
+   - `simd_bit_reverse()` - x86-only helper (guarded)
+
+3. **Scalar fallbacks for ARM64:**
+   - Pure C++ implementations for all conversion functions
+   - Uses existing `convertDSDPlanar_Scalar()` for DSD processing
+   - `memcpyfast_audio.h` already had ARM64 support (uses `std::memcpy`)
+
+**Performance note:** ARM64 builds use scalar code paths which are still efficient due to:
+- GCC/Clang NEON auto-vectorization for simple loops
+- Standard library optimizations in `std::memcpy`
+
+**Files:**
+- `src/DirettaRingBuffer.h` - Architecture guards and scalar fallbacks
 
 ---
 

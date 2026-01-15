@@ -6,6 +6,7 @@ bin/
 
 # FFmpeg headers (downloaded for ABI compatibility)
 ffmpeg-headers/
+.ffmpeg-version
 
 # IDE and editor files
 .vscode/
