@@ -1,6 +1,6 @@
 # Changelog
 
-## [1.3.0]
+## [1.3.1]
 ### 🐛 Bug Fixes
  **Critical:** Fixed freeze after pause >10-20 seconds
   - Root cause: Drainage state machine not reset on resume
