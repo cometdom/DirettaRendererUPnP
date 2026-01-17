@@ -13,7 +13,22 @@ set -e  # Exit on error
 # =============================================================================
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SDK_PATH="${DIRETTA_SDK_PATH:-$HOME/DirettaHostSDK_147}"
+
+# Auto-detect latest Diretta SDK version
+detect_latest_sdk() {
+    # Search common locations for DirettaHostSDK_*
+    local sdk_found=$(find "$HOME" . .. /opt "$HOME/audio" /usr/local \
+        -maxdepth 1 -type d -name 'DirettaHostSDK_*' 2>/dev/null | sort -V | tail -1)
+    
+    if [ -n "$sdk_found" ]; then
+        echo "$sdk_found"
+    else
+        # Fallback to default location (will be checked later)
+        echo "$HOME/DirettaHostSDK"
+    fi
+}
+
+SDK_PATH="${DIRETTA_SDK_PATH:-$(detect_latest_sdk)}"
 FFMPEG_BUILD_DIR="/tmp/ffmpeg-build"
 FFMPEG_HEADERS_DIR="$SCRIPT_DIR/ffmpeg-headers"
 FFMPEG_TARGET_VERSION="8.0.1"
@@ -821,19 +836,23 @@ ensure_ffmpeg_headers() {
 check_diretta_sdk() {
     print_header "Diretta SDK Check"
 
-    # Check common SDK locations
-    local sdk_locations=(
-        "$SDK_PATH"
-        "$HOME/DirettaHostSDK_147"
-        "$HOME/DirettaHostSDK_147_19"
-        "./DirettaHostSDK_147"
-        "/opt/DirettaHostSDK_147"
-    )
+    # Auto-detect all DirettaHostSDK_* directories
+    local sdk_candidates=()
+    while IFS= read -r sdk_dir; do
+        sdk_candidates+=("$sdk_dir")
+    done < <(find "$HOME" . .. /opt "$HOME/audio" /usr/local \
+        -maxdepth 1 -type d -name 'DirettaHostSDK_*' 2>/dev/null | sort -Vr)
 
-    for loc in "${sdk_locations[@]}"; do
+    # Also add SDK_PATH if set
+    [ -d "$SDK_PATH" ] && sdk_candidates=("$SDK_PATH" "${sdk_candidates[@]}")
+
+    # Try each candidate
+    for loc in "${sdk_candidates[@]}"; do
         if [ -d "$loc" ] && [ -d "$loc/lib" ]; then
             SDK_PATH="$loc"
+            local sdk_version=$(basename "$loc" | sed 's/DirettaHostSDK_//')
             print_success "Found Diretta SDK at: $SDK_PATH"
+            [ -n "$sdk_version" ] && print_info "SDK version: $sdk_version"
             return 0
         fi
     done
@@ -845,19 +864,19 @@ check_diretta_sdk() {
     echo "Please download it from: https://www.diretta.link"
     echo "  1. Visit the website"
     echo "  2. Go to 'Download Preview' section"
-    echo "  3. Download DirettaHostSDK_147.tar.gz"
+    echo "  3. Download DirettaHostSDK_XXX.tar.gz (latest version)"
     echo "  4. Extract to: $HOME/"
     echo ""
     read -p "Press Enter after you've downloaded and extracted the SDK..."
 
-    # Check again
-    for loc in "${sdk_locations[@]}"; do
-        if [ -d "$loc" ] && [ -d "$loc/lib" ]; then
-            SDK_PATH="$loc"
+    # Check again after user extraction
+    while IFS= read -r sdk_dir; do
+        if [ -d "$sdk_dir" ] && [ -d "$sdk_dir/lib" ]; then
+            SDK_PATH="$sdk_dir"
             print_success "Found Diretta SDK at: $SDK_PATH"
             return 0
         fi
-    done
+    done < <(find "$HOME" . .. /opt -maxdepth 1 -type d -name 'DirettaHostSDK_*' 2>/dev/null | sort -Vr)
 
     print_error "SDK still not found. Please extract it and try again."
     exit 1
