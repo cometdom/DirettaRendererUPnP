@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.3.2]
+### 🐛 Bug Fixes
+Fixed: DSD gapless playback on standard networks (MTU 1500)
+
+If you experienced glitches between DSD tracks, this fixes it!
+Works on any network equipment, no configuration needed.
+
+
 ## [1.3.1]
 ### 🐛 Bug Fixes
  **Critical:** Fixed freeze after pause >10-20 seconds
