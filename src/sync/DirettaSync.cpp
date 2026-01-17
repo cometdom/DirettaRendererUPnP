@@ -759,6 +759,19 @@ void DirettaSync::configureRingDSD(uint32_t byteRate, int channels) {
     m_bytesPerBuffer = inputBytesPerMs;
     m_bytesPerBuffer = ((m_bytesPerBuffer + (4 * channels - 1)) / (4 * channels)) * (4 * channels);
     if (m_bytesPerBuffer < 64) m_bytesPerBuffer = 64;
+    
+    // ⭐ v1.3.2: Limit buffer size to MTU for network compatibility
+    // Prevents packet fragmentation which causes gapless issues with DSD on MTU 1500
+    const uint32_t MAX_PAYLOAD = m_effectiveMTU - 200;  // MTU minus TCP/IP/Ethernet headers
+    if (m_bytesPerBuffer > MAX_PAYLOAD) {
+        // Calculate MTU-safe size while maintaining alignment (4-byte × channels)
+        uint32_t safeBytes = (MAX_PAYLOAD / (4 * channels)) * (4 * channels);
+        
+        DIRETTA_LOG("DSD buffer limited by MTU: " << m_bytesPerBuffer 
+                    << " → " << safeBytes << " bytes (MTU=" << m_effectiveMTU << ")");
+        
+        m_bytesPerBuffer = safeBytes;
+    }
 
     m_prefillTarget = DirettaBuffer::calculatePrefill(bytesPerSecond, true, false);
     m_prefillTarget = std::min(m_prefillTarget, ringSize / 4);
