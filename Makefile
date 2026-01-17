@@ -158,6 +158,7 @@ else
     SDK_SEARCH_PATHS = \
         ../DirettaHostSDK_147_19 \
         ../DirettaHostSDK_147 \
+        ../DirettaHostSDK_148 \
         ./DirettaHostSDK_147_19 \
         ./DirettaHostSDK_147 \
         ./DirettaHostSDK_148 \
