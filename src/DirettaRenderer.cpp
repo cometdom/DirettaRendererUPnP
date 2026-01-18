@@ -379,16 +379,10 @@ bool DirettaRenderer::start() {
                 // Don't close DirettaSync - keep connection alive for quick track transitions
                 // Format changes are handled in DirettaSync::open()
                 if (m_direttaSync && m_direttaSync->isOpen()) {
-                    // EXPERIMENTAL: Force full reopen for user-initiated track changes
-                    // This ensures clean transition even for same-format tracks
-                    // (vs gapless sequential playback which uses quick path)
-                    m_direttaSync->setForceFullReopen(true);
-
                     // Send silence BEFORE stopping to flush Diretta pipeline
                     // This prevents crackling on DSD→PCM or DSD rate change transitions
                     m_direttaSync->sendPreTransitionSilence();
                     m_direttaSync->stopPlayback(true);
-                    // m_direttaSync->close();  // Removed
                 }
 
                 m_upnp->notifyStateChange("STOPPED");
@@ -453,6 +447,14 @@ bool DirettaRenderer::start() {
 
         callbacks.onStop = [this]() {
             std::lock_guard<std::mutex> lock(m_mutex);
+
+            // Guard against redundant stop calls from control point
+            // Control points often send multiple rapid Stop commands
+            if (m_direttaSync && !m_direttaSync->isOpen() && !m_direttaSync->isPlaying()) {
+                std::cout << "[DirettaRenderer] Stop ignored - already stopped" << std::endl;
+                return;
+            }
+
             std::cout << "[DirettaRenderer] Stop" << std::endl;
 
             m_lastStopTime = std::chrono::steady_clock::now();

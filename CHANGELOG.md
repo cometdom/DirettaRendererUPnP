@@ -1,5 +1,32 @@
 # Changelog
 
+## 2026-01-18 (Session 6) - Fix Redundant Stop Processing
+
+### Bug Fix
+
+**Fixed:** Multiple rapid Stop commands from control points no longer cause issues.
+
+**Root cause:** Control points often send multiple Stop commands in quick succession. Each was being processed, causing multiple `release()` calls on an already-releasing Diretta target. This caused SDK 148 to behave differently than SDK 147.
+
+**Symptom:** Track changes would sometimes fail or require manual restart when using SDK 148.
+
+**Fix:** Added guard in `onStop` callback to ignore redundant stops when already stopped:
+```cpp
+if (m_direttaSync && !m_direttaSync->isOpen() && !m_direttaSync->isPlaying()) {
+    std::cout << "[DirettaRenderer] Stop ignored - already stopped" << std::endl;
+    return;
+}
+```
+
+**Also removed:** EXPERIMENTAL `forceFullReopen` workaround (Session 4) - no longer needed since the real issue was concurrent stop processing.
+
+**Files changed:**
+- `src/DirettaRenderer.cpp` - Added stop guard, removed `setForceFullReopen()` call
+- `src/DirettaSync.h` - Removed `setForceFullReopen()` and `m_forceFullReopen`
+- `src/DirettaSync.cpp` - Removed forceFullReopen check in `open()`
+
+---
+
 ## 2026-01-18 (Session 5) - Consumer Hot Path Optimization
 
 Based on leeeanh's analysis. Implements C1 and C2 optimizations from his design document.

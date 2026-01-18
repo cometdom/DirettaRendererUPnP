@@ -352,20 +352,7 @@ bool DirettaSync::open(const AudioFormat& format) {
                   << format.bitDepth << "bit/" << format.channels << "ch"
                   << (format.isDSD ? " DSD" : " PCM") << std::endl;
 
-        // EXPERIMENTAL: Check force full reopen flag (user-initiated track change)
-        // When set, bypass quick path even for same format
-        if (m_forceFullReopen) {
-            std::cout << "[DirettaSync] EXPERIMENTAL: Force full reopen requested (user interaction)" << std::endl;
-            m_forceFullReopen = false;  // Clear flag after use
-
-            // Use standard reopen sequence for clean transition
-            if (!reopenForFormatChange()) {
-                std::cerr << "[DirettaSync] Failed to reopen for user-initiated change" << std::endl;
-                return false;
-            }
-            needFullConnect = true;
-            // Skip to full connect path (after the if-else block)
-        } else if (sameFormat) {
+        if (sameFormat) {
             std::cout << "[DirettaSync] Same format - quick resume (no setSink)" << std::endl;
 
             // Send silence before transition to flush Diretta pipeline
