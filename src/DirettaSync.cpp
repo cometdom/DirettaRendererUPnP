@@ -1218,7 +1218,7 @@ float DirettaSync::getBufferLevel() const {
 
 bool DirettaSync::getNewStream(diretta_stream& baseStream) {
     // SDK 148+ uses diretta_stream& but passes DIRETTA::Stream objects
-    DIRETTA::Stream& stream = static_cast<DIRETTA::Stream&>(baseStream);
+    // DIRETTA::Stream& stream = static_cast<DIRETTA::Stream&>(baseStream);
 
     m_workerActive = true;
 
