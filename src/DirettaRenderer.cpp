@@ -379,6 +379,11 @@ bool DirettaRenderer::start() {
                 // Don't close DirettaSync - keep connection alive for quick track transitions
                 // Format changes are handled in DirettaSync::open()
                 if (m_direttaSync && m_direttaSync->isOpen()) {
+                    // EXPERIMENTAL: Force full reopen for user-initiated track changes
+                    // This ensures clean transition even for same-format tracks
+                    // (vs gapless sequential playback which uses quick path)
+                    m_direttaSync->setForceFullReopen(true);
+
                     // Send silence BEFORE stopping to flush Diretta pipeline
                     // This prevents crackling on DSD→PCM or DSD rate change transitions
                     m_direttaSync->sendPreTransitionSilence();

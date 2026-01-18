@@ -18,9 +18,11 @@ public:
         if (reconfiguring.load(std::memory_order_acquire)) {
             return;
         }
-        users_.fetch_add(1, std::memory_order_acq_rel);
+        // C2: acquire ensures increment visible to beginReconfigure() before ring ops
+        users_.fetch_add(1, std::memory_order_acquire);
         if (reconfiguring.load(std::memory_order_acquire)) {
-            users_.fetch_sub(1, std::memory_order_acq_rel);
+            // C2: bail-out - never entered guarded section, relaxed is safe
+            users_.fetch_sub(1, std::memory_order_relaxed);
             return;
         }
         active_ = true;
@@ -28,7 +30,8 @@ public:
 
     ~RingAccessGuard() {
         if (active_) {
-            users_.fetch_sub(1, std::memory_order_acq_rel);
+            // C2: release ensures all ring ops complete before decrement
+            users_.fetch_sub(1, std::memory_order_release);
         }
     }
 
@@ -349,7 +352,20 @@ bool DirettaSync::open(const AudioFormat& format) {
                   << format.bitDepth << "bit/" << format.channels << "ch"
                   << (format.isDSD ? " DSD" : " PCM") << std::endl;
 
-        if (sameFormat) {
+        // EXPERIMENTAL: Check force full reopen flag (user-initiated track change)
+        // When set, bypass quick path even for same format
+        if (m_forceFullReopen) {
+            std::cout << "[DirettaSync] EXPERIMENTAL: Force full reopen requested (user interaction)" << std::endl;
+            m_forceFullReopen = false;  // Clear flag after use
+
+            // Use standard reopen sequence for clean transition
+            if (!reopenForFormatChange()) {
+                std::cerr << "[DirettaSync] Failed to reopen for user-initiated change" << std::endl;
+                return false;
+            }
+            needFullConnect = true;
+            // Skip to full connect path (after the if-else block)
+        } else if (sameFormat) {
             std::cout << "[DirettaSync] Same format - quick resume (no setSink)" << std::endl;
 
             // Send silence before transition to flush Diretta pipeline
@@ -967,6 +983,8 @@ void DirettaSync::configureRingPCM(int rate, int channels, int direttaBps, int i
 
     // Increment format generation to invalidate cached values in sendAudio
     m_formatGeneration.fetch_add(1, std::memory_order_release);
+    // C1: Also increment consumer generation for getNewStream
+    m_consumerStateGen.fetch_add(1, std::memory_order_release);
 
     size_t bytesPerSecond = static_cast<size_t>(rate) * channels * direttaBps;
     size_t ringSize = DirettaBuffer::calculateBufferSize(bytesPerSecond, DirettaBuffer::PCM_BUFFER_SECONDS);
@@ -998,6 +1016,8 @@ void DirettaSync::configureRingDSD(uint32_t byteRate, int channels) {
 
     // Increment format generation to invalidate cached values in sendAudio
     m_formatGeneration.fetch_add(1, std::memory_order_release);
+    // C1: Also increment consumer generation for getNewStream
+    m_consumerStateGen.fetch_add(1, std::memory_order_release);
 
     uint32_t bytesPerSecond = byteRate * channels;
     size_t ringSize = DirettaBuffer::calculateBufferSize(bytesPerSecond, DirettaBuffer::DSD_BUFFER_SECONDS);
@@ -1215,8 +1235,21 @@ bool DirettaSync::getNewStream(diretta_stream& baseStream) {
 
     m_workerActive = true;
 
-    int currentBytesPerBuffer = m_bytesPerBuffer.load(std::memory_order_acquire);
-    uint8_t currentSilenceByte = m_ringBuffer.silenceByte();
+    // C1: Generation counter optimization for stable state
+    // Single atomic load in common case (format rarely changes during playback)
+    uint32_t gen = m_consumerStateGen.load(std::memory_order_acquire);
+    if (gen != m_cachedConsumerGen) {
+        // Cold path: reload stable state values
+        m_cachedBytesPerBuffer = m_bytesPerBuffer.load(std::memory_order_acquire);
+        m_cachedSilenceByte = m_ringBuffer.silenceByte();
+        m_cachedConsumerIsDsd = m_isDsdMode.load(std::memory_order_acquire);
+        m_cachedConsumerSampleRate = m_sampleRate.load(std::memory_order_acquire);
+        m_cachedConsumerGen = gen;
+    }
+
+    // Hot path: use cached values
+    int currentBytesPerBuffer = m_cachedBytesPerBuffer;
+    uint8_t currentSilenceByte = m_cachedSilenceByte;
 
     if (stream.size() != static_cast<size_t>(currentBytesPerBuffer)) {
         stream.resize(currentBytesPerBuffer);
@@ -1231,7 +1264,7 @@ bool DirettaSync::getNewStream(diretta_stream& baseStream) {
         return true;
     }
 
-    bool currentIsDsd = m_isDsdMode.load(std::memory_order_acquire);
+    bool currentIsDsd = m_cachedConsumerIsDsd;
     size_t currentRingSize = m_ringBuffer.size();
 
     // Shutdown silence
@@ -1268,7 +1301,8 @@ bool DirettaSync::getNewStream(diretta_stream& baseStream) {
         if (currentIsDsd) {
             // Target warmup time scales with DSD rate:
             // DSD64: 50ms, DSD128: 100ms, DSD256: 200ms, DSD512: 400ms
-            int currentSampleRate = m_sampleRate.load(std::memory_order_acquire);
+            // C1: Use cached sample rate from generation counter
+            int currentSampleRate = m_cachedConsumerSampleRate;
             int dsdMultiplier = currentSampleRate / 2822400;  // DSD64 = 1
             int targetWarmupMs = 50 * std::max(1, dsdMultiplier);  // 50ms baseline
 

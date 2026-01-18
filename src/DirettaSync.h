@@ -302,6 +302,12 @@ public:
         m_ringBuffer.setS24PackModeHint(hint);
     }
 
+    // EXPERIMENTAL: Force full reopen on next open() call
+    // When set, bypasses quick-reconnect even for same-format tracks.
+    // Use case: User-initiated track changes (vs gapless sequential playback)
+    // Set this flag before stopping playback on user interaction.
+    void setForceFullReopen(bool force) { m_forceFullReopen = force; }
+
     //=========================================================================
     // Target Management
     //=========================================================================
@@ -386,6 +392,10 @@ private:
     std::atomic<bool> m_running{false};
     std::atomic<bool> m_stopRequested{false};
     std::atomic<bool> m_draining{false};
+
+    // EXPERIMENTAL: Force full reopen on user-initiated track changes
+    // Cleared after use in open()
+    bool m_forceFullReopen{false};
     std::atomic<bool> m_workerActive{false};
     std::thread m_workerThread;
     std::mutex m_workerMutex;
@@ -425,6 +435,17 @@ private:
     int m_cachedChannels{2};
     int m_cachedBytesPerSample{2};
     DirettaRingBuffer::DSDConversionMode m_cachedDsdConversionMode{DirettaRingBuffer::DSDConversionMode::Passthrough};
+
+    // C1: Consumer generation counter for getNewStream fast path
+    // Incremented alongside m_formatGeneration in configureRingXXX
+    std::atomic<uint32_t> m_consumerStateGen{0};
+
+    // Cached consumer state (only accessed by worker thread)
+    uint32_t m_cachedConsumerGen{0};
+    int m_cachedBytesPerBuffer{176};
+    uint8_t m_cachedSilenceByte{0};
+    bool m_cachedConsumerIsDsd{false};
+    int m_cachedConsumerSampleRate{44100};
 
     // Prefill and stabilization
     size_t m_prefillTarget = 0;

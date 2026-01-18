@@ -1,5 +1,68 @@
 # Changelog
 
+## 2026-01-18 (Session 5) - Consumer Hot Path Optimization
+
+Based on leeeanh's analysis. Implements C1 and C2 optimizations from his design document.
+
+### C1: Consumer Generation Counter
+
+Added generation counter for `getNewStream()` hot path, mirroring the producer-side optimization already in `sendAudio()`.
+
+**Before:** 4 atomic loads on every `getNewStream()` call
+**After:** 1 atomic load (generation check) in common case (~99.9%)
+
+**Cached stable state:**
+- `m_bytesPerBuffer`
+- `silenceByte`
+- `m_isDsdMode`
+- `m_sampleRate`
+
+**Still checked fresh (volatile):**
+- `m_silenceBuffersRemaining`
+- `m_stopRequested`
+- `m_prefillComplete`
+- `m_postOnlineDelayDone`
+
+### C2: RingAccessGuard Memory Ordering
+
+Refined memory orderings for more precise semantics:
+- `fetch_add`: `acq_rel` → `acquire` (ensures increment visible before ring ops)
+- `fetch_sub` (destructor): `acq_rel` → `release` (ensures ring ops complete before decrement)
+- `fetch_sub` (bail-out): `acq_rel` → `relaxed` (never entered guarded section)
+
+**Files changed:**
+- `src/DirettaSync.h` - Added `m_consumerStateGen` and cached consumer state members
+- `src/DirettaSync.cpp` - Generation counter in `getNewStream()`, refined `RingAccessGuard` ordering
+
+**Credit:** leeeanh for the analysis and design
+
+---
+
+## 2026-01-18 (Session 4) - EXPERIMENTAL: User Interaction Full Reopen
+
+### Experimental Feature
+
+**Purpose:** Test a more conservative track transition approach.
+
+**Previous behavior:**
+- Quick path: Same format (regardless of how track change occurred)
+- Full reopen: Format change detected
+
+**New behavior (EXPERIMENTAL):**
+- Quick path: ONLY for sequential/gapless playback (SetNextAVTransportURI → natural track end)
+- Full reopen: ANY user interaction (SetAVTransportURI while playing) OR format change
+
+**Rationale:** User-initiated track changes are natural "break points" where a clean reset is acceptable. Gapless sequential playback should remain fast when formats match.
+
+**Files changed:**
+- `src/DirettaSync.h` - Added `setForceFullReopen()` method and `m_forceFullReopen` flag
+- `src/DirettaSync.cpp` - Check flag in `open()`, trigger `reopenForFormatChange()` if set
+- `src/DirettaRenderer.cpp` - Set flag in `onSetURI` callback before stopping playback
+
+**To revert:** Search for "EXPERIMENTAL:" comments and remove the related code blocks.
+
+---
+
 ## 2026-01-17 (Session 3) - Format Change Gapless Fix
 
 ### Bug Fix
