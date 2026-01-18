@@ -352,7 +352,20 @@ bool DirettaSync::open(const AudioFormat& format) {
                   << format.bitDepth << "bit/" << format.channels << "ch"
                   << (format.isDSD ? " DSD" : " PCM") << std::endl;
 
-        if (sameFormat) {
+        // EXPERIMENTAL: Check force full reopen flag (user-initiated track change)
+        // When set, bypass quick path even for same format
+        if (m_forceFullReopen) {
+            std::cout << "[DirettaSync] EXPERIMENTAL: Force full reopen requested (user interaction)" << std::endl;
+            m_forceFullReopen = false;  // Clear flag after use
+
+            // Use standard reopen sequence for clean transition
+            if (!reopenForFormatChange()) {
+                std::cerr << "[DirettaSync] Failed to reopen for user-initiated change" << std::endl;
+                return false;
+            }
+            needFullConnect = true;
+            // Skip to full connect path (after the if-else block)
+        } else if (sameFormat) {
             std::cout << "[DirettaSync] Same format - quick resume (no setSink)" << std::endl;
 
             // Send silence before transition to flush Diretta pipeline
@@ -780,6 +793,9 @@ void DirettaSync::fullReset() {
         m_isLowBitrate.store(false, std::memory_order_release);
         m_need24BitPack.store(false, std::memory_order_release);
         m_need16To32Upsample.store(false, std::memory_order_release);
+        m_bytesPerFrame.store(0, std::memory_order_release);
+        m_framesPerBufferRemainder.store(0, std::memory_order_release);
+        m_framesPerBufferAccumulator.store(0, std::memory_order_release);
 
         m_ringBuffer.clear();
     }
@@ -979,23 +995,18 @@ void DirettaSync::configureRingPCM(int rate, int channels, int direttaBps, int i
     m_ringBuffer.resize(ringSize, 0x00);
     ringSize = m_ringBuffer.size();
 
-    m_bytesPerBuffer.store(((rate + 999) / 1000) * channels * direttaBps, std::memory_order_release);
+    int bytesPerFrame = channels * direttaBps;
+    int framesBase = rate / 1000;
+    int framesRemainder = rate % 1000;
+    m_bytesPerFrame.store(bytesPerFrame, std::memory_order_release);
+    m_framesPerBufferRemainder.store(static_cast<uint32_t>(framesRemainder), std::memory_order_release);
+    m_framesPerBufferAccumulator.store(0, std::memory_order_release);
+    m_bytesPerBuffer.store(framesBase * bytesPerFrame, std::memory_order_release);
 
     m_prefillTarget = DirettaBuffer::calculatePrefill(bytesPerSecond, false,
         m_isLowBitrate.load(std::memory_order_acquire));
     m_prefillTarget = std::min(m_prefillTarget, ringSize / 4);
     m_prefillComplete = false;
-
-    // SDK 148: Allouer buffer pour getNewStream (thread-safe)
-    size_t bufferSize = static_cast<size_t>(m_bytesPerBuffer.load(std::memory_order_acquire)) * 2;
-    {
-    std::lock_guard<std::mutex> lock(m_streamBufferMutex);  // ← LOCK !
-    if (bufferSize > m_streamBufferSize) {
-        m_streamBuffer.resize(bufferSize);
-        m_streamBufferSize = bufferSize;
-        DIRETTA_LOG("Allocated stream buffer: " << bufferSize << " bytes");
-    }
-}
 
     DIRETTA_LOG("Ring PCM: " << rate << "Hz " << channels << "ch "
                 << direttaBps << "bps, buffer=" << ringSize
@@ -1028,22 +1039,13 @@ void DirettaSync::configureRingDSD(uint32_t byteRate, int channels) {
     bytesPerBuffer = ((bytesPerBuffer + (4 * channels - 1)) / (4 * channels)) * (4 * channels);
     if (bytesPerBuffer < 64) bytesPerBuffer = 64;
     m_bytesPerBuffer.store(static_cast<int>(bytesPerBuffer), std::memory_order_release);
+    m_bytesPerFrame.store(0, std::memory_order_release);
+    m_framesPerBufferRemainder.store(0, std::memory_order_release);
+    m_framesPerBufferAccumulator.store(0, std::memory_order_release);
 
     m_prefillTarget = DirettaBuffer::calculatePrefill(bytesPerSecond, true, false);
     m_prefillTarget = std::min(m_prefillTarget, ringSize / 4);
     m_prefillComplete = false;
-
-    // SDK 148: Allouer buffer pour getNewStream (thread-safe)
-    size_t bufferSize = static_cast<size_t>(m_bytesPerBuffer.load(std::memory_order_acquire)) * 2;
-{
-    std::lock_guard<std::mutex> lock(m_streamBufferMutex);  // ← LOCK !
-    if (bufferSize > m_streamBufferSize) {
-        m_streamBuffer.resize(bufferSize);
-        m_streamBufferSize = bufferSize;
-        DIRETTA_LOG("Allocated stream buffer: " << bufferSize << " bytes");
-    }
-}
-
 
     DIRETTA_LOG("Ring DSD: byteRate=" << byteRate << " ch=" << channels
                 << " buffer=" << ringSize << " prefill=" << m_prefillTarget);
@@ -1239,7 +1241,9 @@ float DirettaSync::getBufferLevel() const {
 // DIRETTA::Sync Overrides
 //=============================================================================
 
-bool DirettaSync::getNewStream(diretta_stream& stream) {
+bool DirettaSync::getNewStream(diretta_stream& baseStream) {
+    // SDK 148+ uses diretta_stream& but passes DIRETTA::Stream objects
+    DIRETTA::Stream& stream = static_cast<DIRETTA::Stream&>(baseStream);
 
     m_workerActive = true;
 
@@ -1252,6 +1256,9 @@ bool DirettaSync::getNewStream(diretta_stream& stream) {
         m_cachedSilenceByte = m_ringBuffer.silenceByte();
         m_cachedConsumerIsDsd = m_isDsdMode.load(std::memory_order_acquire);
         m_cachedConsumerSampleRate = m_sampleRate.load(std::memory_order_acquire);
+        // PCM buffer rounding drift fix values (stable per-track)
+        m_cachedBytesPerFrame = m_bytesPerFrame.load(std::memory_order_acquire);
+        m_cachedFramesPerBufferRemainder = m_framesPerBufferRemainder.load(std::memory_order_acquire);
         m_cachedConsumerGen = gen;
     }
 
@@ -1259,20 +1266,23 @@ bool DirettaSync::getNewStream(diretta_stream& stream) {
     int currentBytesPerBuffer = m_cachedBytesPerBuffer;
     uint8_t currentSilenceByte = m_cachedSilenceByte;
 
-    // SDK 148: Assigner NOTRE buffer à la structure diretta_stream
-    if (m_streamBuffer.empty() || m_streamBufferSize < static_cast<size_t>(currentBytesPerBuffer)) {
-        DIRETTA_LOG("ERROR: Internal stream buffer not allocated! Size=" << m_streamBufferSize
-                    << " needed=" << currentBytesPerBuffer);
-        m_workerActive = false;
-        return false;
+    // PCM buffer rounding drift fix: accumulator adjusts buffer size for 44.1k family
+    // Uses cached remainder/bytesPerFrame, only accumulator is per-call
+    if (m_cachedFramesPerBufferRemainder != 0) {
+        uint32_t acc = m_framesPerBufferAccumulator.load(std::memory_order_relaxed);
+        acc += m_cachedFramesPerBufferRemainder;
+        if (acc >= 1000) {
+            acc -= 1000;
+            currentBytesPerBuffer += m_cachedBytesPerFrame;
+        }
+        m_framesPerBufferAccumulator.store(acc, std::memory_order_relaxed);
     }
 
-    // Remplir la structure diretta_stream avec notre buffer
-    stream.Data.P = m_streamBuffer.data();
-    stream.Size = m_streamBufferSize;
+    if (stream.size() != static_cast<size_t>(currentBytesPerBuffer)) {
+        stream.resize(currentBytesPerBuffer);
+    }
 
-    // Maintenant on peut utiliser le buffer
-    uint8_t* dest = static_cast<uint8_t*>(stream.Data.P);
+    uint8_t* dest = reinterpret_cast<uint8_t*>(stream.get_16());
 
     RingAccessGuard ringGuard(m_ringUsers, m_reconfiguring);
     if (!ringGuard.active()) {
