@@ -1,8 +1,8 @@
 # Optimisation Opportunities
 
-**Date:** 2026-01-17
+**Date:** 2026-01-17 (updated 2026-01-18)
 **Scope:** Consolidated codebase review and action plan
-**Status:** Analysis complete - ready for implementation planning
+**Status:** Major optimizations complete - maintenance items remaining
 
 ---
 
@@ -10,15 +10,17 @@
 
 This document consolidates findings from:
 1. **Technical Review (Second Pass)** - Hot path analysis with execution frequency mapping
-2. **Pattern-Based Review** - Application of 9 optimisation patterns from Optimisation_Methodology.md
+2. **Pattern-Based Review** - Application of 10 optimisation patterns from Optimisation_Methodology.md
+3. **2026-01-18 Review** - Generation counter implementations (P1, P2, P3, C1, C2)
 
 ### Implementation Status
 
 | Category | Total Issues | Implemented | Remaining |
 |----------|--------------|-------------|-----------|
-| Critical (Hot Path) | 8 | 5 | 3 |
-| Secondary (Track Init) | 5 | 2 | 3 |
-| New Opportunities | 4 | 0 | 4 |
+| Critical (Hot Path) | 8 | 8 | 0 |
+| Secondary (Track Init) | 5 | 3 | 2 |
+| New Opportunities | 4 | 2 | 2 |
+| New (2026-01-18) | 4 | 0 | 4 |
 
 ---
 
@@ -32,20 +34,22 @@ This document consolidates findings from:
 │              └─► Audio callback (DirettaRenderer.cpp:154-311)      │
 │                      ├─► m_shutdownRequested check  ✓ FIXED        │
 │                      ├─► Atomic guard (no syscall)  ✓ FIXED        │
-│                      ├─► Format comparison (6 checks) ← REMAINING  │
+│                      ├─► Format comparison          ✓ FIXED        │
 │                      └─► DirettaSync::sendAudio()                  │
-│                              ├─► RingAccessGuard (2 atomics)       │
-│                              ├─► 5 atomic loads     ← REMAINING    │
+│                              ├─► RingAccessGuard    ✓ FIXED (C2)   │
+│                              ├─► Generation counter ✓ FIXED (P1)   │
 │                              └─► DirettaRingBuffer::push*()        │
-│                                      └─► writeToRing() ✓ FIXED     │
+│                                      ├─► Direct write ✓ FIXED (P2) │
+│                                      └─► Inlined loads ✓ FIXED (P3)│
 └────────────────────────────────────────────────────────────────────┘
 
 ┌─ SDK Thread (Diretta callback) ────────────────────────────────────┐
 │                                                                    │
 │  DirettaSync::getNewStream()                                       │
-│      ├─► RingAccessGuard (2 atomics)                               │
+│      ├─► RingAccessGuard            ✓ FIXED (C2)                   │
+│      ├─► Consumer generation        ✓ FIXED (C1)                   │
 │      ├─► Underrun counter (no I/O)  ✓ FIXED                        │
-│      └─► DirettaRingBuffer::pop()                                  │
+│      └─► DirettaRingBuffer::pop()   ✓ FIXED (P3)                   │
 └────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -53,7 +57,9 @@ This document consolidates findings from:
 
 ## IMPLEMENTED: Hot Path Simplifications
 
-These items from the Technical Review have been completed (see `Hot Path Simplification Report.md`):
+These items from the Technical Review have been completed:
+
+### Phase 1 (see `Hot Path Simplification Report.md`)
 
 | ID | Issue | Fix Applied |
 |----|-------|-------------|
@@ -65,222 +71,287 @@ These items from the Technical Review have been completed (see `Hot Path Simplif
 | S1 | Disabled code blocks | Removed ~75 lines |
 | S2 | Legacy pushDSDPlanar | Replaced with `pushDSDPlanarOptimized` |
 
+### Phase 2: Generation Counters (2026-01-18)
+
+| ID | Optimisation | Location | Impact |
+|----|--------------|----------|--------|
+| P1 | Format generation counter | sendAudio | 7 atomics → 1 |
+| P2 | Direct write API | ring buffer push | Skip wraparound ~99% |
+| P3 | Inline position loads | ring buffer | 2 redundant loads eliminated |
+| C1 | State generation counter | getNewStream | 5 atomics → 1 |
+| C2 | Relaxed ordering in guard | RingAccessGuard | Lighter atomic ops |
+
+**P1 Implementation (DirettaSync.cpp:1140-1148):**
+```cpp
+uint32_t gen = m_formatGeneration.load(std::memory_order_acquire);
+if (gen != m_cachedFormatGen) {
+    // Cold path: reload all format values (only on format change)
+    m_cachedDsdMode = m_isDsdMode.load(std::memory_order_acquire);
+    // ... 6 more cached values
+    m_cachedFormatGen = gen;
+}
+// Hot path: use cached values directly
+```
+
+**C1 Implementation (DirettaSync.cpp:1240-1248):**
+```cpp
+uint32_t gen = m_consumerStateGen.load(std::memory_order_acquire);
+if (gen != m_cachedConsumerGen) {
+    m_cachedBytesPerBuffer = m_bytesPerBuffer.load(std::memory_order_acquire);
+    m_cachedSilenceByte = m_ringBuffer.silenceByte();
+    m_cachedConsumerIsDsd = m_isDsdMode.load(std::memory_order_acquire);
+    m_cachedConsumerSampleRate = m_sampleRate.load(std::memory_order_acquire);
+    m_cachedConsumerGen = gen;
+}
+```
+
+**C2 Implementation (DirettaSync.cpp:14-43):**
+```cpp
+// Increment: stays acquire (required for correctness)
+users_.fetch_add(1, std::memory_order_acquire);
+// Bail-out: relaxed (never entered guarded section)
+users_.fetch_sub(1, std::memory_order_relaxed);
+// Exit: release (sufficient for visibility)
+users_.fetch_sub(1, std::memory_order_release);
+```
+
+### Additional Implemented Items
+
+| ID | Issue | Fix Applied |
+|----|-------|-------------|
+| R1 | Cache atomic loads in sendAudio | Implemented via P1 generation counter |
+| R2 | Format generation counter | Implemented (m_formatGeneration) |
+| R3 | RingAccessGuard ordering | Implemented via C2 |
+| N1 | Direct Write API | Implemented (getDirectWriteRegion/commitDirectWrite) |
+| N3 | Consolidate AudioEngine LUT | Implemented (uses DirettaRingBuffer::kBitReverseLUT) |
+| S4 | Retry constants | Implemented (DirettaRetry namespace) |
+
 ---
 
 ## REMAINING: Critical Hot Path Issues
 
-### R1: Cache Atomic Loads in sendAudio (was C2)
+**All critical hot path issues have been resolved.** See IMPLEMENTED section above.
 
-**Pattern:** #3 (Decision Point Relocation)
-**Location:** `DirettaSync.cpp` sendAudio()
-**Frequency:** Every audio frame
-
-**Issue:** 5 atomic loads for values that never change during playback:
-```cpp
-bool dsdMode = m_isDsdMode.load(std::memory_order_acquire);
-bool pack24bit = m_need24BitPack.load(std::memory_order_acquire);
-bool upsample16to32 = m_need16To32Upsample.load(std::memory_order_acquire);
-int numChannels = m_channels.load(std::memory_order_acquire);
-int bytesPerSample = m_bytesPerSample.load(std::memory_order_acquire);
-```
-
-**Impact:** 5 memory barriers × thousands of frames/sec
-
-**Fix:** Cache in struct at track open (see Appendix A.3)
-
-**Effort:** Medium | **Risk:** Low | **Impact:** High
+The generation counter pattern (P1, C1) combined with ring buffer optimizations (P2, P3) and memory ordering refinements (C2) have eliminated all per-frame atomic load overhead.
 
 ---
 
-### R2: Format Comparison Every Frame (was C3)
+## REMAINING: Secondary Issues
 
-**Pattern:** #3 (Decision Point Relocation)
-**Location:** `DirettaRenderer.cpp:213-216`
-**Frequency:** Every audio frame
+### S3: Consolidate Format Transition Logic
 
-**Issue:** 4 comparisons on every frame:
-```cpp
-bool formatChanged = (currentSyncFormat.sampleRate != format.sampleRate ||
-                     currentSyncFormat.bitDepth != format.bitDepth ||
-                     currentSyncFormat.channels != format.channels ||
-                     currentSyncFormat.isDSD != format.isDSD);
-```
+**Pattern:** Maintainability
+**Location:** `DirettaSync.cpp:335-534`
+**Status:** Low priority (cold path only)
 
-**Fix:** Use format generation counter - single integer comparison
+~200 lines of nested conditionals in `open()`. Could be refactored for clarity but has no performance impact.
 
-**Effort:** Medium | **Risk:** Low | **Impact:** Medium
+**Effort:** High | **Impact:** Maintainability only
 
 ---
 
-### R3: RingAccessGuard Atomic Operations (was C5)
+### S5: DSD Diagnostic Code Compile Flag
 
-**Pattern:** #9 (Syscall Elimination) - partial
-**Location:** `DirettaSync.cpp:16-27`
-**Frequency:** Every sendAudio() and getNewStream() call
+**Pattern:** #2 (Processing Layer Bypass)
+**Location:** `AudioEngine.cpp:177-200`
+**Status:** Not wrapped in compile flag
 
-**Issue:** Two `fetch_add`/`fetch_sub` with `acq_rel` barriers per function:
+Audirvana URL detection and stream analysis runs on every file open:
 ```cpp
-users_.fetch_add(1, std::memory_order_acq_rel);  // Entry
-users_.fetch_sub(1, std::memory_order_acq_rel);  // Exit
+bool isAudirvana = (url.find("Audirvana") != std::string::npos);
+if (isAudirvana) {
+    // Diagnostic logging...
+}
 ```
 
-**Impact:** Full memory barriers even though reconfiguration is rare.
+**Fix:** Wrap in `#ifdef DIRETTA_DEBUG` or remove for production.
 
-**Fix:** Consider relaxed memory ordering for statistics, or thread-local counters.
-
-**Effort:** High | **Risk:** High | **Impact:** Medium
+**Effort:** Trivial | **Impact:** Minor (cold path)
 
 ---
 
-## NEW: Additional Opportunities
-
-### N1: Direct Write API for Ring Buffer
-
-**Pattern:** #8 (Direct Write APIs)
-**Location:** `DirettaRingBuffer.h`
-**Status:** Designed in `2026-01-16-direct-pcm-fast-path-design.md`, not implemented
-
-**Proposed API:**
-```cpp
-struct WriteSpan {
-    uint8_t* ptr;
-    size_t maxBytes;
-};
-
-WriteSpan getWriteSpan() const;
-void commitWrite(size_t bytes);
-```
-
-**Benefit:** Zero-copy writes for 32-bit PCM when contiguous space available.
-
-| Input Format | Current | With Direct Write |
-|--------------|---------|-------------------|
-| S32LE WAV | 1 copy | 0 copies |
-| S16LE | 1 copy | 0 copies |
-
-**Effort:** Medium | **Impact:** High for WAV playback
-
----
+## REMAINING: Performance Opportunities
 
 ### N2: Raw PCM Fast Path (FFmpeg Bypass)
 
 **Pattern:** #2 (Processing Layer Bypass)
 **Location:** `AudioEngine.cpp`
-**Status:** Designed in `2026-01-16-direct-pcm-fast-path-design.md`, not implemented
+**Status:** Partially implemented (bypass mode exists, but not raw packet passthrough)
 
-For uncompressed WAV (PCM_S16LE, PCM_S24LE, PCM_S32LE), bypass FFmpeg decode:
+For uncompressed WAV (PCM_S16LE, PCM_S24LE, PCM_S32LE), could bypass FFmpeg decode entirely:
 
-**Current:**
-```
-av_read_frame() → avcodec_send_packet() → avcodec_receive_frame() → AudioBuffer
-```
-
-**Proposed:**
-```
-av_read_frame() → packet.data direct → AudioBuffer
-```
-
-**Benefit:** Eliminates 2 FFmpeg API calls + 1 memcpy per frame for WAV.
+**Current:** Bypass mode skips resampler when formats match
+**Proposed:** Also bypass `avcodec_send_packet()`/`avcodec_receive_frame()` for raw PCM
 
 **Effort:** High | **Impact:** High for WAV playback
-
----
-
-### N3: Consolidate Duplicate Bit Reversal LUT in AudioEngine
-
-**Pattern:** #6 (Cache Locality)
-**Location:** `AudioEngine.cpp:711-728`
-
-AudioEngine has its own 256-byte bit reversal table, identical to `DirettaRingBuffer::kBitReverseLUT`.
-
-**Fix:** Reference shared LUT:
-```cpp
-const uint8_t* rev = DirettaRingBuffer::kBitReverseLUT;
-```
-
-**Effort:** Trivial | **Impact:** Low (code size, cache)
 
 ---
 
 ### N4: SIMD Memcpy for Fixed Sizes
 
 **Pattern:** #5 (Timing Variance Reduction)
-**Location:** `DirettaRingBuffer.h` writeToRing
+**Location:** `DirettaRingBuffer.h`
+**Status:** Not implemented
 
-The ~176-byte buffer copies (stereo 44.1kHz) could use explicit SIMD for consistent timing:
-
-```cpp
-// For 176-byte stereo frames (11 × 16 bytes)
-inline void memcpy_176(uint8_t* dst, const uint8_t* src) {
-    __m128i* d = reinterpret_cast<__m128i*>(dst);
-    const __m128i* s = reinterpret_cast<const __m128i*>(src);
-    for (int i = 0; i < 11; i++) {
-        _mm_store_si128(d + i, _mm_load_si128(s + i));
-    }
-}
-```
+The ~176-byte buffer copies (stereo 44.1kHz) could use explicit SIMD for consistent timing.
 
 **Effort:** Medium | **Impact:** Low-Medium
 
 ---
 
-## REMAINING: Secondary (Track Initialization)
+## NEW: Opportunities Identified 2026-01-18
 
-### S3: Consolidate Format Transition Logic
+### N5: DSD Retry Sleep Pattern
 
-**Location:** `DirettaSync.cpp:335-534`
+**Pattern:** #7 (Flow Control Tuning)
+**Location:** `DirettaRenderer.cpp:261-276`
+**Status:** Could be improved
 
-~200 lines of nested conditionals in `open()`. Could be refactored for clarity.
+Current DSD audio callback uses fixed 5ms sleep between retries:
+```cpp
+for (int retries = 0; retries < 100 && !success; retries++) {
+    // ... attempt send ...
+    if (!success) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+}
+```
 
-**Effort:** High | **Impact:** Maintainability only
+With 100 max retries at 5ms each, this could block for up to 500ms.
 
----
+**Fix:** Use exponential backoff or threshold-based early exit:
+```cpp
+int sleepMs = std::min(5 << (retries / 10), 50);  // 5ms → 50ms exponential
+```
 
-### S4: Consolidate Retry Constants
-
-**Location:** `DirettaSync.cpp` scattered
-
-Magic numbers for retry counts and delays should be named constants.
-
-**Effort:** Low | **Impact:** Maintainability only
-
----
-
-### S5: Remove DSD Diagnostic Code
-
-**Location:** `AudioEngine.cpp:348-390, 666-707`
-
-Packet diagnostics with allocations at track open. Consider compile-time flag.
-
-**Effort:** Low | **Impact:** Cold path only
+**Effort:** Low | **Risk:** Low | **Impact:** Low (error path only)
 
 ---
 
-## Implementation Roadmap
+### N6: S24 Detection Timeout Scaling
 
-### Phase 1: Quick Wins (Trivial/Low effort)
+**Pattern:** #5 (Timing Variance Reduction)
+**Location:** `DirettaRingBuffer.h:1095`
+**Status:** Sample-based timeout
 
-| Item | Effort | Files |
-|------|--------|-------|
-| N3: Consolidate AudioEngine LUT | Trivial | AudioEngine.cpp |
-| S4: Retry constants | Low | DirettaSync.cpp |
-| S5: DSD diagnostics flag | Low | AudioEngine.cpp |
+Current implementation:
+```cpp
+static constexpr size_t DEFERRED_TIMEOUT_SAMPLES = 48000;  // ~1 second at 48kHz
+```
 
-### Phase 2: Moderate Effort
+For very high sample rates (DSD512 = 24.576MHz), this timeout may be too short.
 
-| Item | Effort | Files |
-|------|--------|-------|
-| R1: Cache atomic loads | Medium | DirettaSync.h/cpp |
-| R2: Format generation counter | Medium | DirettaRenderer.cpp, DirettaSync.h |
+**Fix:** Make timeout time-based or scale by sample rate:
+```cpp
+size_t timeoutSamples = sampleRate;  // Always ~1 second regardless of rate
+```
 
-### Phase 3: Significant Effort
+**Effort:** Low | **Risk:** Low | **Impact:** Low (edge case)
 
-| Item | Effort | Files |
-|------|--------|-------|
-| N1: Direct Write API | Medium | DirettaRingBuffer.h, DirettaSync.cpp |
-| N2: Raw PCM Fast Path | High | AudioEngine.cpp/h |
-| N4: SIMD memcpy | Medium | DirettaRingBuffer.h |
-| R3: RingAccessGuard | High | DirettaSync.cpp |
+---
+
+### N7: Format Transition Silence Scaling
+
+**Pattern:** #7 (Flow Control Tuning)
+**Location:** `DirettaSync.cpp:372-379, 655, 1071, 1088`
+**Status:** Fixed buffer counts
+
+Current silence buffer requests use fixed counts:
+```cpp
+requestShutdownSilence(30);  // Fixed count
+```
+
+However, `getNewStream()` already has DSD rate-dependent scaling:
+```cpp
+int dsdMultiplier = currentSampleRate / 2822400;  // DSD64 = 1
+int targetWarmupMs = 50 * std::max(1, dsdMultiplier);
+```
+
+**Fix:** Apply similar scaling to all silence request points for consistency.
+
+**Effort:** Low | **Risk:** Low | **Impact:** Low (transition quality)
+
+---
+
+### N8: Prefill Check Batching
+
+**Pattern:** #3 (Decision Point Relocation)
+**Location:** `DirettaSync.cpp:1199-1205`
+**Status:** Checked every frame
+
+Prefill completion is checked on every `sendAudio()` call:
+```cpp
+if (!m_prefillComplete.load(std::memory_order_acquire)) {
+    if (m_ringBuffer.getAvailable() >= m_prefillTarget) {
+        m_prefillComplete = true;
+    }
+}
+```
+
+**Impact:** Minimal - prefill typically completes within ~100ms of track start.
+
+**Fix:** Could batch check (e.g., every 10th frame) for high bitrates, but benefit is marginal.
+
+**Effort:** Low | **Risk:** Low | **Impact:** Negligible
+
+---
+
+## ARCHIVED: Previously Documented (Now Implemented)
+
+### ~~N1: Direct Write API for Ring Buffer~~
+
+✓ IMPLEMENTED as P2 (getDirectWriteRegion/commitDirectWrite)
+
+---
+
+### ~~N3: Consolidate Duplicate Bit Reversal LUT~~
+
+✓ IMPLEMENTED (AudioEngine.cpp includes DirettaRingBuffer.h for shared kBitReverseLUT)
+
+---
+
+### ~~S4: Consolidate Retry Constants~~
+
+✓ IMPLEMENTED (DirettaRetry namespace in DirettaSync.h:76-94)
+
+---
+
+## Implementation Roadmap (Updated 2026-01-18)
+
+### ✓ COMPLETED: All Critical Hot Path Optimizations
+
+| Item | Status | Implementation |
+|------|--------|----------------|
+| P1: Format generation counter | ✓ Done | DirettaSync.cpp:1140-1148 |
+| P2: Direct write API | ✓ Done | DirettaRingBuffer.h:212-263 |
+| P3: Inline position loads | ✓ Done | DirettaRingBuffer.h:296-322 |
+| C1: Consumer generation counter | ✓ Done | DirettaSync.cpp:1240-1248 |
+| C2: Lighter guard ordering | ✓ Done | DirettaSync.cpp:14-43 |
+| N1: Direct Write API | ✓ Done | DirettaRingBuffer.h |
+| N3: Consolidate LUT | ✓ Done | AudioEngine.cpp |
+| S4: Retry constants | ✓ Done | DirettaRetry namespace |
+
+### Phase 1: Quick Wins (Remaining)
+
+| Item | Effort | Files | Priority |
+|------|--------|-------|----------|
+| S5: Audirvana diagnostics flag | Trivial | AudioEngine.cpp | Low |
+| N5: DSD retry backoff | Low | DirettaRenderer.cpp | Low |
+| N7: Silence scaling consistency | Low | DirettaSync.cpp | Low |
+
+### Phase 2: Moderate Effort (Remaining)
+
+| Item | Effort | Files | Priority |
+|------|--------|-------|----------|
+| N4: SIMD memcpy | Medium | DirettaRingBuffer.h | Low |
+| N6: S24 timeout scaling | Low | DirettaRingBuffer.h | Low |
+
+### Phase 3: Significant Effort (Remaining)
+
+| Item | Effort | Files | Priority |
+|------|--------|-------|----------|
+| N2: Raw PCM Fast Path | High | AudioEngine.cpp/h | Medium |
+| S3: Format transition refactor | High | DirettaSync.cpp | Low (maintainability) |
 
 ---
 
@@ -805,11 +876,31 @@ After each optimisation, re-measure to validate impact.
 |---------|---------------|
 | Memory Allocation Elimination | m_packet, m_frame reuse |
 | Processing Layer Bypass | PCM bypass in AudioDecoder |
+| Decision Point Relocation | DSD conversion mode at track open |
 | O(1) Data Structures | AVAudioFifo, power-of-2 ring buffer |
-| Cache Locality | alignas(64) on ring positions |
+| Timing Variance Reduction | Fixed staging buffer sizes |
+| Cache Locality | alignas(64) on ring positions, shared LUT |
+| Flow Control Tuning | 500µs micro-sleep, adaptive retry |
+| Direct Write APIs | getDirectWriteRegion/commitDirectWrite |
 | Syscall Elimination | Lock-free callback sync |
-| Flow Control Tuning | 500µs micro-sleep |
-| Function Specialisation | DSD conversion modes |
+| **Generation Counter Caching** | P1: sendAudio (7→1 atomics), C1: getNewStream (5→1 atomics) |
+
+---
+
+## Summary (2026-01-18)
+
+**Hot path optimizations are complete.** All critical per-frame overhead has been eliminated through:
+
+1. **P1/C1**: Generation counters reduce atomic loads from 12 to 2 per cycle
+2. **P2/P3**: Ring buffer optimizations eliminate redundant position loads
+3. **C2**: Memory ordering refinements reduce barrier overhead
+
+**Remaining items** are either:
+- Low-impact edge cases (N5, N6, N7, N8)
+- Maintainability improvements (S3, S5)
+- Future performance opportunities (N2, N4)
+
+None of the remaining items affect the critical hot path.
 
 ---
 

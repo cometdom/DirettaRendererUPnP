@@ -426,6 +426,17 @@ private:
     int m_cachedBytesPerSample{2};
     DirettaRingBuffer::DSDConversionMode m_cachedDsdConversionMode{DirettaRingBuffer::DSDConversionMode::Passthrough};
 
+    // C1: Consumer generation counter for getNewStream fast path
+    // Incremented alongside m_formatGeneration in configureRingXXX
+    std::atomic<uint32_t> m_consumerStateGen{0};
+
+    // Cached consumer state (only accessed by worker thread)
+    uint32_t m_cachedConsumerGen{0};
+    int m_cachedBytesPerBuffer{176};
+    uint8_t m_cachedSilenceByte{0};
+    bool m_cachedConsumerIsDsd{false};
+    int m_cachedConsumerSampleRate{44100};
+
     // Prefill and stabilization
     size_t m_prefillTarget = 0;
     std::atomic<bool> m_prefillComplete{false};

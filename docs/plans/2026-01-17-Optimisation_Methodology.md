@@ -1,6 +1,6 @@
 # Optimisation Methodology
 
-**Date:** 2026-01-17
+**Date:** 2026-01-17 (updated 2026-01-18)
 **Source:** Analysis of docs/plans/ design documents
 **Context:** Collaboration with high-level expert on audio rendering quality
 
@@ -9,6 +9,108 @@
 This document captures the optimisation patterns identified in the DirettaRendererUPnP-X codebase improvements. Beyond the two primary techniques (hot path simplification and SIMD/hardware delegation), several additional patterns emerged that contribute to improved audio reproduction quality.
 
 The underlying philosophy: **minimise variance in execution time, not just average execution time**. In audio rendering, jitter (timing variance) directly affects perceived quality.
+
+---
+
+## Design Document Structure
+
+Each optimisation should be documented with the following structure:
+
+### 1. Identification
+
+Assign each optimisation a unique ID for tracking:
+- **P1, P2, P3...** - Producer-side (sendAudio path)
+- **C1, C2, C3...** - Consumer-side (getNewStream path)
+- **R1, R2...** - Ring buffer operations
+- **D1, D2...** - Decoder/audio engine
+
+### 2. Impact Summary Table
+
+Provide quantified before/after metrics at the document start:
+
+| ID | Optimisation | Location | Impact |
+|----|--------------|----------|--------|
+| P1 | Format generation counter | sendAudio | 7 atomics → 1 |
+| C1 | State generation counter | getNewStream | 5 atomics → 1 |
+
+### 3. Problem-Solution Format
+
+For each optimisation:
+
+```markdown
+## P1: Format Generation Counter
+
+### Problem
+`sendAudio()` loads 7 atomics on every call (DirettaSync.cpp:942-948):
+[code snippet showing current inefficiency]
+
+Format rarely changes (~0.1% of calls), yet we pay full cost every time.
+
+### Solution
+[code snippet showing the fix]
+
+### Increment/Modification Points
+- `configureRingPCM()` - at end of function
+- `configureRingDSD()` - at end of function
+```
+
+### 4. Hot/Cold Path Classification
+
+Explicitly label execution frequency:
+- **Hot path** (99.9% of calls): Single generation counter check
+- **Cold path** (format change only): Full reload of cached values
+
+### 5. State Classification
+
+For caching optimisations, classify state as:
+- **Stable state**: Configuration set at track open, cached via generation counter
+- **Volatile state**: Can change mid-playback, must check fresh every call
+
+Example from C1:
+```cpp
+// Stable state - use cached values
+int currentBytesPerBuffer = m_cachedBytesPerBuffer;
+
+// Volatile state - check fresh
+if (m_stopRequested.load(std::memory_order_acquire)) { ... }
+```
+
+### 6. Memory Ordering Justification
+
+When modifying atomic operations, document why each ordering is safe:
+
+```markdown
+- **Increment must stay acquire**: Ensures visibility to beginReconfigure()
+  before any ring buffer operations
+- **Decrement can use release**: Ensures all ring ops complete before
+  count decrements
+- **Bail-out decrement uses relaxed**: Never entered guarded section,
+  no ordering needed
+```
+
+### 7. Files Modified Summary
+
+| File | Changes |
+|------|---------|
+| `src/DirettaSync.h` | Add generation counters and cached members |
+| `src/DirettaSync.cpp` | Generation checks, increments, lighter ordering |
+
+### 8. Testing Checklist
+
+#### Functional
+- [ ] PCM 16-bit/44.1kHz playback
+- [ ] PCM 24-bit/96kHz playback
+- [ ] DSD64/DSD128 playback
+- [ ] Format changes mid-stream
+- [ ] Gapless track transitions
+
+#### Stress
+- [ ] Rapid format switching
+- [ ] High CPU load during playback
+- [ ] Extended sessions (memory stability)
+
+#### Listening
+- [ ] A/B comparison with previous build
 
 ---
 
@@ -134,6 +236,49 @@ The underlying philosophy: **minimise variance in execution time, not just avera
 
 ---
 
+## Pattern 10: Generation Counter Caching
+
+**Principle:** Use a single generation counter to batch multiple atomic loads into one check.
+
+**Problem:**
+```cpp
+// Before: 7 atomic loads on EVERY call
+bool dsdMode = m_isDsdMode.load(std::memory_order_acquire);
+bool pack24bit = m_need24BitPack.load(std::memory_order_acquire);
+bool upsample = m_need16To32Upsample.load(std::memory_order_acquire);
+// ... 4 more atomics
+```
+
+Format rarely changes during playback (~0.1% of calls), yet we pay for 7 atomic loads every time.
+
+**Solution:**
+```cpp
+// After: 1 atomic load in common case
+uint32_t gen = m_formatGeneration.load(std::memory_order_acquire);
+if (gen != m_cachedFormatGen) {
+    // Cold path: reload all (only on format change)
+    m_cachedDsdMode = m_isDsdMode.load(std::memory_order_acquire);
+    // ... reload others
+    m_cachedFormatGen = gen;
+}
+// Hot path: use cached values
+bool dsdMode = m_cachedDsdMode;
+```
+
+**State Classification:**
+- **Stable state** (cached): Format parameters set at track open
+- **Volatile state** (checked fresh): `m_stopRequested`, `m_silenceBuffersRemaining`
+
+**Implementation Pattern:**
+1. Add generation counter atomic: `std::atomic<uint32_t> m_formatGeneration{0}`
+2. Add cached values (non-atomic, thread-local access only)
+3. Increment generation at configuration points
+4. Check generation before using cached values
+
+**Rationale:** Reduces N atomic loads to 1 in the common case. The cache coherency overhead of a single atomic is much lower than N separate atomics, especially on multi-core systems where each atomic may require cache line invalidation.
+
+---
+
 ## Pattern Taxonomy
 
 | Category | Pattern | Primary Benefit |
@@ -147,6 +292,7 @@ The underlying philosophy: **minimise variance in execution time, not just avera
 | **Memory** | Allocation elimination | Moves allocation to cold path |
 | **Data Flow** | Direct write APIs | Reduces copy count |
 | **Scheduling** | Flow control tuning | Balances latency vs CPU usage |
+| **Atomic** | Generation counter caching | Batches N atomics into 1 check |
 
 ---
 
@@ -163,6 +309,7 @@ The underlying philosophy: **minimise variance in execution time, not just avera
 7. **Flow Control Tuning** - Apply to producer/consumer boundaries
 8. **Direct Write APIs** - Apply when intermediate buffers serve no transformation purpose
 9. **Syscall Elimination** - Apply to any synchronisation or I/O in the hot path
+10. **Generation Counter Caching** - Apply when multiple atomics are loaded together and change infrequently
 
 ### Measurement Approach
 
@@ -176,6 +323,47 @@ An optimisation that reduces mean latency but increases P99 or jitter may degrad
 
 ---
 
+## Implementation Task Structure
+
+For implementation plans, use the following task template:
+
+```markdown
+## Task N: [Brief Description] (Optimization ID)
+
+**Files:**
+- Modify: `src/File.cpp:123` (description)
+
+**Step 1: [Action]**
+[Code or instructions]
+
+**Step 2: Verify compilation**
+Run: `make -j4 2>&1 | head -20`
+Expected: BUILD SUCCESS
+
+**Step 3: Commit**
+git commit -m "$(cat <<'EOF'
+type(ID): brief description
+
+Detailed explanation of what changed and why.
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+EOF
+)"
+```
+
+**Commit Message Prefixes:**
+- `perf(P1):` - Performance improvement
+- `refactor(C1):` - Code restructuring without behavior change
+- `fix:` - Bug fix
+- `feat:` - New feature
+
+**Task Granularity:**
+- One task per logical change
+- Build verification after each task
+- Commit after each task (enables bisection)
+
+---
+
 ## References
 
 - `docs/plans/2026-01-11-audio-memory-optimization-design.md` - Staging buffers, SIMD conversions
@@ -184,4 +372,6 @@ An optimisation that reduces mean latency but increases P99 or jitter may degrad
 - `docs/plans/2026-01-15-pcm-bypass-optimization-design.md` - PCM bypass, S24 detection
 - `docs/plans/2026-01-15-dsd-conversion-optimization-design.md` - Function specialisation
 - `docs/plans/2026-01-16-direct-pcm-fast-path-design.md` - Ring buffer direct write
-- `docs/Hot Path Simplification Report.md` - Implementation summary
+- `docs/plans/2026-01-17-Hot Path Simplification Report.md` - Implementation summary
+- `docs/plans/2026-01-18-hot-path-generation-counters-design.md` - Generation counter pattern
+- `docs/plans/2026-01-18-hot-path-generation-counters-impl.md` - Task-based implementation example
