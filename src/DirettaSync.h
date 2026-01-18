@@ -26,6 +26,7 @@
 #include <thread>
 #include <iostream>
 #include <cmath>
+#include <vector>
 
 //=============================================================================
 // Debug Logging
@@ -449,6 +450,13 @@ private:
     std::atomic<int> m_streamCount{0};
     std::atomic<int> m_pushCount{0};
     std::atomic<uint32_t> m_underrunCount{0};
+
+    //=========================================================================
+    // SDK 148: Stream Buffer Management
+    //=========================================================================
+
+    std::vector<uint8_t> m_streamBuffer;
+    size_t m_streamBufferSize = 0;
 };
 
 #endif // DIRETTA_SYNC_H

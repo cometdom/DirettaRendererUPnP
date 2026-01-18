@@ -986,6 +986,15 @@ void DirettaSync::configureRingPCM(int rate, int channels, int direttaBps, int i
     m_prefillTarget = std::min(m_prefillTarget, ringSize / 4);
     m_prefillComplete = false;
 
+    // SDK 148: Allouer buffer pour getNewStream
+    // Allouer avec marge de sécurité (2x la taille nécessaire)
+    size_t bufferSize = static_cast<size_t>(m_bytesPerBuffer.load(std::memory_order_acquire)) * 2;
+    if (bufferSize > m_streamBufferSize) {
+        m_streamBuffer.resize(bufferSize);
+        m_streamBufferSize = bufferSize;
+        DIRETTA_LOG("Allocated stream buffer: " << bufferSize << " bytes");
+    }
+
     DIRETTA_LOG("Ring PCM: " << rate << "Hz " << channels << "ch "
                 << direttaBps << "bps, buffer=" << ringSize
                 << ", prefill=" << m_prefillTarget);
@@ -1021,6 +1030,15 @@ void DirettaSync::configureRingDSD(uint32_t byteRate, int channels) {
     m_prefillTarget = DirettaBuffer::calculatePrefill(bytesPerSecond, true, false);
     m_prefillTarget = std::min(m_prefillTarget, ringSize / 4);
     m_prefillComplete = false;
+
+    // SDK 148: Allouer buffer pour getNewStream
+    // Allouer avec marge de sécurité (2x la taille nécessaire)
+    size_t bufferSize = static_cast<size_t>(m_bytesPerBuffer.load(std::memory_order_acquire)) * 2;
+    if (bufferSize > m_streamBufferSize) {
+        m_streamBuffer.resize(bufferSize);
+        m_streamBufferSize = bufferSize;
+        DIRETTA_LOG("Allocated stream buffer: " << bufferSize << " bytes");
+    }
 
     DIRETTA_LOG("Ring DSD: byteRate=" << byteRate << " ch=" << channels
                 << " buffer=" << ringSize << " prefill=" << m_prefillTarget);
@@ -1216,9 +1234,7 @@ float DirettaSync::getBufferLevel() const {
 // DIRETTA::Sync Overrides
 //=============================================================================
 
-bool DirettaSync::getNewStream(diretta_stream& baseStream) {
-    // SDK 148+ uses diretta_stream& but passes DIRETTA::Stream objects
-    DIRETTA::Stream& stream = static_cast<DIRETTA::Stream&>(baseStream);
+bool DirettaSync::getNewStream(diretta_stream& stream) {
 
     m_workerActive = true;
 
@@ -1238,11 +1254,20 @@ bool DirettaSync::getNewStream(diretta_stream& baseStream) {
     int currentBytesPerBuffer = m_cachedBytesPerBuffer;
     uint8_t currentSilenceByte = m_cachedSilenceByte;
 
-    if (stream.size() != static_cast<size_t>(currentBytesPerBuffer)) {
-        stream.resize(currentBytesPerBuffer);
+    // SDK 148: Assigner NOTRE buffer à la structure diretta_stream
+    if (m_streamBuffer.empty() || m_streamBufferSize < static_cast<size_t>(currentBytesPerBuffer)) {
+        DIRETTA_LOG("ERROR: Internal stream buffer not allocated! Size=" << m_streamBufferSize
+                    << " needed=" << currentBytesPerBuffer);
+        m_workerActive = false;
+        return false;
     }
 
-    uint8_t* dest = reinterpret_cast<uint8_t*>(stream.get_16());
+    // Remplir la structure diretta_stream avec notre buffer
+    stream.Data.P = m_streamBuffer.data();
+    stream.Size = m_streamBufferSize;
+
+    // Maintenant on peut utiliser le buffer
+    uint8_t* dest = static_cast<uint8_t*>(stream.Data.P);
 
     RingAccessGuard ringGuard(m_ringUsers, m_reconfiguring);
     if (!ringGuard.active()) {
