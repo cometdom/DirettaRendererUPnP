@@ -1238,11 +1238,17 @@ bool DirettaSync::getNewStream(diretta_stream& stream) {
     int currentBytesPerBuffer = m_cachedBytesPerBuffer;
     uint8_t currentSilenceByte = m_cachedSilenceByte;
 
-    if (stream.size() != static_cast<size_t>(currentBytesPerBuffer)) {
-        stream.resize(currentBytesPerBuffer);
+    // SDK 148: diretta_stream is a C struct with .Size and .Data.P
+    // No resize() available - buffer is pre-allocated by SDK
+    if (stream.Size < static_cast<unsigned long long>(currentBytesPerBuffer)) {
+        DIRETTA_LOG("ERROR: Stream buffer too small: " << stream.Size 
+                    << " < " << currentBytesPerBuffer);
+        std::memset(reinterpret_cast<uint8_t*>(stream.Data.P), currentSilenceByte, stream.Size);
+        m_workerActive = false;
+        return true;  // Return silence instead of failing
     }
 
-    uint8_t* dest = reinterpret_cast<uint8_t*>(stream.get_16());
+    uint8_t* dest = static_cast<uint8_t*>(stream.Data.P);
 
     RingAccessGuard ringGuard(m_ringUsers, m_reconfiguring);
     if (!ringGuard.active()) {
