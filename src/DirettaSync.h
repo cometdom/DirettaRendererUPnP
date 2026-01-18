@@ -454,7 +454,7 @@ private:
     //=========================================================================
     // SDK 148: Stream Buffer Management
     //=========================================================================
-
+    std::mutex m_streamBufferMutex;
     std::vector<uint8_t> m_streamBuffer;
     size_t m_streamBufferSize = 0;
 };

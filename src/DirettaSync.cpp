@@ -986,14 +986,16 @@ void DirettaSync::configureRingPCM(int rate, int channels, int direttaBps, int i
     m_prefillTarget = std::min(m_prefillTarget, ringSize / 4);
     m_prefillComplete = false;
 
-    // SDK 148: Allouer buffer pour getNewStream
-    // Allouer avec marge de sécurité (2x la taille nécessaire)
+    // SDK 148: Allouer buffer pour getNewStream (thread-safe)
     size_t bufferSize = static_cast<size_t>(m_bytesPerBuffer.load(std::memory_order_acquire)) * 2;
+    {
+    std::lock_guard<std::mutex> lock(m_streamBufferMutex);  // ← LOCK !
     if (bufferSize > m_streamBufferSize) {
         m_streamBuffer.resize(bufferSize);
         m_streamBufferSize = bufferSize;
         DIRETTA_LOG("Allocated stream buffer: " << bufferSize << " bytes");
     }
+}
 
     DIRETTA_LOG("Ring PCM: " << rate << "Hz " << channels << "ch "
                 << direttaBps << "bps, buffer=" << ringSize
@@ -1031,14 +1033,17 @@ void DirettaSync::configureRingDSD(uint32_t byteRate, int channels) {
     m_prefillTarget = std::min(m_prefillTarget, ringSize / 4);
     m_prefillComplete = false;
 
-    // SDK 148: Allouer buffer pour getNewStream
-    // Allouer avec marge de sécurité (2x la taille nécessaire)
+    // SDK 148: Allouer buffer pour getNewStream (thread-safe)
     size_t bufferSize = static_cast<size_t>(m_bytesPerBuffer.load(std::memory_order_acquire)) * 2;
+{
+    std::lock_guard<std::mutex> lock(m_streamBufferMutex);  // ← LOCK !
     if (bufferSize > m_streamBufferSize) {
         m_streamBuffer.resize(bufferSize);
         m_streamBufferSize = bufferSize;
         DIRETTA_LOG("Allocated stream buffer: " << bufferSize << " bytes");
     }
+}
+
 
     DIRETTA_LOG("Ring DSD: byteRate=" << byteRate << " ch=" << channels
                 << " buffer=" << ringSize << " prefill=" << m_prefillTarget);
