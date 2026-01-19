@@ -183,10 +183,10 @@ $(info )
 
 # FFmpeg path override (for ABI compatibility with target system)
 # Usage: make FFMPEG_PATH=/path/to/ffmpeg-headers
+#        make FFMPEG_LIB_PATH=/path/to/ffmpeg-libs
 #
-# This is critical for avoiding crashes when compile-time headers
-# don't match runtime library version (e.g., compiling against
-# FFmpeg 7.x headers but running against FFmpeg 5.x libraries)
+# CRITICAL: FFmpeg ABI mismatch causes segmentation faults!
+# Compile-time headers MUST match runtime library version.
 
 # Auto-detect local FFmpeg headers (downloaded by install.sh)
 FFMPEG_HEADERS_LOCAL = $(wildcard ./ffmpeg-headers/.version)
@@ -194,29 +194,122 @@ FFMPEG_HEADERS_LOCAL = $(wildcard ./ffmpeg-headers/.version)
 ifdef FFMPEG_PATH
     # Explicit path provided
     FFMPEG_INCLUDES = -I$(FFMPEG_PATH)
-    FFMPEG_LDFLAGS =
-    $(info FFmpeg headers: $(FFMPEG_PATH) (explicit))
+    FFMPEG_HEADER_PATH = $(FFMPEG_PATH)
 else ifneq ($(FFMPEG_HEADERS_LOCAL),)
     # Local ffmpeg-headers directory exists (from install.sh)
     FFMPEG_PATH = ./ffmpeg-headers
     FFMPEG_INCLUDES = -I$(FFMPEG_PATH)
-    FFMPEG_LDFLAGS =
-    FFMPEG_LOCAL_VER := $(shell cat ./ffmpeg-headers/.version 2>/dev/null)
-    $(info FFmpeg headers: ./ffmpeg-headers (v$(FFMPEG_LOCAL_VER)))
+    FFMPEG_HEADER_PATH = $(FFMPEG_PATH)
 else
     # Fall back to system headers
     FFMPEG_INCLUDES = -I/usr/include/ffmpeg -I/usr/include
-    FFMPEG_LDFLAGS =
-    $(info FFmpeg headers: system (/usr/include))
-    $(info )
-    $(info ╔══════════════════════════════════════════════════════════════════╗)
-    $(info ║ NOTE: Using system FFmpeg headers. If you experience crashes,    ║)
-    $(info ║ ensure headers match your runtime FFmpeg version, or run:        ║)
-    $(info ║   make FFMPEG_PATH=/path/to/ffmpeg-source                        ║)
-    $(info ║ Or use install.sh which auto-downloads matching headers.         ║)
-    $(info ╚══════════════════════════════════════════════════════════════════╝)
-    $(info )
+    FFMPEG_HEADER_PATH = /usr/include
 endif
+
+# FFmpeg library path (for linking)
+ifdef FFMPEG_LIB_PATH
+    FFMPEG_LDFLAGS = -L$(FFMPEG_LIB_PATH) -Wl,-rpath,$(FFMPEG_LIB_PATH)
+else
+    FFMPEG_LDFLAGS =
+endif
+
+# ============================================
+# FFmpeg Version Detection and Validation
+# ============================================
+
+# Detect header version from libavformat/version.h or version_major.h
+FFMPEG_HEADER_VERSION := $(shell \
+    if [ -f "$(FFMPEG_HEADER_PATH)/libavformat/version_major.h" ]; then \
+        grep -h 'LIBAVFORMAT_VERSION_MAJOR' $(FFMPEG_HEADER_PATH)/libavformat/version_major.h 2>/dev/null | grep -oE '[0-9]+' | head -1; \
+    elif [ -f "$(FFMPEG_HEADER_PATH)/libavformat/version.h" ]; then \
+        grep -h 'LIBAVFORMAT_VERSION_MAJOR' $(FFMPEG_HEADER_PATH)/libavformat/version.h 2>/dev/null | grep -oE '[0-9]+' | head -1; \
+    elif [ -f "/usr/include/ffmpeg/libavformat/version_major.h" ]; then \
+        grep -h 'LIBAVFORMAT_VERSION_MAJOR' /usr/include/ffmpeg/libavformat/version_major.h 2>/dev/null | grep -oE '[0-9]+' | head -1; \
+    elif [ -f "/usr/include/ffmpeg/libavformat/version.h" ]; then \
+        grep -h 'LIBAVFORMAT_VERSION_MAJOR' /usr/include/ffmpeg/libavformat/version.h 2>/dev/null | grep -oE '[0-9]+' | head -1; \
+    else \
+        echo "unknown"; \
+    fi)
+
+# Map libavformat major version to FFmpeg version
+# libavformat 62 = FFmpeg 8.x, 61 = FFmpeg 7.x, 60 = FFmpeg 6.x, 59 = FFmpeg 5.x, 58 = FFmpeg 4.x
+FFMPEG_HEADER_FFVERSION := $(shell \
+    case "$(FFMPEG_HEADER_VERSION)" in \
+        62) echo "8.x" ;; \
+        61) echo "7.x" ;; \
+        60) echo "6.x" ;; \
+        59) echo "5.x" ;; \
+        58) echo "4.x" ;; \
+        *) echo "unknown" ;; \
+    esac)
+
+# Detect runtime library version
+FFMPEG_LIB_VERSION := $(shell \
+    pkg-config --modversion libavformat 2>/dev/null | cut -d. -f1 || \
+    (ldconfig -p 2>/dev/null | grep libavformat | head -1 | grep -oE '[0-9]+\.[0-9]+' | cut -d. -f1) || \
+    echo "unknown")
+
+# Map runtime library to FFmpeg version
+FFMPEG_LIB_FFVERSION := $(shell \
+    case "$(FFMPEG_LIB_VERSION)" in \
+        62) echo "8.x" ;; \
+        61) echo "7.x" ;; \
+        60) echo "6.x" ;; \
+        59) echo "5.x" ;; \
+        58) echo "4.x" ;; \
+        8) echo "8.x" ;; \
+        7) echo "7.x" ;; \
+        6) echo "6.x" ;; \
+        5) echo "5.x" ;; \
+        4) echo "4.x" ;; \
+        *) echo "unknown" ;; \
+    esac)
+
+# Display FFmpeg configuration
+$(info )
+$(info ═══════════════════════════════════════════════════════)
+$(info   FFmpeg Configuration)
+$(info ═══════════════════════════════════════════════════════)
+$(info Headers path:     $(FFMPEG_HEADER_PATH))
+$(info Headers version:  libavformat $(FFMPEG_HEADER_VERSION) (FFmpeg $(FFMPEG_HEADER_FFVERSION)))
+$(info Library version:  libavformat $(FFMPEG_LIB_VERSION) (FFmpeg $(FFMPEG_LIB_FFVERSION)))
+ifdef FFMPEG_LIB_PATH
+$(info Library path:     $(FFMPEG_LIB_PATH))
+endif
+$(info ═══════════════════════════════════════════════════════)
+
+# Version mismatch detection
+ifneq ($(FFMPEG_HEADER_VERSION),$(FFMPEG_LIB_VERSION))
+    ifneq ($(FFMPEG_HEADER_VERSION),unknown)
+        ifneq ($(FFMPEG_LIB_VERSION),unknown)
+$(info )
+$(info ╔══════════════════════════════════════════════════════════════════╗)
+$(info ║  ⚠️  WARNING: FFmpeg VERSION MISMATCH DETECTED!                   ║)
+$(info ║                                                                  ║)
+$(info ║  Headers:  libavformat $(FFMPEG_HEADER_VERSION) (FFmpeg $(FFMPEG_HEADER_FFVERSION))                           ║)
+$(info ║  Library:  libavformat $(FFMPEG_LIB_VERSION) (FFmpeg $(FFMPEG_LIB_FFVERSION))                           ║)
+$(info ║                                                                  ║)
+$(info ║  This WILL cause segmentation faults at runtime!                 ║)
+$(info ║                                                                  ║)
+$(info ║  Solutions:                                                      ║)
+$(info ║  1. Download matching headers:                                   ║)
+$(info ║     wget https://ffmpeg.org/releases/ffmpeg-5.1.2.tar.xz         ║)
+$(info ║     tar xf ffmpeg-5.1.2.tar.xz && mv ffmpeg-5.1.2 ffmpeg-headers ║)
+$(info ║     make clean && make                                           ║)
+$(info ║                                                                  ║)
+$(info ║  2. Or specify matching library path:                            ║)
+$(info ║     make FFMPEG_LIB_PATH=/path/to/ffmpeg-7.x/lib                 ║)
+$(info ║                                                                  ║)
+$(info ║  3. Or use install.sh which handles this automatically           ║)
+$(info ╚══════════════════════════════════════════════════════════════════╝)
+$(info )
+ifndef FFMPEG_IGNORE_MISMATCH
+$(error FFmpeg version mismatch! Set FFMPEG_IGNORE_MISMATCH=1 to override)
+endif
+        endif
+    endif
+endif
+$(info )
 
 INCLUDES = \
     $(FFMPEG_INCLUDES) \
