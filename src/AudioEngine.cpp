@@ -410,6 +410,17 @@ bool AudioDecoder::open(const std::string& url) {
 
             m_eof = false;
 
+            // C1: Pre-allocate DSD buffers at track open to avoid first-frame allocation
+            // Size based on MAX_DSD_SAMPLES (131072) / 8 = 16384 bytes per channel
+            // Use 32KB to have headroom for any chunk size
+            static constexpr size_t DSD_BUFFER_PREALLOC = 32768;
+            if (m_dsdBufferCapacity < DSD_BUFFER_PREALLOC) {
+                m_dsdLeftBuffer.resize(DSD_BUFFER_PREALLOC);
+                m_dsdRightBuffer.resize(DSD_BUFFER_PREALLOC);
+                m_dsdBufferCapacity = DSD_BUFFER_PREALLOC;
+                DEBUG_LOG("[AudioDecoder] Pre-allocated DSD buffers: " << DSD_BUFFER_PREALLOC << " bytes/channel");
+            }
+
             std::cout << "[AudioDecoder] Opened successfully (DSD NATIVE)" << std::endl;
 
             return true;  // Exit early - no codec opening needed!
@@ -574,6 +585,8 @@ void AudioDecoder::close() {
     dsdRemainderClear();           // Reset DSD packet remainder ring
     m_bypassMode = false;          // Reset PCM bypass mode
     m_resamplerInitialized = false;
+    m_cachedResamplerDelay = 0;    // D2: Reset cached delay
+    m_delayRefreshCounter = 0;
 }
 
 size_t AudioDecoder::readSamples(AudioBuffer& buffer, size_t numSamples,
@@ -887,9 +900,16 @@ size_t AudioDecoder::readSamples(AudioBuffer& buffer, size_t numSamples,
                         }
                     }
                 } else if (m_swrContext) {
+                    // D2: Use cached resampler delay (refreshed every DELAY_REFRESH_INTERVAL frames)
+                    // swr_get_delay() stabilizes quickly - no need to call every frame
+                    if (++m_delayRefreshCounter >= DELAY_REFRESH_INTERVAL) {
+                        m_cachedResamplerDelay = swr_get_delay(m_swrContext, m_codecContext->sample_rate);
+                        m_delayRefreshCounter = 0;
+                    }
+
                     // Calculate TOTAL output samples (without limiting)
                     int64_t totalOutSamples = av_rescale_rnd(
-                        swr_get_delay(m_swrContext, m_codecContext->sample_rate) + frameSamples,
+                        m_cachedResamplerDelay + frameSamples,
                         outputRate,
                         m_codecContext->sample_rate,
                         AV_ROUND_UP
@@ -1105,6 +1125,10 @@ bool AudioDecoder::initResampler(uint32_t outputRate, uint32_t outputBits) {
         m_resampleBufferCapacity = RESAMPLER_BUFFER_CAPACITY;
         DEBUG_LOG("[AudioDecoder] Pre-allocated resampler buffer: " << RESAMPLER_BUFFER_CAPACITY << " bytes");
     }
+
+    // D2: Initialize cached delay (will be refreshed periodically in readSamples)
+    m_cachedResamplerDelay = swr_get_delay(m_swrContext, m_codecContext->sample_rate);
+    m_delayRefreshCounter = 0;
 
     m_resamplerInitialized = true;
     return true;

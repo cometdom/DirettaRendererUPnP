@@ -189,6 +189,56 @@ make NOLOG=1    # Production build - zero logging overhead
 
 ---
 
+### Quick Wins Batch (Low-Effort Optimizations)
+
+#### G4: DSD512 Reset Delay Scaling
+
+**Problem:** DSD→PCM transition delay was fixed at 400ms regardless of DSD rate.
+
+**Solution:** Scale delay with DSD multiplier (200ms × multiplier).
+
+**File:** `src/DirettaSync.cpp:491-492`
+
+**Impact:** DSD64: 200ms, DSD512: 1600ms - proper pipeline flush at high rates.
+
+---
+
+#### C1: DSD Buffer Pre-allocation
+
+**Problem:** DSD channel buffers allocated on first frame (jitter source).
+
+**Solution:** Pre-allocate 32KB per channel at track open.
+
+**File:** `src/AudioEngine.cpp:413-422`
+
+**Impact:** Eliminates first-frame allocation spike for DSD playback.
+
+---
+
+#### D2: swr_get_delay() Caching
+
+**Problem:** FFmpeg resampler delay queried every frame.
+
+**Solution:** Cache delay value, refresh every 100 frames.
+
+**Files:** `src/AudioEngine.h:174-178`, `src/AudioEngine.cpp:901-906`
+
+**Impact:** Reduces per-frame FFmpeg function calls.
+
+---
+
+#### N7: Silence Scaling Consistency
+
+**Problem:** Shutdown silence buffer counts were fixed, not scaled for DSD rate.
+
+**Solution:** Auto-scale silence buffers with DSD multiplier in `requestShutdownSilence()`.
+
+**File:** `src/DirettaSync.cpp:1492-1506`
+
+**Impact:** Consistent pipeline flush timing across all DSD rates.
+
+---
+
 ## 2026-01-19 - FFmpeg Version Mismatch Detection
 
 ### Problem

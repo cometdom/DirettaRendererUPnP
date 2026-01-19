@@ -457,8 +457,8 @@ bool DirettaSync::open(const AudioFormat& format) {
                               << (newMultiplier * 64) << " rate change - full close/reopen" << std::endl;
                 }
 
-                int dsdMultiplier = m_previousFormat.sampleRate / 44100;
-                std::cout << "[DirettaSync] Previous format was DSD" << dsdMultiplier << std::endl;
+                int dsdMultiplier = m_previousFormat.sampleRate / 2822400;  // DSD64=1, DSD512=8
+                std::cout << "[DirettaSync] Previous format was DSD" << (dsdMultiplier * 64) << std::endl;
 
                 // Clear any pending silence requests (playback is stopped, can't send anyway)
                 m_silenceBuffersRemaining = 0;
@@ -484,10 +484,11 @@ bool DirettaSync::open(const AudioFormat& format) {
                 m_paused = false;
 
                 // Extended delay for target to fully reset
-                // DSD→PCM needs delay for clock domain switch (TEST: reduced from 800 to 400)
-                // DSD rate downgrade needs 400ms to flush internal buffers
+                // DSD→PCM needs delay for clock domain switch
+                // DSD rate downgrade needs time to flush internal buffers
+                // G4: Scale delay with DSD rate - higher rates have deeper pipelines
                 // G1: Use interruptible wait for responsive shutdown
-                int resetDelayMs = nowPCM ? 400 : 400;
+                int resetDelayMs = 200 * std::max(1, dsdMultiplier);  // 200ms (DSD64) to 1600ms (DSD512)
                 std::cout << "[DirettaSync] Waiting " << resetDelayMs
                           << "ms for target to reset..." << std::endl;
                 interruptibleWait(m_transitionMutex, m_transitionCv, m_transitionWakeup, resetDelayMs);
@@ -1488,9 +1489,19 @@ void DirettaSync::shutdownWorker() {
 }
 
 void DirettaSync::requestShutdownSilence(int buffers) {
-    m_silenceBuffersRemaining = buffers;
+    // N7: Scale silence buffers with DSD rate for consistent flush timing
+    // Higher DSD rates have deeper pipelines requiring more buffers
+    int scaledBuffers = buffers;
+    if (m_isDsdMode.load(std::memory_order_relaxed)) {
+        int sampleRate = m_sampleRate.load(std::memory_order_relaxed);
+        int dsdMultiplier = sampleRate / 2822400;  // DSD64=1, DSD512=8
+        scaledBuffers = buffers * std::max(1, dsdMultiplier);
+    }
+
+    m_silenceBuffersRemaining = scaledBuffers;
     m_draining = true;
-    DIRETTA_LOG("Requested " << buffers << " shutdown silence buffers");
+    DIRETTA_LOG("Requested " << scaledBuffers << " shutdown silence buffers"
+                << (scaledBuffers != buffers ? " (scaled from " + std::to_string(buffers) + ")" : ""));
 }
 
 bool DirettaSync::waitForOnline(unsigned int timeoutMs) {

@@ -171,6 +171,12 @@ private:
     bool m_bypassMode = false;
     bool m_resamplerInitialized = false;
 
+    // D2: Cached resampler delay (avoids swr_get_delay() call every frame)
+    // Delay stabilizes after first few frames, refresh periodically
+    int64_t m_cachedResamplerDelay = 0;
+    int m_delayRefreshCounter = 0;
+    static constexpr int DELAY_REFRESH_INTERVAL = 100;  // Refresh every 100 frames
+
     bool initResampler(uint32_t outputRate, uint32_t outputBits);
     bool canBypass(uint32_t outputRate, uint32_t outputBits) const;
 
