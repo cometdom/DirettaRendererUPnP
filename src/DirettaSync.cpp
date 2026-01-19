@@ -1250,11 +1250,11 @@ float DirettaSync::getBufferLevel() const {
 //=============================================================================
 
 bool DirettaSync::getNewStream(diretta_stream& baseStream) {
-    // v2.0.1 FIX: Use member buffer pattern from SDK example (SinHost.cpp)
-    // SDK 148+ can fail on direct resize of the output stream after SDK reopen.
-    // The correct pattern is:
-    //   1. Work on member buffer (m_streamBuffer)
-    //   2. Assign to output at the end: baseStream = m_streamBuffer
+    // v2.0.1 FIX: Work on member buffer, then copy to output
+    // SDK 148 deleted copy operator, so we must:
+    //   1. Work on member buffer (m_streamBuffer) - persistent across calls
+    //   2. Resize output stream and memcpy data to it
+    // Note: swap() doesn't work because it leaves m_streamBuffer empty after exchange
     DIRETTA::Stream& outputStream = static_cast<DIRETTA::Stream&>(baseStream);
 
     m_workerActive = true;
@@ -1312,7 +1312,9 @@ bool DirettaSync::getNewStream(diretta_stream& baseStream) {
     RingAccessGuard ringGuard(m_ringUsers, m_reconfiguring);
     if (!ringGuard.active()) {
         std::memset(dest, currentSilenceByte, currentBytesPerBuffer);
-        outputStream.swap(m_streamBuffer);  // v2.0.1: Swap buffers (SDK 148 deleted copy operator)
+        // v2.0.1: Copy data to output (SDK 148 deleted copy/assign operators)
+        outputStream.resize(currentBytesPerBuffer);
+        std::memcpy(outputStream.get(), m_streamBuffer.get(), currentBytesPerBuffer);
         m_workerActive = false;
         return true;
     }
@@ -1325,7 +1327,9 @@ bool DirettaSync::getNewStream(diretta_stream& baseStream) {
     if (silenceRemaining > 0) {
         std::memset(dest, currentSilenceByte, currentBytesPerBuffer);
         m_silenceBuffersRemaining.fetch_sub(1, std::memory_order_acq_rel);
-        outputStream.swap(m_streamBuffer);  // v2.0.1: Swap buffers (SDK 148 deleted copy operator)
+        // v2.0.1: Copy data to output (SDK 148 deleted copy/assign operators)
+        outputStream.resize(currentBytesPerBuffer);
+        std::memcpy(outputStream.get(), m_streamBuffer.get(), currentBytesPerBuffer);
         m_workerActive = false;
         return true;
     }
@@ -1333,7 +1337,9 @@ bool DirettaSync::getNewStream(diretta_stream& baseStream) {
     // Stop requested
     if (m_stopRequested.load(std::memory_order_acquire)) {
         std::memset(dest, currentSilenceByte, currentBytesPerBuffer);
-        outputStream.swap(m_streamBuffer);  // v2.0.1: Swap buffers (SDK 148 deleted copy operator)
+        // v2.0.1: Copy data to output (SDK 148 deleted copy/assign operators)
+        outputStream.resize(currentBytesPerBuffer);
+        std::memcpy(outputStream.get(), m_streamBuffer.get(), currentBytesPerBuffer);
         m_workerActive = false;
         return true;
     }
@@ -1341,7 +1347,9 @@ bool DirettaSync::getNewStream(diretta_stream& baseStream) {
     // Prefill not complete
     if (!m_prefillComplete.load(std::memory_order_acquire)) {
         std::memset(dest, currentSilenceByte, currentBytesPerBuffer);
-        outputStream.swap(m_streamBuffer);  // v2.0.1: Swap buffers (SDK 148 deleted copy operator)
+        // v2.0.1: Copy data to output (SDK 148 deleted copy/assign operators)
+        outputStream.resize(currentBytesPerBuffer);
+        std::memcpy(outputStream.get(), m_streamBuffer.get(), currentBytesPerBuffer);
         m_workerActive = false;
         return true;
     }
@@ -1384,7 +1392,9 @@ bool DirettaSync::getNewStream(diretta_stream& baseStream) {
             DIRETTA_LOG("Post-online stabilization complete (" << count << " buffers)");
         }
         std::memset(dest, currentSilenceByte, currentBytesPerBuffer);
-        outputStream.swap(m_streamBuffer);  // v2.0.1: Swap buffers (SDK 148 deleted copy operator)
+        // v2.0.1: Copy data to output (SDK 148 deleted copy/assign operators)
+        outputStream.resize(currentBytesPerBuffer);
+        std::memcpy(outputStream.get(), m_streamBuffer.get(), currentBytesPerBuffer);
         m_workerActive = false;
         return true;
     }
@@ -1403,7 +1413,9 @@ bool DirettaSync::getNewStream(diretta_stream& baseStream) {
     if (avail < static_cast<size_t>(currentBytesPerBuffer)) {
         m_underrunCount.fetch_add(1, std::memory_order_relaxed);
         std::memset(dest, currentSilenceByte, currentBytesPerBuffer);
-        outputStream.swap(m_streamBuffer);  // v2.0.1: Swap buffers (SDK 148 deleted copy operator)
+        // v2.0.1: Copy data to output (SDK 148 deleted copy/assign operators)
+        outputStream.resize(currentBytesPerBuffer);
+        std::memcpy(outputStream.get(), m_streamBuffer.get(), currentBytesPerBuffer);
         m_workerActive = false;
         return true;
     }
@@ -1411,8 +1423,9 @@ bool DirettaSync::getNewStream(diretta_stream& baseStream) {
     // Pop from ring buffer
     m_ringBuffer.pop(dest, currentBytesPerBuffer);
 
-    // v2.0.1: Swap member buffer with output (SDK 148 deleted copy operator)
-    outputStream.swap(m_streamBuffer);
+    // v2.0.1: Copy data to output (SDK 148 deleted copy/assign operators)
+    outputStream.resize(currentBytesPerBuffer);
+    std::memcpy(outputStream.get(), m_streamBuffer.get(), currentBytesPerBuffer);
 
     m_workerActive = false;
     return true;
