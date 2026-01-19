@@ -1250,12 +1250,9 @@ float DirettaSync::getBufferLevel() const {
 //=============================================================================
 
 bool DirettaSync::getNewStream(diretta_stream& baseStream) {
-    // v2.0.1 FIX: Work on member buffer, then copy to output
-    // SDK 148 deleted copy operator, so we must:
-    //   1. Work on member buffer (m_streamBuffer) - persistent across calls
-    //   2. Resize output stream and memcpy data to it
-    // Note: swap() doesn't work because it leaves m_streamBuffer empty after exchange
-    DIRETTA::Stream& outputStream = static_cast<DIRETTA::Stream&>(baseStream);
+    // v2.0.1 FIX: Work directly on output stream after ensuring it's properly sized
+    // SDK 148 may pass uninitialized streams after reopen, so we resize first
+    DIRETTA::Stream& stream = static_cast<DIRETTA::Stream&>(baseStream);
 
     m_workerActive = true;
 
@@ -1291,20 +1288,20 @@ bool DirettaSync::getNewStream(diretta_stream& baseStream) {
     }
 
     // v2.0.1 DEBUG: Log stream operations to identify crash location
-    if (g_verbose && m_streamCount.load(std::memory_order_relaxed) < 5) {
+    if (g_verbose && m_streamCount.load(std::memory_order_relaxed) < 10) {
         std::cout << "[getNewStream] bpb=" << currentBytesPerBuffer
-                  << " m_streamBuffer.size=" << m_streamBuffer.size() << std::endl;
+                  << " stream.size=" << stream.size() << std::endl;
     }
 
-    // v2.0.1 FIX: Work on member buffer, not output stream directly
-    // This avoids issues when SDK passes an uninitialized stream after reopen
-    if (m_streamBuffer.size() != static_cast<size_t>(currentBytesPerBuffer)) {
-        m_streamBuffer.resize(currentBytesPerBuffer);
+    // v2.0.1 FIX: Always resize the output stream to ensure it's properly allocated
+    // SDK 148 may pass uninitialized/empty streams after reopen
+    if (stream.size() != static_cast<size_t>(currentBytesPerBuffer)) {
+        stream.resize(currentBytesPerBuffer);
     }
 
-    uint8_t* dest = m_streamBuffer.get();
+    uint8_t* dest = stream.get();
     if (!dest) {
-        std::cerr << "[getNewStream] ERROR: m_streamBuffer.get() returned null!" << std::endl;
+        std::cerr << "[getNewStream] ERROR: stream.get() returned null after resize!" << std::endl;
         m_workerActive = false;
         return false;
     }
@@ -1312,9 +1309,7 @@ bool DirettaSync::getNewStream(diretta_stream& baseStream) {
     RingAccessGuard ringGuard(m_ringUsers, m_reconfiguring);
     if (!ringGuard.active()) {
         std::memset(dest, currentSilenceByte, currentBytesPerBuffer);
-        // v2.0.1: Copy data to output (SDK 148 deleted copy/assign operators)
-        outputStream.resize(currentBytesPerBuffer);
-        std::memcpy(outputStream.get(), m_streamBuffer.get(), currentBytesPerBuffer);
+        // v2.0.1: Data already in stream buffer, nothing more to do
         m_workerActive = false;
         return true;
     }
@@ -1327,9 +1322,7 @@ bool DirettaSync::getNewStream(diretta_stream& baseStream) {
     if (silenceRemaining > 0) {
         std::memset(dest, currentSilenceByte, currentBytesPerBuffer);
         m_silenceBuffersRemaining.fetch_sub(1, std::memory_order_acq_rel);
-        // v2.0.1: Copy data to output (SDK 148 deleted copy/assign operators)
-        outputStream.resize(currentBytesPerBuffer);
-        std::memcpy(outputStream.get(), m_streamBuffer.get(), currentBytesPerBuffer);
+        // v2.0.1: Data already in stream buffer, nothing more to do
         m_workerActive = false;
         return true;
     }
@@ -1337,9 +1330,7 @@ bool DirettaSync::getNewStream(diretta_stream& baseStream) {
     // Stop requested
     if (m_stopRequested.load(std::memory_order_acquire)) {
         std::memset(dest, currentSilenceByte, currentBytesPerBuffer);
-        // v2.0.1: Copy data to output (SDK 148 deleted copy/assign operators)
-        outputStream.resize(currentBytesPerBuffer);
-        std::memcpy(outputStream.get(), m_streamBuffer.get(), currentBytesPerBuffer);
+        // v2.0.1: Data already in stream buffer, nothing more to do
         m_workerActive = false;
         return true;
     }
@@ -1347,9 +1338,7 @@ bool DirettaSync::getNewStream(diretta_stream& baseStream) {
     // Prefill not complete
     if (!m_prefillComplete.load(std::memory_order_acquire)) {
         std::memset(dest, currentSilenceByte, currentBytesPerBuffer);
-        // v2.0.1: Copy data to output (SDK 148 deleted copy/assign operators)
-        outputStream.resize(currentBytesPerBuffer);
-        std::memcpy(outputStream.get(), m_streamBuffer.get(), currentBytesPerBuffer);
+        // v2.0.1: Data already in stream buffer, nothing more to do
         m_workerActive = false;
         return true;
     }
@@ -1392,9 +1381,7 @@ bool DirettaSync::getNewStream(diretta_stream& baseStream) {
             DIRETTA_LOG("Post-online stabilization complete (" << count << " buffers)");
         }
         std::memset(dest, currentSilenceByte, currentBytesPerBuffer);
-        // v2.0.1: Copy data to output (SDK 148 deleted copy/assign operators)
-        outputStream.resize(currentBytesPerBuffer);
-        std::memcpy(outputStream.get(), m_streamBuffer.get(), currentBytesPerBuffer);
+        // v2.0.1: Data already in stream buffer, nothing more to do
         m_workerActive = false;
         return true;
     }
@@ -1413,9 +1400,7 @@ bool DirettaSync::getNewStream(diretta_stream& baseStream) {
     if (avail < static_cast<size_t>(currentBytesPerBuffer)) {
         m_underrunCount.fetch_add(1, std::memory_order_relaxed);
         std::memset(dest, currentSilenceByte, currentBytesPerBuffer);
-        // v2.0.1: Copy data to output (SDK 148 deleted copy/assign operators)
-        outputStream.resize(currentBytesPerBuffer);
-        std::memcpy(outputStream.get(), m_streamBuffer.get(), currentBytesPerBuffer);
+        // v2.0.1: Data already in stream buffer, nothing more to do
         m_workerActive = false;
         return true;
     }
@@ -1423,10 +1408,7 @@ bool DirettaSync::getNewStream(diretta_stream& baseStream) {
     // Pop from ring buffer
     m_ringBuffer.pop(dest, currentBytesPerBuffer);
 
-    // v2.0.1: Copy data to output (SDK 148 deleted copy/assign operators)
-    outputStream.resize(currentBytesPerBuffer);
-    std::memcpy(outputStream.get(), m_streamBuffer.get(), currentBytesPerBuffer);
-
+    // v2.0.1: Data already in stream buffer, nothing more to do
     m_workerActive = false;
     return true;
 }
