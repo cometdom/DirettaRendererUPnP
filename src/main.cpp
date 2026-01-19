@@ -14,7 +14,7 @@
 #include "TimestampedLogger.h"
 
 // Version information
-#define RENDERER_VERSION "1.3.2"    // ⭐ v1.3.1: Timestamped logging
+#define RENDERER_VERSION "1.3.3"    // Updated version
 #define RENDERER_BUILD_DATE __DATE__
 #define RENDERER_BUILD_TIME __TIME__
 // Global renderer instance for signal handler
