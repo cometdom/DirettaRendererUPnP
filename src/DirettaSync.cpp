@@ -668,8 +668,12 @@ void DirettaSync::close() {
     stop();
     disconnect(true);  // Wait for proper disconnection before returning
 
-    // v2.0.1 FIX: Stop worker thread to prevent it from calling getNewStream()
-    // after disconnect. SDK 148 may corrupt the stream state after disconnect.
+    // v2.0.1 FIX for SDK 148: Close SDK completely to reset internal Stream state
+    // SDK 148 leaves Stream in corrupted state after disconnect - must close/reopen
+    DIRETTA::Sync::close();
+    m_sdkOpen = false;
+
+    // Stop worker thread
     m_running = false;
     {
         std::lock_guard<std::mutex> lock(m_workerMutex);
@@ -682,7 +686,10 @@ void DirettaSync::close() {
     m_playing = false;
     m_paused = false;
 
-    DIRETTA_LOG("Close() done");
+    // Reset cached consumer generation to force reload on next getNewStream()
+    m_cachedConsumerGen = UINT32_MAX;
+
+    DIRETTA_LOG("Close() done (SDK closed)");
 }
 
 void DirettaSync::release() {
