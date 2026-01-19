@@ -11,7 +11,7 @@
 #include <thread>
 #include <chrono>
 
-#define RENDERER_VERSION "1.2.0-simplified"
+#define RENDERER_VERSION "2.0-beta"
 #define RENDERER_BUILD_DATE __DATE__
 #define RENDERER_BUILD_TIME __TIME__
 

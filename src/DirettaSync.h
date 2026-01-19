@@ -413,7 +413,8 @@ private:
     std::atomic<bool> m_isLowBitrate{false};
 
     // Cached DSD conversion mode - set at track open, eliminates per-iteration branch checks
-    DirettaRingBuffer::DSDConversionMode m_dsdConversionMode{DirettaRingBuffer::DSDConversionMode::Passthrough};
+    // G2 fix: Made atomic to ensure proper visibility across threads
+    std::atomic<DirettaRingBuffer::DSDConversionMode> m_dsdConversionMode{DirettaRingBuffer::DSDConversionMode::Passthrough};
 
     // Format generation counter - incremented on ANY format change
     // Allows sendAudio to skip reloading atomics when format hasn't changed

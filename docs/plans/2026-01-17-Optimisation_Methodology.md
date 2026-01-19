@@ -1,7 +1,7 @@
 # Optimisation Methodology
 
-**Date:** 2026-01-17 (updated 2026-01-18)
-**Source:** Analysis of docs/plans/ design documents
+**Date:** 2026-01-17 (updated 2026-01-19)
+**Source:** Analysis of docs/plans/ design documents and leeeanh's contribution methodology
 **Context:** Collaboration with high-level expert on audio rendering quality
 
 ## Overview
@@ -12,11 +12,260 @@ The underlying philosophy: **minimise variance in execution time, not just avera
 
 ---
 
+## Two-Phase Documentation Process
+
+Optimisations should be documented in **two separate phases**, each with its own document:
+
+### Phase 1: Design Document (`*-design.md`)
+
+**Purpose:** Conceptual analysis of proposed optimisations—the *what* and *why*.
+
+The design document focuses on understanding the problem, analysing the solution space, and justifying the approach. It should be readable by someone unfamiliar with the codebase implementation details.
+
+**Key characteristics:**
+- Problem-focused: explains what's inefficient and why it matters
+- Solution-oriented: describes the approach conceptually with before/after code snippets
+- Justification-rich: explains memory ordering choices, state classification, trade-offs
+- Testable: includes verification criteria
+
+**When to write:** Before implementation begins. The design document serves as the specification for the implementation.
+
+### Phase 2: Implementation Document (`*-impl.md`)
+
+**Purpose:** Step-by-step execution plan—the *how*.
+
+The implementation document is a detailed task list that can be followed mechanically. Each task modifies specific files at specific line numbers, with exact code to add or replace.
+
+**Key characteristics:**
+- Task-focused: numbered tasks with clear completion criteria
+- Location-specific: file paths and line numbers for every change
+- Verifiable: compilation check after each task
+- Committable: one commit per logical change, with commit message template
+
+**When to write:** After the design document is complete and reviewed. The implementation document references the design document for rationale.
+
+### Workflow
+
+```
+1. Identify optimisation opportunity
+       ↓
+2. Write design document (*-design.md)
+   - Analyse problem with code snippets
+   - Propose solution with impact estimates
+   - Justify memory ordering/state classification
+   - Define testing checklist
+       ↓
+3. Review design document
+       ↓
+4. Write implementation document (*-impl.md)
+   - Break design into atomic tasks
+   - Add file:line references
+   - Add exact code changes
+   - Add commit templates
+       ↓
+5. Execute implementation document task-by-task
+       ↓
+6. Test against design document checklist
+```
+
+**Exemplar documents:**
+- Design: `docs/plans/2026-01-18-hot-path-generation-counters-design.md`
+- Implementation: `docs/plans/2026-01-18-hot-path-generation-counters-impl.md`
+
+---
+
+## Opportunity Discovery Process
+
+Before writing design documents, optimization opportunities must be identified through structured analysis. This section describes the multi-perspective review process.
+
+### Prerequisites
+
+Before beginning analysis, read the project context document:
+
+```
+./docs/CLAUDE.md
+```
+
+This provides essential understanding of:
+- Project architecture and signal flow
+- Core components and their responsibilities
+- Build system and dependencies
+- Code style conventions
+
+### Multi-Pass Expert Analysis
+
+Conduct **multiple passes** through the codebase, each from a distinct expert perspective. This ensures comprehensive coverage of both hardware/signal and software concerns.
+
+#### Pass 1: Electrical Engineering Perspective
+
+**Persona:** Top-level electrical engineering designer (MIT/Tokyo University caliber)
+
+**Focus areas:**
+- **Signal integrity**: Where does audio data risk corruption or degradation?
+- **Timing determinism**: Which code paths have variable execution time?
+- **Jitter analysis**: Where does timing variance accumulate in the signal chain?
+- **Clock domain handling**: How are sample rate families (44.1kHz vs 48kHz) managed?
+- **Buffer dimensioning**: Are buffer sizes optimal for latency vs. safety trade-offs?
+- **Phase coherence**: Is multi-channel data handled correctly?
+- **Noise sources**: What operations introduce unpredictable delays?
+
+**Questions to ask:**
+1. What is the jitter budget and where is it being spent?
+2. Are there any O(n) operations in the sample-rate-critical path?
+3. Could scheduling variance from the OS affect audio timing?
+4. Are buffer boundaries aligned with sample rate boundaries?
+5. What happens under worst-case system load?
+
+**Output:** List of variance sources with estimated impact (µs or ms)
+
+#### Pass 2: Software Engineering Perspective
+
+**Persona:** High-level software engineer designer (MIT/Tokyo University caliber)
+
+**Focus areas:**
+- **Algorithmic complexity**: Are there O(n) operations that could be O(1)?
+- **Memory management**: Where are allocations happening in hot paths?
+- **Concurrency patterns**: Are atomics, locks, and barriers optimally placed?
+- **Cache efficiency**: Is data laid out for cache-friendly access?
+- **API design**: Do internal APIs encourage or prevent efficient usage?
+- **Code maintainability**: Are optimizations understandable and safe?
+
+**Questions to ask:**
+1. Which functions are called most frequently and what do they cost?
+2. Are there redundant computations that could be cached?
+3. Could memory ordering be relaxed without affecting correctness?
+4. Are data structures aligned to prevent false sharing?
+5. What is the syscall footprint of the hot path?
+
+**Output:** List of algorithmic and structural improvements with difficulty estimates
+
+#### Pass 3: Cross-Reference with Existing Opportunities
+
+After the expert passes, review the existing opportunities document:
+
+```
+./docs/plans/2026-01-17-Optimisation_Opportunities.md
+```
+
+**Actions:**
+1. Verify that identified issues haven't already been addressed
+2. Check if new findings relate to or extend existing opportunities
+3. Identify patterns that apply across multiple findings
+4. Prioritise based on impact vs. effort matrix
+
+### Structured Output
+
+Compile findings into the opportunities document using this format:
+
+```markdown
+#### [ID]: [Brief Title] ⭐ [PRIORITY if HIGH]
+
+**Pattern:** #N ([Pattern Name] from methodology)
+**Location:** `file.cpp:line-range`
+**Status:** [Current state]
+
+[Code snippet showing the problem]
+
+**Fix:** [Brief description]
+[Code snippet showing the solution]
+
+**Variance Saved:** [Quantified impact]
+**Effort:** [Very Low | Low | Medium | High]
+**Risk:** [Very Low | Low | Medium | High]
+**Impact:** [Low | Medium | High]
+```
+
+### Analysis Prompt Template
+
+When requesting an optimization analysis (e.g., from an AI assistant), use this prompt structure:
+
+```
+Please analyse the DirettaRendererUPnP-X codebase for optimization opportunities.
+
+**Step 0: Context**
+Read ./docs/CLAUDE.md to understand the project architecture.
+
+**Step 1: Electrical Engineering Pass**
+Acting as a top-level electrical engineering designer (MIT/Tokyo University caliber),
+analyse the codebase focusing on:
+- Signal integrity and timing determinism
+- Jitter sources and variance accumulation
+- Buffer dimensioning and clock domain handling
+- Thread scheduling and OS interaction
+
+**Step 2: Software Engineering Pass**
+Acting as a high-level software engineer designer (MIT/Tokyo University caliber),
+analyse the codebase focusing on:
+- Algorithmic complexity and data structures
+- Memory allocation patterns
+- Concurrency and cache efficiency
+- API design and code structure
+
+**Step 3: Cross-Reference**
+Review ./docs/plans/2026-01-17-Optimisation_Opportunities.md to:
+- Avoid duplicating already-identified issues
+- Extend or connect to existing opportunities
+- Apply the 10 optimization patterns from the methodology
+
+**Step 4: Recommendations**
+For each new opportunity, provide:
+- Unique ID and brief title
+- Pattern classification
+- File location with line numbers
+- Problem code snippet
+- Solution code snippet
+- Quantified impact estimate
+- Effort/risk/impact assessment
+
+Organise findings by category (Jitter, Atomics, Cache, Signal Path, etc.)
+and include a priority matrix.
+```
+
+### Example Discovery Session
+
+The 2026-01-19 analysis used this process to identify 13 new opportunities:
+
+| Category | Opportunities | Key Findings |
+|----------|---------------|--------------|
+| A: Jitter Minimisation | A1, A2, A3 | DSD memmove, resampler allocation, logging I/O |
+| B: Atomic Operations | B1, B2 | Diagnostic counters, guard bypass |
+| C: Cache Efficiency | C1, C2 | DSD pre-allocation, stabilisation pre-compute |
+| D: Signal Path | D1, D2 | SIMD interleaving, swr_get_delay caching |
+| E: Buffer Dimensioning | E1, E2 | Sample-accurate prefill, adaptive sizing |
+| F: Thread Scheduling | F1, F2 | Worker priority, CPU affinity |
+
+See: `docs/plans/2026-01-19-jitter-reduction-phase1-design.md` for the resulting design document.
+
+---
+
 ## Design Document Structure
 
-Each optimisation should be documented with the following structure:
+Each design document (`*-design.md`) should include the following sections:
 
-### 1. Identification
+### 1. Header Block
+
+Start with metadata for document management:
+
+```markdown
+# [Optimisation Name] Design
+
+**Date:** YYYY-MM-DD
+**Status:** Draft | Ready for implementation | Implemented
+**Scope:** [Components affected]
+```
+
+### 2. Objective
+
+A concise statement of what the optimisation achieves and why it matters:
+
+```markdown
+## Objective
+
+Reduce per-call overhead in [component] by [technique]. Build performance
+headroom for [use case].
+```
+
+### 3. Identification
 
 Assign each optimisation a unique ID for tracking:
 - **P1, P2, P3...** - Producer-side (sendAudio path)
@@ -24,7 +273,7 @@ Assign each optimisation a unique ID for tracking:
 - **R1, R2...** - Ring buffer operations
 - **D1, D2...** - Decoder/audio engine
 
-### 2. Impact Summary Table
+### 4. Impact Summary Table
 
 Provide quantified before/after metrics at the document start:
 
@@ -33,7 +282,7 @@ Provide quantified before/after metrics at the document start:
 | P1 | Format generation counter | sendAudio | 7 atomics → 1 |
 | C1 | State generation counter | getNewStream | 5 atomics → 1 |
 
-### 3. Problem-Solution Format
+### 5. Problem-Solution Format
 
 For each optimisation:
 
@@ -54,13 +303,13 @@ Format rarely changes (~0.1% of calls), yet we pay full cost every time.
 - `configureRingDSD()` - at end of function
 ```
 
-### 4. Hot/Cold Path Classification
+### 6. Hot/Cold Path Classification
 
 Explicitly label execution frequency:
 - **Hot path** (99.9% of calls): Single generation counter check
 - **Cold path** (format change only): Full reload of cached values
 
-### 5. State Classification
+### 7. State Classification
 
 For caching optimisations, classify state as:
 - **Stable state**: Configuration set at track open, cached via generation counter
@@ -75,7 +324,7 @@ int currentBytesPerBuffer = m_cachedBytesPerBuffer;
 if (m_stopRequested.load(std::memory_order_acquire)) { ... }
 ```
 
-### 6. Memory Ordering Justification
+### 8. Memory Ordering Justification
 
 When modifying atomic operations, document why each ordering is safe:
 
@@ -88,14 +337,14 @@ When modifying atomic operations, document why each ordering is safe:
   no ordering needed
 ```
 
-### 7. Files Modified Summary
+### 9. Files Modified Summary
 
 | File | Changes |
 |------|---------|
 | `src/DirettaSync.h` | Add generation counters and cached members |
 | `src/DirettaSync.cpp` | Generation checks, increments, lighter ordering |
 
-### 8. Testing Checklist
+### 10. Testing Checklist
 
 #### Functional
 - [ ] PCM 16-bit/44.1kHz playback
@@ -323,24 +572,53 @@ An optimisation that reduces mean latency but increases P99 or jitter may degrad
 
 ---
 
-## Implementation Task Structure
+## Implementation Document Structure
 
-For implementation plans, use the following task template:
+Each implementation document (`*-impl.md`) should include the following sections:
+
+### 1. Header Block
 
 ```markdown
-## Task N: [Brief Description] (Optimization ID)
+# [Optimisation Name] Implementation Plan
+
+> **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
+
+**Goal:** [One-sentence summary of what the optimisation achieves]
+
+**Architecture:** [Brief description of the technical approach]
+
+**Tech Stack:** C++17, std::atomic, lock-free patterns
+```
+
+The instruction comment at the top guides AI assistants to execute the plan systematically.
+
+### 2. Task Structure
+
+Break the design into atomic, verifiable tasks. Each task should:
+- Make one logical change
+- Be independently committable
+- Include verification step
+
+```markdown
+## Task N: [Brief Description] (Optimization ID - Part M)
 
 **Files:**
-- Modify: `src/File.cpp:123` (description)
+- Modify: `src/File.cpp:123` (description of change)
 
 **Step 1: [Action]**
-[Code or instructions]
+
+In `src/File.cpp`, find line 123 (description of what to locate). Add/replace:
+
+[Exact code to add or replace, with context]
 
 **Step 2: Verify compilation**
+
 Run: `make -j4 2>&1 | head -20`
 Expected: BUILD SUCCESS
 
 **Step 3: Commit**
+
+git add src/File.cpp
 git commit -m "$(cat <<'EOF'
 type(ID): brief description
 
@@ -351,20 +629,106 @@ EOF
 )"
 ```
 
-**Commit Message Prefixes:**
+### 3. Task Decomposition Guidelines
+
+**Incremental implementation:**
+- Task 1: Add new members (compiles but unused)
+- Task 2: Add increment/modification points (members now updated)
+- Task 3: Use new pattern in hot path (optimization takes effect)
+
+This allows testing at each stage and simplifies debugging.
+
+**Multi-file changes:**
+If a logical change spans multiple files, include all files in one task to maintain atomicity:
+
+```markdown
+**Files:**
+- Modify: `src/DirettaSync.h:323` (add member declarations)
+- Modify: `src/DirettaSync.cpp:815` (increment at configureRingPCM)
+- Modify: `src/DirettaSync.cpp:848` (increment at configureRingDSD)
+```
+
+### 4. Final Task: Build and Test
+
+Every implementation document should end with a final verification task:
+
+```markdown
+## Task N: Final Build and Test
+
+**Step 1: Full rebuild**
+
+Run: `make clean && make -j4`
+Expected: BUILD SUCCESS
+
+**Step 2: Manual testing checklist**
+
+Test the following scenarios:
+- [ ] PCM 16-bit/44.1kHz playback
+- [ ] PCM 24-bit/96kHz playback
+- [ ] Format changes mid-stream
+- [ ] Start/stop cycles (no hangs)
+- [ ] Gapless track transitions
+
+**Step 3: Create summary tag (optional)**
+
+git tag -a v1.x.x-[optimisation-name] -m "[Description]"
+```
+
+### 5. Summary Table
+
+Conclude with a table mapping tasks to optimisations:
+
+```markdown
+## Summary
+
+| Task | Optimization | Files Changed |
+|------|--------------|---------------|
+| 1-3 | P1: Format generation counter | DirettaSync.h, DirettaSync.cpp |
+| 4-5 | P2: Direct write API | DirettaRingBuffer.h |
+| 6 | P3: pop() inlined loads | DirettaRingBuffer.h |
+
+**Total commits:** N
+```
+
+### 6. Commit Message Conventions
+
+**Prefixes:**
 - `perf(P1):` - Performance improvement
 - `refactor(C1):` - Code restructuring without behavior change
 - `fix:` - Bug fix
 - `feat:` - New feature
 
-**Task Granularity:**
-- One task per logical change
-- Build verification after each task
-- Commit after each task (enables bisection)
+**Format:**
+```
+type(ID): brief imperative description
+
+Longer explanation of what changed.
+Optionally include before/after metrics.
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+```
+
+### 7. Task Granularity Principles
+
+- **One task per logical change**: Enables `git bisect`
+- **Build verification after each task**: Catches errors early
+- **Commit after each task**: Creates clean history
+- **Never leave the build broken**: Each commit should compile
 
 ---
 
 ## References
+
+### Exemplar Documents (Two-Phase Process)
+
+These documents from leeeanh demonstrate the two-phase documentation process:
+
+- `docs/plans/2026-01-18-hot-path-generation-counters-design.md` - **Design document exemplar**: Shows problem-solution format, impact tables, memory ordering justification, and testing checklists
+- `docs/plans/2026-01-18-hot-path-generation-counters-impl.md` - **Implementation document exemplar**: Shows task decomposition, file:line references, commit templates, and summary tables
+
+### Design Documents Archive
+
+Historical design documents (follow older format, predating two-phase process):
 
 - `docs/plans/2026-01-11-audio-memory-optimization-design.md` - Staging buffers, SIMD conversions
 - `docs/plans/2026-01-12-PCM Latency and Jitter Optimization Design.md` - Allocation elimination, flow control
@@ -373,5 +737,3 @@ EOF
 - `docs/plans/2026-01-15-dsd-conversion-optimization-design.md` - Function specialisation
 - `docs/plans/2026-01-16-direct-pcm-fast-path-design.md` - Ring buffer direct write
 - `docs/plans/2026-01-17-Hot Path Simplification Report.md` - Implementation summary
-- `docs/plans/2026-01-18-hot-path-generation-counters-design.md` - Generation counter pattern
-- `docs/plans/2026-01-18-hot-path-generation-counters-impl.md` - Task-based implementation example

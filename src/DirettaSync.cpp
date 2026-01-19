@@ -857,12 +857,12 @@ void DirettaSync::configureSinkDSD(uint32_t dsdBitRate, int channels, const Audi
         m_needDsdBitReversal.store(!sourceIsLSB, std::memory_order_release);  // Reverse if source is MSB (DFF)
         m_needDsdByteSwap.store(false, std::memory_order_release);  // BIG endian = no swap
         // Set cached conversion mode: no swap, maybe bit reverse
-        m_dsdConversionMode = m_needDsdBitReversal.load(std::memory_order_acquire)
+        m_dsdConversionMode.store(m_needDsdBitReversal.load(std::memory_order_acquire)
             ? DirettaRingBuffer::DSDConversionMode::BitReverseOnly
-            : DirettaRingBuffer::DSDConversionMode::Passthrough;
+            : DirettaRingBuffer::DSDConversionMode::Passthrough, std::memory_order_release);
         DIRETTA_LOG("Sink DSD: LSB | BIG"
                     << (m_needDsdBitReversal.load(std::memory_order_acquire) ? " (bit reversal)" : "")
-                    << " mode=" << static_cast<int>(m_dsdConversionMode));
+                    << " mode=" << static_cast<int>(m_dsdConversionMode.load(std::memory_order_relaxed)));
         return;
     }
 
@@ -876,12 +876,12 @@ void DirettaSync::configureSinkDSD(uint32_t dsdBitRate, int channels, const Audi
         m_needDsdBitReversal.store(sourceIsLSB, std::memory_order_release);  // Reverse if source is LSB (DSF)
         m_needDsdByteSwap.store(false, std::memory_order_release);  // BIG endian = no swap
         // Set cached conversion mode: no swap, maybe bit reverse
-        m_dsdConversionMode = m_needDsdBitReversal.load(std::memory_order_acquire)
+        m_dsdConversionMode.store(m_needDsdBitReversal.load(std::memory_order_acquire)
             ? DirettaRingBuffer::DSDConversionMode::BitReverseOnly
-            : DirettaRingBuffer::DSDConversionMode::Passthrough;
+            : DirettaRingBuffer::DSDConversionMode::Passthrough, std::memory_order_release);
         DIRETTA_LOG("Sink DSD: MSB | BIG"
                     << (m_needDsdBitReversal.load(std::memory_order_acquire) ? " (bit reversal)" : "")
-                    << " mode=" << static_cast<int>(m_dsdConversionMode));
+                    << " mode=" << static_cast<int>(m_dsdConversionMode.load(std::memory_order_relaxed)));
         return;
     }
 
@@ -895,12 +895,12 @@ void DirettaSync::configureSinkDSD(uint32_t dsdBitRate, int channels, const Audi
         m_needDsdBitReversal.store(!sourceIsLSB, std::memory_order_release);
         m_needDsdByteSwap.store(true, std::memory_order_release);  // LITTLE endian = swap bytes
         // Set cached conversion mode: always swap, maybe bit reverse
-        m_dsdConversionMode = m_needDsdBitReversal.load(std::memory_order_acquire)
+        m_dsdConversionMode.store(m_needDsdBitReversal.load(std::memory_order_acquire)
             ? DirettaRingBuffer::DSDConversionMode::BitReverseAndSwap
-            : DirettaRingBuffer::DSDConversionMode::ByteSwapOnly;
+            : DirettaRingBuffer::DSDConversionMode::ByteSwapOnly, std::memory_order_release);
         DIRETTA_LOG("Sink DSD: LSB | LITTLE"
                     << (m_needDsdBitReversal.load(std::memory_order_acquire) ? " (bit reversal)" : "")
-                    << " (byte swap) mode=" << static_cast<int>(m_dsdConversionMode));
+                    << " (byte swap) mode=" << static_cast<int>(m_dsdConversionMode.load(std::memory_order_relaxed)));
         return;
     }
 
@@ -914,12 +914,12 @@ void DirettaSync::configureSinkDSD(uint32_t dsdBitRate, int channels, const Audi
         m_needDsdBitReversal.store(sourceIsLSB, std::memory_order_release);
         m_needDsdByteSwap.store(true, std::memory_order_release);  // LITTLE endian = swap bytes
         // Set cached conversion mode: always swap, maybe bit reverse
-        m_dsdConversionMode = m_needDsdBitReversal.load(std::memory_order_acquire)
+        m_dsdConversionMode.store(m_needDsdBitReversal.load(std::memory_order_acquire)
             ? DirettaRingBuffer::DSDConversionMode::BitReverseAndSwap
-            : DirettaRingBuffer::DSDConversionMode::ByteSwapOnly;
+            : DirettaRingBuffer::DSDConversionMode::ByteSwapOnly, std::memory_order_release);
         DIRETTA_LOG("Sink DSD: MSB | LITTLE"
                     << (m_needDsdBitReversal.load(std::memory_order_acquire) ? " (bit reversal)" : "")
-                    << " (byte swap) mode=" << static_cast<int>(m_dsdConversionMode));
+                    << " (byte swap) mode=" << static_cast<int>(m_dsdConversionMode.load(std::memory_order_relaxed)));
         return;
     }
 
@@ -936,15 +936,15 @@ void DirettaSync::configureSinkDSD(uint32_t dsdBitRate, int channels, const Audi
         bool needReverse = m_needDsdBitReversal.load(std::memory_order_acquire);
         bool needSwap = m_needDsdByteSwap.load(std::memory_order_acquire);
         if (needReverse && needSwap) {
-            m_dsdConversionMode = DirettaRingBuffer::DSDConversionMode::BitReverseAndSwap;
+            m_dsdConversionMode.store(DirettaRingBuffer::DSDConversionMode::BitReverseAndSwap, std::memory_order_release);
         } else if (needReverse) {
-            m_dsdConversionMode = DirettaRingBuffer::DSDConversionMode::BitReverseOnly;
+            m_dsdConversionMode.store(DirettaRingBuffer::DSDConversionMode::BitReverseOnly, std::memory_order_release);
         } else if (needSwap) {
-            m_dsdConversionMode = DirettaRingBuffer::DSDConversionMode::ByteSwapOnly;
+            m_dsdConversionMode.store(DirettaRingBuffer::DSDConversionMode::ByteSwapOnly, std::memory_order_release);
         } else {
-            m_dsdConversionMode = DirettaRingBuffer::DSDConversionMode::Passthrough;
+            m_dsdConversionMode.store(DirettaRingBuffer::DSDConversionMode::Passthrough, std::memory_order_release);
         }
-        DIRETTA_LOG("DSD conversion mode: " << static_cast<int>(m_dsdConversionMode));
+        DIRETTA_LOG("DSD conversion mode: " << static_cast<int>(m_dsdConversionMode.load(std::memory_order_relaxed)));
         return;
     }
 
@@ -969,7 +969,7 @@ void DirettaSync::configureRingPCM(int rate, int channels, int direttaBps, int i
     m_needDsdBitReversal.store(false, std::memory_order_release);
     m_needDsdByteSwap.store(false, std::memory_order_release);
     m_isLowBitrate.store(direttaBps <= 2 && rate <= 48000, std::memory_order_release);
-    m_dsdConversionMode = DirettaRingBuffer::DSDConversionMode::Passthrough;
+    m_dsdConversionMode.store(DirettaRingBuffer::DSDConversionMode::Passthrough, std::memory_order_release);
 
     // Increment format generation to invalidate cached values in sendAudio
     m_formatGeneration.fetch_add(1, std::memory_order_release);
@@ -1143,7 +1143,7 @@ size_t DirettaSync::sendAudio(const uint8_t* data, size_t numSamples) {
         m_cachedUpsample16to32 = m_need16To32Upsample.load(std::memory_order_acquire);
         m_cachedChannels = m_channels.load(std::memory_order_acquire);
         m_cachedBytesPerSample = m_bytesPerSample.load(std::memory_order_acquire);
-        m_cachedDsdConversionMode = m_dsdConversionMode;
+        m_cachedDsdConversionMode = m_dsdConversionMode.load(std::memory_order_acquire);
         m_cachedFormatGen = gen;
     }
 
@@ -1332,10 +1332,10 @@ bool DirettaSync::getNewStream(DIRETTA::Stream& stream) {
             stabilizationTarget = std::max(50, std::min(stabilizationTarget, 3000));
         }
 
-        int count = m_stabilizationCount.fetch_add(1, std::memory_order_acq_rel) + 1;
+        int count = m_stabilizationCount.fetch_add(1, std::memory_order_relaxed) + 1;
         if (count >= stabilizationTarget) {
             m_postOnlineDelayDone = true;
-            m_stabilizationCount = 0;
+            m_stabilizationCount.store(0, std::memory_order_relaxed);
             DIRETTA_LOG("Post-online stabilization complete (" << count << " buffers)");
         }
         std::memset(dest, currentSilenceByte, currentBytesPerBuffer);

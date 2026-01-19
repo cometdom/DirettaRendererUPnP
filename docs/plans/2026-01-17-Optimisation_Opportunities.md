@@ -1,8 +1,8 @@
 # Optimisation Opportunities
 
-**Date:** 2026-01-17 (updated 2026-01-18)
+**Date:** 2026-01-17 (updated 2026-01-19)
 **Scope:** Consolidated codebase review and action plan
-**Status:** Major optimizations complete - maintenance items remaining
+**Status:** Major optimizations complete - new jitter reduction opportunities identified
 
 ---
 
@@ -21,6 +21,8 @@ This document consolidates findings from:
 | Secondary (Track Init) | 5 | 3 | 2 |
 | New Opportunities | 4 | 2 | 2 |
 | New (2026-01-18) | 4 | 0 | 4 |
+| **New (2026-01-19 EE)** | 13 | 0 | 13 |
+| **New (2026-01-19 Expert Pass)** | 6 | 3 | 3 |
 
 ---
 
@@ -296,6 +298,548 @@ if (!m_prefillComplete.load(std::memory_order_acquire)) {
 
 ---
 
+## NEW: Opportunities Identified 2026-01-19 (EE Analysis)
+
+Comprehensive codebase review from an electrical engineering perspective, focusing on signal integrity, timing determinism, and jitter minimisation.
+
+### Category A: Jitter Minimisation (Timing Variance Reduction)
+
+#### A1: DSD Remainder Buffer - Replace memmove with Ring Buffer ⭐ HIGH PRIORITY
+
+**Pattern:** #4 (O(1) Data Structures)
+**Location:** `AudioEngine.cpp:609-630`
+**Status:** Uses O(n) memmove per frame
+
+Every DSD frame with packet misalignment triggers `memmove()`:
+```cpp
+// Current: O(n) memmove every frame
+if (m_dsdRemainderCount > 0) {
+    memcpy(leftData + leftOffset, m_dsdPacketRemainder.data(), toUse);
+    memmove(m_dsdPacketRemainder.data(), m_dsdPacketRemainder.data() + toUse, ...);
+}
+```
+
+**Fix:** Replace with small circular FIFO (~4KB):
+```cpp
+// Proposed: O(1) ring buffer
+size_t readPos = m_dsdRemainderReadPos;
+size_t available = (m_dsdRemainderWritePos - readPos) & m_dsdRemainderMask;
+```
+
+**Variance Saved:** 5-50µs per frame
+**Effort:** Low | **Risk:** Low | **Impact:** Medium
+
+---
+
+#### A2: Resampler Buffer Pre-allocation with Fixed Capacity ⭐ HIGH PRIORITY
+
+**Pattern:** #1 (Memory Allocation Elimination)
+**Location:** `AudioEngine.cpp:911-918`
+**Status:** Dynamic reallocation at 1.5x capacity threshold
+
+```cpp
+// Current: Reallocation on threshold crossing
+if (tempBufferSize > m_resampleBufferCapacity) {
+    size_t newCapacity = static_cast<size_t>(tempBufferSize * 1.5);
+    m_resampleBuffer.resize(newCapacity);  // Triggers delete[] + new[]
+}
+```
+
+**Fix:** Pre-allocate to fixed capacity (256KB) in `initResampler()`:
+```cpp
+// Proposed: Fixed allocation, never reallocate
+m_resampleBuffer.resize(262144);  // 256KB covers up to 768kHz/32-bit
+m_resampleBufferCapacity = 262144;
+```
+
+**Variance Saved:** 50-200µs (eliminates worst-case allocation spikes)
+**Effort:** Very Low | **Risk:** Very Low | **Impact:** Medium
+
+---
+
+#### A3: Move Logging to Non-Blocking Ring Buffer ⭐ HIGH PRIORITY
+
+**Pattern:** #9 (Syscall Elimination)
+**Location:** `DirettaSync.cpp:1206-1213`
+**Status:** `std::cout` in conditional hot path
+
+```cpp
+// Current: Kernel I/O blocks audio thread
+if (g_verbose) {
+    if (count <= 3 || count % 500 == 0) {
+        DIRETTA_LOG(...);  // std::cout blocks on kernel I/O
+    }
+}
+```
+
+**Fix:** Write to lock-free ring buffer, drain in separate thread:
+```cpp
+// Proposed: Non-blocking log push
+m_logRing.push(LogEntry{timestamp, level, message});
+// Background thread drains to stdout asynchronously
+```
+
+**Variance Saved:** 5-10ms (when verbose logging enabled)
+**Effort:** Medium | **Risk:** Low | **Impact:** High (when logging enabled)
+
+---
+
+### Category B: Atomic Operation Optimisation
+
+#### B1: Relaxed Ordering for Diagnostic Counters
+
+**Pattern:** #10 (Generation Counter Caching variant)
+**Location:** Multiple locations in `DirettaSync.cpp`
+**Status:** Full memory barriers for diagnostic-only counters
+
+Locations:
+- Line 1207: `m_pushCount.fetch_add(1, std::memory_order_acq_rel)`
+- Line 1335: `m_stabilizationCount.fetch_add(1, std::memory_order_acq_rel)`
+- Line 1358: `m_underrunCount.fetch_add(1, std::memory_order_relaxed)` ✓ Already relaxed
+
+**Fix:** Use `memory_order_relaxed` for all diagnostic counters:
+```cpp
+m_stabilizationCount.fetch_add(1, std::memory_order_relaxed);
+```
+
+**Variance Saved:** 10-20ns per counter operation
+**Effort:** Very Low | **Risk:** Very Low | **Impact:** Low
+
+---
+
+#### B2: Conditional RingAccessGuard Bypass
+
+**Pattern:** #3 (Decision Point Relocation)
+**Location:** `DirettaSync.cpp:14-43`
+**Status:** Two atomic ops per sendAudio() regardless of state
+
+Reconfiguration only happens on format change (~0.1% of calls), yet guard is always used.
+
+**Fix:** Fast-path check before guard construction:
+```cpp
+// Proposed: Skip guard when ring is stable
+if (!m_reconfiguring.load(std::memory_order_relaxed) &&
+    m_ringStable.load(std::memory_order_relaxed)) {
+    // Direct ring access without guard
+}
+```
+
+**Variance Saved:** ~200ns per call
+**Effort:** Medium (requires correctness analysis) | **Risk:** Medium | **Impact:** Medium
+
+---
+
+### Category C: Cache Efficiency
+
+#### C1: DSD Buffer Pre-allocation at Track Open
+
+**Pattern:** #1 (Memory Allocation Elimination)
+**Location:** `AudioEngine.cpp:591-595`
+**Status:** First-frame lazy allocation
+
+```cpp
+// Current: Lazy allocation on first DSD frame
+if (bytesPerChannelNeeded > m_dsdBufferCapacity) {
+    m_dsdLeftBuffer.resize(bytesPerChannelNeeded);
+    m_dsdRightBuffer.resize(bytesPerChannelNeeded);
+}
+```
+
+**Fix:** Pre-allocate in `open()` when DSD format detected:
+```cpp
+// Proposed: Allocation at track open
+if (m_trackInfo.isDSD) {
+    size_t dsdBufferSize = calculateDsdBufferSize(m_trackInfo);
+    m_dsdLeftBuffer.resize(dsdBufferSize);
+    m_dsdRightBuffer.resize(dsdBufferSize);
+}
+```
+
+**Variance Saved:** 10-30µs (one-time per track)
+**Effort:** Very Low | **Risk:** Very Low | **Impact:** Low
+
+---
+
+#### C2: Stabilisation Parameters Pre-computation
+
+**Pattern:** #3 (Decision Point Relocation)
+**Location:** `DirettaSync.cpp:1312-1332`
+**Status:** Complex DSD rate calculations in getNewStream() hot path
+
+```cpp
+// Current: Runtime calculation every buffer
+int dsdMultiplier = currentSampleRate / 2822400;  // DSD64 = 1
+int targetWarmupMs = 50 * std::max(1, dsdMultiplier);
+int neededBuffers = (targetWarmupMs * currentSampleRate) / (1000 * samplesPerBuffer);
+```
+
+**Fix:** Pre-compute in `configureRingDSD()`:
+```cpp
+// Proposed: Pre-computed at format configuration
+m_precomputedStabilizationBuffers = calculateStabilizationBuffers(dsdRate, m_bytesPerBuffer);
+// In getNewStream(): use directly
+if (count >= m_precomputedStabilizationBuffers) { ... }
+```
+
+**Variance Saved:** ~100 cycles per buffer
+**Effort:** Low | **Risk:** Very Low | **Impact:** Low-Medium
+
+---
+
+### Category D: Signal Path Simplification
+
+#### D1: Planar-to-Interleaved SIMD Optimisation
+
+**Pattern:** #5 (Timing Variance Reduction)
+**Location:** `AudioEngine.cpp:866-873`
+**Status:** Naive per-sample channel loop
+
+```cpp
+// Current: O(samples × channels) loop
+for (size_t i = 0; i < frameSamples; i++) {
+    for (uint32_t ch = 0; ch < channels; ch++) {
+        *outputPtr++ = m_frame->data[ch][i];
+    }
+}
+```
+
+**Fix:** Use SIMD-based interleaving (pattern already in DirettaRingBuffer.h):
+```cpp
+// Proposed: AVX2 unpacklo/unpackhi pattern
+// Reuse existing SIMD interleaving from DSD conversion
+```
+
+**Variance Saved:** 10-50µs per frame
+**Effort:** Medium | **Risk:** Low | **Impact:** Medium
+
+---
+
+#### D2: Bypass swr_get_delay() Caching
+
+**Pattern:** #10 (Generation Counter Caching variant)
+**Location:** `AudioEngine.cpp:905`
+**Status:** `swr_get_delay()` called per-frame
+
+Resampler delay stabilises after first few frames.
+
+**Fix:** Cache delay and recompute periodically:
+```cpp
+// Proposed: Cached delay with periodic refresh
+if (++m_delayCheckCounter >= 100) {
+    m_cachedResamplerDelay = swr_get_delay(m_swrContext, m_trackInfo.sampleRate);
+    m_delayCheckCounter = 0;
+}
+```
+
+**Variance Saved:** 2-5µs per frame
+**Effort:** Very Low | **Risk:** Very Low | **Impact:** Low
+
+---
+
+### Category E: Buffer Dimensioning
+
+#### E1: Sample Rate Family-Aware Prefill Calculation
+
+**Pattern:** #5 (Timing Variance Reduction)
+**Location:** `DirettaSync.cpp` (prefill calculation)
+**Status:** Fixed milliseconds, not sample-aligned
+
+44.1kHz family has non-integer buffer boundaries, causing accumulator drift.
+
+**Fix:** Calculate prefill in exact sample counts:
+```cpp
+// Proposed: Frame-aligned prefill
+size_t samplesPerPrefill = (sampleRate * targetMs) / 1000;
+samplesPerPrefill = (samplesPerPrefill / framesPerBuffer) * framesPerBuffer;
+m_prefillBytes = samplesPerPrefill * bytesPerSample * channels;
+```
+
+**Variance Saved:** Improved timing accuracy for 44.1kHz family
+**Effort:** Low | **Risk:** Low | **Impact:** Low
+
+---
+
+#### E2: Adaptive Buffer Sizing Based on Target Latency
+
+**Pattern:** #7 (Flow Control Tuning)
+**Location:** `DirettaSync.cpp` (buffer sizing)
+**Status:** Fixed 300ms PCM buffer
+
+May be oversized for local targets, undersized for network targets.
+
+**Fix:** Query target for latency characteristics:
+```cpp
+// Proposed: Target-aware buffer sizing
+uint32_t targetLatencyHint = queryTargetLatency();  // From DIRETTA SDK
+float bufferSeconds = std::max(0.1f, targetLatencyHint / 1000.0f + 0.05f);
+```
+
+**Variance Saved:** Reduced latency for local targets
+**Effort:** Medium (requires SDK investigation) | **Risk:** Medium | **Impact:** Medium
+
+---
+
+### Category F: Thread Scheduling (Advanced)
+
+#### F1: Worker Thread Priority Elevation ⭐ HIGH PRIORITY
+
+**Pattern:** #9 (Syscall Elimination variant - reduce scheduling jitter)
+**Location:** `DirettaSync.cpp` (worker thread creation)
+**Status:** Default thread priority
+
+Default priority allows worker thread to be preempted by background processes.
+
+**Fix:** Set real-time scheduling priority:
+```cpp
+// Proposed: SCHED_FIFO with elevated priority
+pthread_t thread = m_workerThread.native_handle();
+struct sched_param param;
+param.sched_priority = sched_get_priority_max(SCHED_FIFO) - 1;
+pthread_setschedparam(thread, SCHED_FIFO, &param);
+```
+
+**Variance Saved:** Eliminates OS scheduling jitter (significant)
+**Effort:** Low | **Risk:** Low (requires root) | **Impact:** High
+
+---
+
+#### F2: CPU Affinity for Audio Thread
+
+**Pattern:** #6 (Cache Locality Optimisation)
+**Location:** `DirettaRenderer.cpp` (audio thread creation)
+**Status:** Thread may migrate between cores
+
+Core migration causes L1/L2 cache invalidation.
+
+**Fix:** Pin audio thread to specific core:
+```cpp
+// Proposed: CPU affinity
+cpu_set_t cpuset;
+CPU_ZERO(&cpuset);
+CPU_SET(audio_core_id, &cpuset);
+pthread_setaffinity_np(pthread_self(), sizeof(cpuset), &cpuset);
+```
+
+**Variance Saved:** Reduced L1/L2 cache misses
+**Effort:** Low | **Risk:** Low | **Impact:** Medium
+
+---
+
+## NEW: Opportunities Identified 2026-01-19 (Expert Analysis Pass)
+
+Multi-pass expert analysis combining Electrical Engineering (signal integrity, timing) and Software Engineering (concurrency, memory) perspectives.
+
+### Category G: Correctness and Robustness Issues
+
+#### G1: DSD Blocking Sleep - Severe Jitter Source ⭐⭐ CRITICAL
+
+**Pattern:** #5 (Timing Variance Reduction)
+**Location:** `DirettaRenderer.cpp:269` (within DSD retry loop)
+**Status:** 5ms blocking sleep causing ±2.5ms timing jitter
+
+This was previously documented as N5, but expert analysis reveals severity is much higher than initially assessed:
+
+```cpp
+// Current: Fixed 5ms blocking sleep in audio callback
+for (int retries = 0; retries < 100 && !success; retries++) {
+    // ... attempt send ...
+    if (!success) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));  // ±2.5ms jitter!
+    }
+}
+```
+
+**Analysis:** The 5ms sleep granularity on Linux has inherent ±2.5ms variance due to scheduler quantum. For DSD512+, where buffer timing is critical at µs scale, this is a SEVERE jitter source.
+
+**Fix:** Replace with condition variable or event-based waiting:
+```cpp
+// Proposed: Event-based with µs precision
+std::unique_lock<std::mutex> lock(m_bufferMutex);
+bool success = m_bufferAvailable.wait_for(lock,
+    std::chrono::microseconds(500),
+    [&] { return m_ringBuffer.getAvailable() >= bytesNeeded; });
+```
+
+**Variance Saved:** ±2.5ms → ±50µs (50× improvement)
+**Effort:** Medium | **Risk:** Medium | **Impact:** **CRITICAL for DSD**
+
+---
+
+#### G2: Memory Ordering Issue in DSD Conversion Mode ✓ IMPLEMENTED
+
+**Pattern:** #10 (Generation Counter Caching)
+**Location:** `DirettaSync.cpp:857-862+`, `DirettaSync.h:416`
+**Status:** ✓ Fixed - Made m_dsdConversionMode atomic
+
+The DSD conversion mode is set without proper memory barriers:
+
+```cpp
+// Current: No explicit ordering - relies on implicit barriers
+m_dsdConversionMode = calculateDsdConversionMode(...);
+// Consumer thread may read stale value
+```
+
+**Analysis:** While atomic stores default to `memory_order_seq_cst`, the enum value `m_dsdConversionMode` is not atomic. Consumer thread in `getNewStream()` may see inconsistent state.
+
+**Fix:** Make atomic or use explicit barrier:
+```cpp
+// Option A: Atomic with release
+std::atomic<DSDConversionMode> m_dsdConversionMode{...};
+m_dsdConversionMode.store(mode, std::memory_order_release);
+
+// Option B: Include in format generation counter update
+m_formatGeneration.fetch_add(1, std::memory_order_release);  // Acts as barrier
+```
+
+**Variance Saved:** Eliminates potential race condition
+**Effort:** Very Low | **Risk:** Low | **Impact:** Correctness
+
+---
+
+#### G3: Non-Atomic Store of Atomic Variable ✓ IMPLEMENTED
+
+**Pattern:** Correctness
+**Location:** `DirettaSync.cpp:1338`
+**Status:** ✓ Fixed - Changed to .store() with relaxed ordering
+
+```cpp
+// Current: Plain assignment to std::atomic
+m_stabilizationCount = 0;  // Should be .store(0, ...)
+```
+
+**Analysis:** While this may work on x86 due to strong memory model, it's undefined behavior per C++ standard and may fail on ARM (RPi).
+
+**Fix:** Use proper atomic store:
+```cpp
+m_stabilizationCount.store(0, std::memory_order_relaxed);
+```
+
+**Variance Saved:** Correctness on ARM platforms
+**Effort:** Trivial | **Risk:** Very Low | **Impact:** Correctness
+
+---
+
+#### G4: DSD512 Reset Delay Insufficient ⭐ MEDIUM PRIORITY
+
+**Pattern:** #7 (Flow Control Tuning)
+**Location:** `DirettaSync.cpp:439` (hardcoded 400ms)
+**Status:** Fixed delay may be insufficient for DSD512/DSD1024
+
+```cpp
+// Current: Fixed 400ms delay regardless of DSD rate
+constexpr unsigned int DSD_RESET_DELAY_MS = 400;
+```
+
+**Analysis:** DSD512 runs at 22.5792 MHz (8× DSD64). The pipeline depth scales with rate, so 400ms may be insufficient for complete flush at higher rates.
+
+**Fix:** Scale delay with DSD multiplier:
+```cpp
+// Proposed: Rate-dependent delay
+int dsdMultiplier = dsdRate / 2822400;  // DSD64 = 1, DSD512 = 8
+unsigned int resetDelayMs = 400 * std::max(1, dsdMultiplier / 2);  // 400-1600ms
+```
+
+**Variance Saved:** Eliminates transition glitches at high DSD rates
+**Effort:** Low | **Risk:** Low | **Impact:** Medium (DSD512+ users)
+
+---
+
+#### G5: silenceByte_ Memory Ordering Inconsistency ✓ VERIFIED OK
+
+**Pattern:** #10 (Generation Counter Caching)
+**Location:** `DirettaRingBuffer.h` (silenceByte_ access)
+**Status:** ✓ Already correct - release/acquire pair properly used
+
+The `silenceByte()` getter may return stale value if not synchronized:
+
+```cpp
+// Setter uses release
+void setSilenceByte(uint8_t v) {
+    silenceByte_.store(v, std::memory_order_release);
+}
+
+// Getter should use acquire (not relaxed)
+uint8_t silenceByte() const {
+    return silenceByte_.load(std::memory_order_acquire);  // Ensure consistency
+}
+```
+
+**Analysis:** If getter uses `relaxed`, consumer may see old silence value (0x00 vs 0x69 for DSD).
+
+**Fix:** Use acquire ordering in getter (likely already correct, verify).
+
+**Variance Saved:** Eliminates potential audible glitch on format change
+**Effort:** Trivial | **Risk:** Very Low | **Impact:** Low
+
+---
+
+#### G6: DSD1024 Support Gap (MIN_DSD_SAMPLES)
+
+**Pattern:** Future-proofing
+**Location:** `DirettaSync.h:141-142`
+**Status:** MIN_DSD_SAMPLES may limit DSD1024
+
+```cpp
+// Current limits
+constexpr size_t MIN_DSD_SAMPLES = 8192;   // ~3ms at DSD64
+constexpr size_t MAX_DSD_SAMPLES = 131072; // ~46ms at DSD64, ~3ms at DSD1024
+```
+
+**Analysis:** At DSD1024 (45.1584 MHz), 8192 samples = 0.18ms - very short chunk. The current `calculateDsdSamplesPerCall()` targets 12ms which works, but MIN_DSD_SAMPLES constraint may cause issues.
+
+**Fix:** Consider lowering MIN_DSD_SAMPLES or making it rate-dependent:
+```cpp
+// Proposed: Rate-dependent minimum
+size_t minSamples = std::max(2048u, dsdRate / 10000);  // ~100µs minimum
+```
+
+**Variance Saved:** Enables DSD1024 support
+**Effort:** Low | **Risk:** Low | **Impact:** Low (future compatibility)
+
+---
+
+### 2026-01-19 Expert Analysis Priority Matrix
+
+| ID | Issue | Type | Severity | Status |
+|----|-------|------|----------|--------|
+| **G1** | DSD blocking 5ms sleep | Jitter | ±2.5ms | Design complete (Phase 2) |
+| **G2** | DSD conversion mode ordering | Race | Potential | ✓ IMPLEMENTED |
+| **G3** | Non-atomic store | UB | Correctness | ✓ IMPLEMENTED |
+| G4 | DSD512 reset delay | Glitch | Audible | Pending |
+| G5 | silenceByte_ ordering | Race | Potential | ✓ Verified OK |
+| G6 | DSD1024 MIN_SAMPLES | Limit | Future | Pending |
+
+**Implementation Status:**
+- ✓ G3: Fixed - now uses .store() with relaxed ordering
+- ✓ G2: Fixed - m_dsdConversionMode made atomic
+- ✓ G5: Verified - existing implementation already correct
+- G1: Design document created (2026-01-19-jitter-reduction-phase2-design.md)
+- G4, G6: Pending implementation
+
+---
+
+### 2026-01-19 Priority Matrix
+
+| ID | Optimisation | Variance Saved | Difficulty | Priority |
+|----|--------------|----------------|------------|----------|
+| **A1** | DSD remainder ring buffer | 5-50µs/frame | Low | **HIGH** |
+| **A2** | Resampler buffer pre-alloc | 50-200µs spike | Very Low | **HIGH** |
+| **A3** | Non-blocking logging | 5-10ms (verbose) | Medium | **HIGH** |
+| **F1** | Worker thread priority | Scheduling jitter | Low | **HIGH** |
+| B1 | Relaxed diagnostic counters | 10-20ns/counter | Very Low | Medium |
+| B2 | Conditional guard bypass | 200ns/call | Medium | Medium |
+| C1 | DSD buffer pre-alloc | 10-30µs (one-time) | Very Low | Low |
+| C2 | Stabilisation pre-compute | 100 cycles/buffer | Low | Medium |
+| D1 | SIMD interleaving | 10-50µs/frame | Medium | Medium |
+| D2 | swr_get_delay caching | 2-5µs/frame | Very Low | Low |
+| E1 | Sample-accurate prefill | Timing accuracy | Low | Low |
+| E2 | Adaptive buffer sizing | Latency reduction | Medium | Low |
+| F2 | CPU affinity | Cache efficiency | Low | Medium |
+
+**Design Document:** See `2026-01-19-jitter-reduction-phase1-design.md` for A1, A2, A3, F1 implementation details.
+
+---
+
 ## ARCHIVED: Previously Documented (Now Implemented)
 
 ### ~~N1: Direct Write API for Ring Buffer~~
@@ -316,7 +860,7 @@ if (!m_prefillComplete.load(std::memory_order_acquire)) {
 
 ---
 
-## Implementation Roadmap (Updated 2026-01-18)
+## Implementation Roadmap (Updated 2026-01-19)
 
 ### ✓ COMPLETED: All Critical Hot Path Optimizations
 
@@ -331,6 +875,14 @@ if (!m_prefillComplete.load(std::memory_order_acquire)) {
 | N3: Consolidate LUT | ✓ Done | AudioEngine.cpp |
 | S4: Retry constants | ✓ Done | DirettaRetry namespace |
 
+### Phase 0: Correctness Fixes (Immediate) ⭐ COMPLETE
+
+| Item | Effort | Files | Status |
+|------|--------|-------|--------|
+| **G3: Non-atomic store fix** | Trivial | DirettaSync.cpp:1338 | ✓ Done |
+| **G2: DSD conversion mode race** | Very Low | DirettaSync.cpp:857-862+ | ✓ Done |
+| G5: silenceByte_ ordering | Trivial | DirettaRingBuffer.h | ✓ Verified OK |
+
 ### Phase 1: Quick Wins (Remaining)
 
 | Item | Effort | Files | Priority |
@@ -338,11 +890,18 @@ if (!m_prefillComplete.load(std::memory_order_acquire)) {
 | S5: Audirvana diagnostics flag | Trivial | AudioEngine.cpp | Low |
 | N5: DSD retry backoff | Low | DirettaRenderer.cpp | Low |
 | N7: Silence scaling consistency | Low | DirettaSync.cpp | Low |
+| G4: DSD512 reset delay | Low | DirettaSync.cpp | Medium |
+| G6: DSD1024 MIN_SAMPLES | Low | DirettaSync.h | Low |
 
-### Phase 2: Moderate Effort (Remaining)
+### Phase 2: Jitter Reduction (Moderate Effort) ⭐ UPDATED
 
 | Item | Effort | Files | Priority |
 |------|--------|-------|----------|
+| **G1: DSD blocking sleep** | Medium | DirettaRenderer.cpp | **CRITICAL** |
+| A1: DSD remainder ring buffer | Low | AudioEngine.cpp | High |
+| A2: Resampler buffer pre-alloc | Very Low | AudioEngine.cpp | High |
+| A3: Non-blocking logging | Medium | DirettaSync.cpp | High |
+| F1: Worker thread priority | Low | DirettaSync.cpp | High |
 | N4: SIMD memcpy | Medium | DirettaRingBuffer.h | Low |
 | N6: S24 timeout scaling | Low | DirettaRingBuffer.h | Low |
 
@@ -887,7 +1446,7 @@ After each optimisation, re-measure to validate impact.
 
 ---
 
-## Summary (2026-01-18)
+## Summary (2026-01-19)
 
 **Hot path optimizations are complete.** All critical per-frame overhead has been eliminated through:
 
@@ -895,12 +1454,29 @@ After each optimisation, re-measure to validate impact.
 2. **P2/P3**: Ring buffer optimizations eliminate redundant position loads
 3. **C2**: Memory ordering refinements reduce barrier overhead
 
-**Remaining items** are either:
+### 2026-01-19 Expert Analysis Pass Findings
+
+Multi-pass expert analysis (EE + SE perspectives) identified **6 issues**, **3 now resolved**:
+
+| Priority | Issue | Impact | Status |
+|----------|-------|--------|--------|
+| **CRITICAL** | G1: DSD 5ms blocking sleep | ±2.5ms jitter | Design ready |
+| **HIGH** | G2: DSD conversion mode race | Correctness | ✓ Fixed |
+| **HIGH** | G3: Non-atomic store | ARM compatibility | ✓ Fixed |
+| Medium | G4: DSD512 reset delay | High-rate DSD quality | Pending |
+| Low | G5: silenceByte_ ordering | Verify current state | ✓ Verified OK |
+| Low | G6: DSD1024 MIN_SAMPLES | Future compatibility | Pending |
+
+**G1 is the most impactful remaining issue** - the 5ms blocking sleep in the DSD retry loop introduces ±2.5ms jitter, which is severe for high-resolution DSD playback. Design document created: `2026-01-19-jitter-reduction-phase2-design.md`.
+
+**G2 and G3 correctness issues have been fixed.** G5 was verified to already be correct.
+
+**Remaining items** from previous passes are either:
 - Low-impact edge cases (N5, N6, N7, N8)
 - Maintainability improvements (S3, S5)
 - Future performance opportunities (N2, N4)
 
-None of the remaining items affect the critical hot path.
+None of the remaining items from earlier passes affect the critical hot path.
 
 ---
 
