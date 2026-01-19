@@ -1,6 +1,6 @@
 # Changelog
 
-## 2026-01-19 - SDK 148 Complete Solution: Stream Class Bypass
+## 2026-01-19 (Session 8) - SDK 148 Track Change Fix
 
 ### Problem
 
@@ -37,6 +37,8 @@ This works because the SDK only reads `Data.P` (pointer) and `Size` fields from 
 ### Documentation
 
 - `docs/SDK_148_MIGRATION_JOURNAL.md` - Complete migration analysis
+
+**Impact:** Reliable track skipping with SDK 148, no more segmentation faults.
 
 ---
 
