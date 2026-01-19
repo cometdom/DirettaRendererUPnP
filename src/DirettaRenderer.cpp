@@ -504,30 +504,34 @@ if (trackInfo.isDSD) {
   
 UPnPDevice::Callbacks callbacks;
 
-callbacks.onSetURI = [this](const std::string& uri, const std::string& metadata) {
+callbacks.onSetURI = [&lastStopTime, this](const std::string& uri, const std::string& metadata) {
     DEBUG_LOG("[DirettaRenderer] SetURI: " << uri);
-    
+
     // ⭐ v1.2.0 FIX: Keep mutex locked (v1.0.9 structure) + timeout prevents deadlock
     std::lock_guard<std::mutex> lock(m_mutex);
-    
+
     auto currentState = m_audioEngine->getState();
-    
+
     // ⭐ Auto-STOP if playing (JPlay iOS compatibility - added in v1.0.8)
-    if (currentState == AudioEngine::State::PLAYING || 
+    if (currentState == AudioEngine::State::PLAYING ||
         currentState == AudioEngine::State::PAUSED ||
         currentState == AudioEngine::State::TRANSITIONING) {
-        
+
         std::cout << "════════════════════════════════════════" << std::endl;
-        std::cout << "[DirettaRenderer] ⚠️  SetURI while " 
+        std::cout << "[DirettaRenderer] ⚠️  SetURI while "
                   << (currentState == AudioEngine::State::PLAYING ? "PLAYING" :
                       currentState == AudioEngine::State::PAUSED ? "PAUSED" : "TRANSITIONING")
                   << std::endl;
         std::cout << "[DirettaRenderer] 🛑 Auto-STOP before URI change (JPlay iOS compatibility)" << std::endl;
         std::cout << "════════════════════════════════════════" << std::endl;
 
+        // ⭐ v1.3.3 FIX: Record stop time for DAC stabilization delay
+        // Without this, onPlay may skip the stabilization delay after Auto-STOP
+        lastStopTime = std::chrono::steady_clock::now();
+
         // Stop audio engine
         m_audioEngine->stop();
-        
+
         // Wait for callback (has 5s timeout built-in, won't deadlock thanks to patch #10)
         waitForCallbackComplete();
 
@@ -540,13 +544,13 @@ callbacks.onSetURI = [this](const std::string& uri, const std::string& metadata)
                 m_direttaOutput->close();
             }
         }
-        
+
         // Notify state change
         m_upnp->notifyStateChange("STOPPED");
-        
+
         DEBUG_LOG("[DirettaRenderer] ✓ Auto-STOP completed");
     }
-    
+
     // Update URI (still under mutex lock - safe!)
     this->m_currentURI = uri;
     this->m_currentMetadata = metadata;
@@ -618,7 +622,14 @@ callbacks.onPlay = [&lastStopTime, this]() {
         }
     }
     
-    m_audioEngine->play();
+    // ⭐ v1.3.3 FIX: Vérifier le retour de play() avant de notifier PLAYING
+    // Sans cette vérification, le contrôleur UPnP croit que la lecture a démarré
+    // alors que le décodeur n'a pas pu s'ouvrir (échec silencieux)
+    if (!m_audioEngine->play()) {
+        std::cerr << "[DirettaRenderer] ❌ AudioEngine::play() failed - not notifying PLAYING" << std::endl;
+        m_upnp->notifyStateChange("STOPPED");
+        return;
+    }
     m_upnp->notifyStateChange("PLAYING");
 };
 
