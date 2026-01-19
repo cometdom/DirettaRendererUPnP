@@ -80,7 +80,8 @@ AudioDecoder::AudioDecoder()
     , m_rawDSD(false)         // DSD mode off by default
     , m_packet(nullptr)       // Reusable packet for raw reading
     , m_frame(nullptr)        // Reusable frame for PCM decoding
-    , m_dsdRemainderCount(0)  // DSD packet fragment counter
+    , m_dsdRemainderReadPos(0)   // DSD remainder ring read position
+    , m_dsdRemainderWritePos(0)  // DSD remainder ring write position
     , m_pcmFifo(nullptr)      // PCM overflow FIFO
     , m_resampleBufferCapacity(0)
     , m_bypassMode(false)     // PCM bypass disabled by default
@@ -566,7 +567,7 @@ void AudioDecoder::close() {
     m_rawDSD = false;
     m_resampleBufferCapacity = 0;  // Reset capacity tracking
     m_dsdBufferCapacity = 0;       // Reset DSD buffer capacity tracking
-    m_dsdRemainderCount = 0;       // Reset DSD packet remainder
+    dsdRemainderClear();           // Reset DSD packet remainder ring
     m_bypassMode = false;          // Reset PCM bypass mode
     m_resamplerInitialized = false;
 }
@@ -605,28 +606,15 @@ size_t AudioDecoder::readSamples(AudioBuffer& buffer, size_t numSamples,
             buffer.resize(totalBytesNeeded);
         }
 
-        // Use remaining data from previous DSD packet reads
-        if (m_dsdRemainderCount > 0) {
-            size_t remainingPerCh = m_dsdRemainderCount / 2;
-            size_t toUse = std::min(remainingPerCh, bytesPerChannelNeeded);
-
-            memcpy(leftData + leftOffset, m_dsdPacketRemainder.data(), toUse);
-            leftOffset += toUse;
-            memcpy(rightData + rightOffset, m_dsdPacketRemainder.data() + remainingPerCh, toUse);
-            rightOffset += toUse;
-
-            if (toUse < remainingPerCh) {
-                size_t leftover = remainingPerCh - toUse;
-                memmove(m_dsdPacketRemainder.data(),
-                        m_dsdPacketRemainder.data() + toUse,
-                        leftover);
-                memmove(m_dsdPacketRemainder.data() + leftover,
-                        m_dsdPacketRemainder.data() + remainingPerCh + toUse,
-                        leftover);
-                m_dsdRemainderCount = leftover * 2;
-            } else {
-                m_dsdRemainderCount = 0;
-            }
+        // Use remaining data from previous DSD packet reads (O(1) ring buffer)
+        size_t remainderAvail = dsdRemainderAvailable();
+        if (remainderAvail > 0) {
+            size_t toUse = std::min(remainderAvail, bytesPerChannelNeeded);
+            size_t popped = dsdRemainderPop(leftData + leftOffset,
+                                            rightData + rightOffset,
+                                            toUse);
+            leftOffset += popped;
+            rightOffset += popped;
         }
 
         // Read packets until we have enough data
@@ -675,15 +663,10 @@ size_t AudioDecoder::readSamples(AudioBuffer& buffer, size_t numSamples,
                 printf("\n");
             }
 
-            // Save DSD packet excess
+            // Save DSD packet excess (O(1) ring buffer push)
             if (toTake < blockSize) {
                 size_t excess = blockSize - toTake;
-                if (m_dsdPacketRemainder.size() < excess * 2) {
-                    m_dsdPacketRemainder.resize(excess * 2);
-                }
-                memcpy_audio(m_dsdPacketRemainder.data(), pktL + toTake, excess);
-                memcpy_audio(m_dsdPacketRemainder.data() + excess, pktR + toTake, excess);
-                m_dsdRemainderCount = excess * 2;
+                dsdRemainderPush(pktL + toTake, pktR + toTake, excess);
             }
 
             av_packet_unref(m_packet);
@@ -911,7 +894,12 @@ size_t AudioDecoder::readSamples(AudioBuffer& buffer, size_t numSamples,
                     // Reuse member buffer with capacity growth (eliminates per-call allocation)
                     size_t tempBufferSize = totalOutSamples * bytesPerSample;
                     if (tempBufferSize > m_resampleBufferCapacity) {
-                        // Grow with 50% headroom to reduce future reallocations
+                        // Should not happen with pre-allocated 256KB buffer
+                        // Log warning but don't block - fall back to dynamic allocation
+                        DEBUG_LOG("[AudioDecoder] WARNING: Resampler buffer insufficient: "
+                                  << tempBufferSize << " > " << m_resampleBufferCapacity
+                                  << " - pre-allocation may need increase");
+                        // Fall back to dynamic allocation only if absolutely necessary
                         size_t newCapacity = static_cast<size_t>(tempBufferSize * 1.5);
                         m_resampleBuffer.resize(newCapacity);
                         m_resampleBufferCapacity = m_resampleBuffer.size();
@@ -1104,6 +1092,15 @@ bool AudioDecoder::initResampler(uint32_t outputRate, uint32_t outputBits) {
     std::cout << "[AudioDecoder] Resampler: " << m_codecContext->sample_rate
               << "Hz -> " << outputRate << "Hz, " << outputBits << "bit"
               << " (FIFO: " << fifoSize << " samples)" << std::endl;
+
+    // Pre-allocate resampler buffer to fixed capacity (eliminates hot-path allocation)
+    // 256KB covers up to 768kHz/32-bit stereo with headroom
+    static constexpr size_t RESAMPLER_BUFFER_CAPACITY = 262144;
+    if (m_resampleBuffer.size() < RESAMPLER_BUFFER_CAPACITY) {
+        m_resampleBuffer.resize(RESAMPLER_BUFFER_CAPACITY);
+        m_resampleBufferCapacity = RESAMPLER_BUFFER_CAPACITY;
+        DEBUG_LOG("[AudioDecoder] Pre-allocated resampler buffer: " << RESAMPLER_BUFFER_CAPACITY << " bytes");
+    }
 
     m_resamplerInitialized = true;
     return true;
@@ -1754,7 +1751,7 @@ bool AudioDecoder::seek(double seconds) {
         }
 
         // Clear stale DSD buffered data from before the seek
-        m_dsdRemainderCount = 0;
+        dsdRemainderClear();
         m_eof = false;
 
         // Reset packet counter for cleaner debug output

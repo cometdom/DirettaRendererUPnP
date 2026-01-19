@@ -26,6 +26,77 @@
 #include <thread>
 #include <iostream>
 #include <cmath>
+#include <chrono>
+#include <cstring>
+#include <sstream>
+#include <condition_variable>
+
+//=============================================================================
+// Lock-free Log Ring Buffer (for non-blocking logging in hot paths)
+//=============================================================================
+
+struct LogEntry {
+    uint64_t timestamp_us;      // Microseconds since epoch
+    char message[248];          // Message text (256 - 8 = 248 for alignment)
+};
+static_assert(sizeof(LogEntry) == 256, "LogEntry must be 256 bytes");
+
+class LogRing {
+public:
+    static constexpr size_t CAPACITY = 1024;  // Must be power of 2
+    static constexpr size_t MASK = CAPACITY - 1;
+
+    LogRing() : m_writePos(0), m_readPos(0) {}
+
+    // Lock-free push (returns false if full - message dropped)
+    bool push(const char* msg) {
+        size_t wp = m_writePos.load(std::memory_order_relaxed);
+        size_t rp = m_readPos.load(std::memory_order_acquire);
+
+        if (((wp + 1) & MASK) == rp) {
+            return false;  // Full, drop message
+        }
+
+        // Get timestamp
+        auto now = std::chrono::steady_clock::now();
+        m_entries[wp].timestamp_us = std::chrono::duration_cast<std::chrono::microseconds>(
+            now.time_since_epoch()).count();
+
+        // Copy message (truncate if needed)
+        strncpy(m_entries[wp].message, msg, sizeof(m_entries[wp].message) - 1);
+        m_entries[wp].message[sizeof(m_entries[wp].message) - 1] = '\0';
+
+        m_writePos.store((wp + 1) & MASK, std::memory_order_release);
+        return true;
+    }
+
+    // Pop for drain thread (returns false if empty)
+    bool pop(LogEntry& entry) {
+        size_t rp = m_readPos.load(std::memory_order_relaxed);
+        size_t wp = m_writePos.load(std::memory_order_acquire);
+
+        if (rp == wp) {
+            return false;  // Empty
+        }
+
+        entry = m_entries[rp];
+        m_readPos.store((rp + 1) & MASK, std::memory_order_release);
+        return true;
+    }
+
+    bool empty() const {
+        return m_readPos.load(std::memory_order_acquire) ==
+               m_writePos.load(std::memory_order_acquire);
+    }
+
+private:
+    LogEntry m_entries[CAPACITY];
+    alignas(64) std::atomic<size_t> m_writePos;
+    alignas(64) std::atomic<size_t> m_readPos;
+};
+
+// Global log ring (initialized in main.cpp)
+extern LogRing* g_logRing;
 
 //=============================================================================
 // Debug Logging
@@ -36,6 +107,15 @@ extern bool g_verbose;
 #define DIRETTA_LOG(msg) do { \
     if (g_verbose) { \
         std::cout << "[DirettaSync] " << msg << std::endl; \
+    } \
+} while(0)
+
+// Async logging macro for hot paths (non-blocking)
+#define DIRETTA_LOG_ASYNC(msg) do { \
+    if (g_logRing && g_verbose) { \
+        std::ostringstream _oss; \
+        _oss << msg; \
+        g_logRing->push(_oss.str().c_str()); \
     } \
 } while(0)
 
@@ -392,6 +472,12 @@ private:
     std::mutex m_configMutex;
     std::atomic<bool> m_reconfiguring{false};
     mutable std::atomic<int> m_ringUsers{0};
+
+    // G1: Condition variable for interruptible format transition waits
+    // Allows blocking waits to be interrupted on shutdown rather than sleeping
+    std::mutex m_transitionMutex;
+    std::condition_variable m_transitionCv;
+    std::atomic<bool> m_transitionWakeup{false};
 
     // Ring buffer
     DirettaRingBuffer m_ringBuffer;

@@ -135,10 +135,15 @@ private:
     AVPacket* m_packet;      // Reusable for raw packet reading (DSD and PCM)
     AVFrame* m_frame;        // Reusable for decoded frames (PCM) - eliminates per-call alloc
 
-    // DSD packet remainder buffer (for incomplete packet fragments)
+    // DSD packet remainder ring buffer (O(1) push/pop, replaces O(n) memmove)
     // Stores leftover bytes when DSD packets don't align with request size
-    AudioBuffer m_dsdPacketRemainder;
-    size_t m_dsdRemainderCount = 0;
+    // Layout: [leftChannel bytes][rightChannel bytes] - each channel has same count
+    static constexpr size_t DSD_REMAINDER_SIZE = 4096;  // Power of 2, per channel
+    static constexpr size_t DSD_REMAINDER_MASK = DSD_REMAINDER_SIZE - 1;
+    alignas(64) uint8_t m_dsdRemainderLeft[DSD_REMAINDER_SIZE];
+    alignas(64) uint8_t m_dsdRemainderRight[DSD_REMAINDER_SIZE];
+    size_t m_dsdRemainderReadPos = 0;   // Read position (both channels)
+    size_t m_dsdRemainderWritePos = 0;  // Write position (both channels)
 
     // PCM FIFO for sample overflow (O(1) circular buffer)
     // Replaces memmove-based overflow handling with efficient FIFO
@@ -168,6 +173,72 @@ private:
 
     bool initResampler(uint32_t outputRate, uint32_t outputBits);
     bool canBypass(uint32_t outputRate, uint32_t outputBits) const;
+
+    // DSD remainder ring buffer helpers (O(1) operations)
+    size_t dsdRemainderAvailable() const {
+        return (m_dsdRemainderWritePos - m_dsdRemainderReadPos) & DSD_REMAINDER_MASK;
+    }
+
+    size_t dsdRemainderFree() const {
+        return (m_dsdRemainderReadPos - m_dsdRemainderWritePos - 1) & DSD_REMAINDER_MASK;
+    }
+
+    // Push stereo remainder data (left and right channels, same size each)
+    // Returns bytes actually written per channel
+    size_t dsdRemainderPush(const uint8_t* leftData, const uint8_t* rightData, size_t bytesPerChannel) {
+        size_t free = dsdRemainderFree();
+        if (bytesPerChannel > free) bytesPerChannel = free;
+        if (bytesPerChannel == 0) return 0;
+
+        size_t wp = m_dsdRemainderWritePos;
+        size_t firstChunk = std::min(bytesPerChannel, DSD_REMAINDER_SIZE - wp);
+
+        // Copy left channel
+        memcpy(m_dsdRemainderLeft + wp, leftData, firstChunk);
+        if (firstChunk < bytesPerChannel) {
+            memcpy(m_dsdRemainderLeft, leftData + firstChunk, bytesPerChannel - firstChunk);
+        }
+
+        // Copy right channel
+        memcpy(m_dsdRemainderRight + wp, rightData, firstChunk);
+        if (firstChunk < bytesPerChannel) {
+            memcpy(m_dsdRemainderRight, rightData + firstChunk, bytesPerChannel - firstChunk);
+        }
+
+        m_dsdRemainderWritePos = (wp + bytesPerChannel) & DSD_REMAINDER_MASK;
+        return bytesPerChannel;
+    }
+
+    // Pop stereo remainder data (left and right channels, same size each)
+    // Returns bytes actually read per channel
+    size_t dsdRemainderPop(uint8_t* leftDest, uint8_t* rightDest, size_t bytesPerChannel) {
+        size_t avail = dsdRemainderAvailable();
+        if (bytesPerChannel > avail) bytesPerChannel = avail;
+        if (bytesPerChannel == 0) return 0;
+
+        size_t rp = m_dsdRemainderReadPos;
+        size_t firstChunk = std::min(bytesPerChannel, DSD_REMAINDER_SIZE - rp);
+
+        // Copy left channel
+        memcpy(leftDest, m_dsdRemainderLeft + rp, firstChunk);
+        if (firstChunk < bytesPerChannel) {
+            memcpy(leftDest + firstChunk, m_dsdRemainderLeft, bytesPerChannel - firstChunk);
+        }
+
+        // Copy right channel
+        memcpy(rightDest, m_dsdRemainderRight + rp, firstChunk);
+        if (firstChunk < bytesPerChannel) {
+            memcpy(rightDest + firstChunk, m_dsdRemainderRight, bytesPerChannel - firstChunk);
+        }
+
+        m_dsdRemainderReadPos = (rp + bytesPerChannel) & DSD_REMAINDER_MASK;
+        return bytesPerChannel;
+    }
+
+    void dsdRemainderClear() {
+        m_dsdRemainderReadPos = 0;
+        m_dsdRemainderWritePos = 0;
+    }
 };
 
 /**

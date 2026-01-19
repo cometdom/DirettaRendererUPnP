@@ -9,8 +9,48 @@
 #include "DirettaSync.h"
 #include <stdexcept>
 #include <iomanip>
+#include <pthread.h>
+#include <sched.h>
 
 namespace {
+
+// G1: Interruptible wait helper for format transitions
+// Uses condition variable instead of sleep_for to allow shutdown interruption
+// Returns true if wait completed, false if interrupted by wakeup signal
+bool interruptibleWait(std::mutex& mutex, std::condition_variable& cv,
+                       std::atomic<bool>& wakeupFlag, int timeoutMs) {
+    std::unique_lock<std::mutex> lock(mutex);
+    bool interrupted = cv.wait_for(lock, std::chrono::milliseconds(timeoutMs),
+                                   [&wakeupFlag]() { return wakeupFlag.load(std::memory_order_acquire); });
+    if (interrupted) {
+        wakeupFlag.store(false, std::memory_order_release);  // Reset for next use
+    }
+    return !interrupted;  // Return true if timeout (normal), false if interrupted
+}
+
+// F1: Worker thread priority elevation for reduced jitter
+// Sets SCHED_FIFO real-time priority (requires root on Linux)
+// Returns true on success, false on failure (logs warning but continues)
+bool setRealtimePriority(int priority = 50) {
+    struct sched_param param;
+    param.sched_priority = priority;
+
+    int ret = pthread_setschedparam(pthread_self(), SCHED_FIFO, &param);
+    if (ret != 0) {
+        // Not fatal - may not have CAP_SYS_NICE or running as non-root
+        if (g_verbose) {
+            std::cerr << "[DirettaSync] Warning: Could not set SCHED_FIFO priority "
+                      << priority << " (error " << ret << ")" << std::endl;
+        }
+        return false;
+    }
+
+    if (g_verbose) {
+        std::cout << "[DirettaSync] Worker thread set to SCHED_FIFO priority " << priority << std::endl;
+    }
+    return true;
+}
+
 class RingAccessGuard {
 public:
     RingAccessGuard(std::atomic<int>& users, const std::atomic<bool>& reconfiguring)
@@ -93,6 +133,13 @@ bool DirettaSync::enable(const DirettaConfig& config) {
 
 void DirettaSync::disable() {
     DIRETTA_LOG("Disabling...");
+
+    // G1: Signal any pending format transition waits to wake up immediately
+    {
+        std::lock_guard<std::mutex> lock(m_transitionMutex);
+        m_transitionWakeup.store(true, std::memory_order_release);
+    }
+    m_transitionCv.notify_all();
 
     if (m_open) {
         close();
@@ -436,10 +483,11 @@ bool DirettaSync::open(const AudioFormat& format) {
                 // Extended delay for target to fully reset
                 // DSD→PCM needs delay for clock domain switch (TEST: reduced from 800 to 400)
                 // DSD rate downgrade needs 400ms to flush internal buffers
+                // G1: Use interruptible wait for responsive shutdown
                 int resetDelayMs = nowPCM ? 400 : 400;
                 std::cout << "[DirettaSync] Waiting " << resetDelayMs
                           << "ms for target to reset..." << std::endl;
-                std::this_thread::sleep_for(std::chrono::milliseconds(resetDelayMs));
+                interruptibleWait(m_transitionMutex, m_transitionCv, m_transitionWakeup, resetDelayMs);
 
                 // Reopen DIRETTA::Sync fresh
                 ACQUA::Clock cycleTime = ACQUA::Clock::MicroSeconds(m_config.cycleTime);
@@ -483,10 +531,11 @@ bool DirettaSync::open(const AudioFormat& format) {
                 m_paused = false;
 
                 // Shorter delay for PCM rate change (TEST: reduced from 200 to 100)
+                // G1: Use interruptible wait for responsive shutdown
                 int resetDelayMs = 100;
                 std::cout << "[DirettaSync] Waiting " << resetDelayMs
                           << "ms for target to reset..." << std::endl;
-                std::this_thread::sleep_for(std::chrono::milliseconds(resetDelayMs));
+                interruptibleWait(m_transitionMutex, m_transitionCv, m_transitionWakeup, resetDelayMs);
 
                 // Reopen DIRETTA::Sync fresh
                 ACQUA::Clock cycleTime = ACQUA::Clock::MicroSeconds(m_config.cycleTime);
@@ -718,8 +767,10 @@ bool DirettaSync::reopenForFormatChange() {
         }
     }
 
+    // G1: Use interruptible wait for responsive shutdown
     DIRETTA_LOG("Waiting " << m_config.formatSwitchDelayMs << "ms...");
-    std::this_thread::sleep_for(std::chrono::milliseconds(m_config.formatSwitchDelayMs));
+    interruptibleWait(m_transitionMutex, m_transitionCv, m_transitionWakeup,
+                      static_cast<int>(m_config.formatSwitchDelayMs));
 
     ACQUA::Clock cycleTime = ACQUA::Clock::MicroSeconds(m_config.cycleTime);
 
@@ -1206,9 +1257,10 @@ size_t DirettaSync::sendAudio(const uint8_t* data, size_t numSamples) {
         if (g_verbose) {
             int count = m_pushCount.fetch_add(1, std::memory_order_relaxed) + 1;
             if (count <= 3 || count % 500 == 0) {
-                DIRETTA_LOG("sendAudio #" << count << " in=" << totalBytes
-                            << " out=" << written << " avail=" << m_ringBuffer.getAvailable()
-                            << " [" << formatLabel << "]");
+                // A3: Async logging in hot path - avoids cout blocking
+                DIRETTA_LOG_ASYNC("sendAudio #" << count << " in=" << totalBytes
+                                  << " out=" << written << " avail=" << m_ringBuffer.getAvailable()
+                                  << " [" << formatLabel << "]");
             }
         }
     }
@@ -1348,9 +1400,10 @@ bool DirettaSync::getNewStream(DIRETTA::Stream& stream) {
 
     if (g_verbose && (count <= 5 || count % 5000 == 0)) {
         float fillPct = (currentRingSize > 0) ? (100.0f * avail / currentRingSize) : 0.0f;
-        DIRETTA_LOG("getNewStream #" << count << " bpb=" << currentBytesPerBuffer
-                    << " avail=" << avail << " (" << std::fixed << std::setprecision(1)
-                    << fillPct << "%) " << (currentIsDsd ? "[DSD]" : "[PCM]"));
+        // A3: Async logging in hot path - avoids cout blocking in Diretta callback
+        DIRETTA_LOG_ASYNC("getNewStream #" << count << " bpb=" << currentBytesPerBuffer
+                          << " avail=" << avail << " (" << std::fixed << std::setprecision(1)
+                          << fillPct << "%) " << (currentIsDsd ? "[DSD]" : "[PCM]"));
     }
 
     // Underrun - count silently, log at session end
@@ -1386,6 +1439,10 @@ bool DirettaSync::startSyncWorker() {
     m_stopRequested = false;
 
     m_workerThread = std::thread([this]() {
+        // F1: Elevate worker thread priority for reduced jitter
+        // SCHED_FIFO priority 50 (mid-range real-time) - requires root/CAP_SYS_NICE
+        setRealtimePriority(50);
+
         while (m_running.load(std::memory_order_acquire)) {
             if (!syncWorker()) {
                 std::this_thread::sleep_for(std::chrono::microseconds(100));

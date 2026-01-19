@@ -27,6 +27,29 @@ void signalHandler(int signal) {
 
 bool g_verbose = false;
 
+// Async logging infrastructure (A3 optimization)
+LogRing* g_logRing = nullptr;
+std::atomic<bool> g_logDrainStop{false};
+std::thread g_logDrainThread;
+
+void logDrainThreadFunc() {
+    LogEntry entry;
+    while (!g_logDrainStop.load(std::memory_order_acquire)) {
+        // Drain all pending log entries
+        while (g_logRing && g_logRing->pop(entry)) {
+            std::cout << "[" << (entry.timestamp_us / 1000) << "ms] "
+                      << entry.message << std::endl;
+        }
+        // Sleep briefly to avoid busy-wait
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    // Final drain on shutdown
+    while (g_logRing && g_logRing->pop(entry)) {
+        std::cout << "[" << (entry.timestamp_us / 1000) << "ms] "
+                  << entry.message << std::endl;
+    }
+}
+
 void listTargets() {
     std::cout << "════════════════════════════════════════════════════════\n"
               << "  Scanning for Diretta Targets...\n"
@@ -127,6 +150,13 @@ int main(int argc, char* argv[]) {
 
     DirettaRenderer::Config config = parseArguments(argc, argv);
 
+    // Initialize async logging ring buffer (A3 optimization)
+    // Only active in verbose mode to avoid overhead in production
+    if (g_verbose) {
+        g_logRing = new LogRing();
+        g_logDrainThread = std::thread(logDrainThreadFunc);
+    }
+
     std::cout << "Configuration:" << std::endl;
     std::cout << "  Name:     " << config.name << std::endl;
     std::cout << "  Port:     " << (config.port == 0 ? "auto" : std::to_string(config.port)) << std::endl;
@@ -163,6 +193,16 @@ int main(int argc, char* argv[]) {
     }
 
     std::cout << "\nRenderer stopped" << std::endl;
+
+    // Shutdown async logging (A3 optimization cleanup)
+    if (g_logRing) {
+        g_logDrainStop.store(true, std::memory_order_release);
+        if (g_logDrainThread.joinable()) {
+            g_logDrainThread.join();
+        }
+        delete g_logRing;
+        g_logRing = nullptr;
+    }
 
     return 0;
 }

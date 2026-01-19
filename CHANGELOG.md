@@ -75,6 +75,78 @@ m_dsdConversionMode.store(mode, std::memory_order_release);
 
 ---
 
+### Jitter Reduction Optimizations (Phase 1 + Phase 2)
+
+The following optimizations reduce audio jitter by eliminating hot-path allocations, reducing blocking operations, and improving thread scheduling.
+
+#### A1: DSD Remainder Ring Buffer
+
+**Problem:** DSD packet remainder handling used `memmove()` for O(n) operations.
+
+**Solution:** Replaced with O(1) ring buffer using power-of-2 masking.
+
+**Files changed:**
+- `src/AudioEngine.h`: Added ring buffer arrays and helper methods
+- `src/AudioEngine.cpp`: Updated `readSamples()`, `close()`, `seek()` to use ring buffer
+
+**Before:** `memmove()` on every partial packet
+**After:** Constant-time push/pop with no data movement
+
+---
+
+#### A2: Pre-allocate Resampler Buffer
+
+**Problem:** Resampler buffer allocated on hot path during `readSamples()`.
+
+**Solution:** Pre-allocate 256KB buffer during `initResampler()`.
+
+**File:** `src/AudioEngine.cpp:1091-1098`
+
+**Impact:** Eliminates malloc/free jitter during playback.
+
+---
+
+#### A3: Async Logging Ring Buffer
+
+**Problem:** `cout` logging in hot paths (`sendAudio`, `getNewStream`) could block.
+
+**Solution:** Lock-free SPSC ring buffer with background drain thread.
+
+**Files changed:**
+- `src/DirettaSync.h`: Added `LogRing` class and `DIRETTA_LOG_ASYNC` macro
+- `src/main.cpp`: Added `g_logRing` global and drain thread lifecycle
+- `src/DirettaSync.cpp`: Replaced hot-path `DIRETTA_LOG` with `DIRETTA_LOG_ASYNC`
+
+**Impact:** Logging no longer blocks audio threads (verbose mode only).
+
+---
+
+#### F1: Worker Thread Priority Elevation
+
+**Problem:** Diretta worker thread ran at normal priority, subject to preemption.
+
+**Solution:** Set SCHED_FIFO priority 50 at thread start (requires root/CAP_SYS_NICE).
+
+**File:** `src/DirettaSync.cpp:31-51` (helper function), line 1419 (call site)
+
+**Impact:** Reduced scheduling jitter for Diretta SDK callbacks.
+
+---
+
+#### G1: Interruptible Format Transition Waits
+
+**Problem:** Format transitions used blocking `sleep_for()` that couldn't be interrupted.
+
+**Solution:** Replaced with condition variable `wait_for()` that wakes on shutdown signal.
+
+**Files changed:**
+- `src/DirettaSync.h`: Added `m_transitionCv`, `m_transitionMutex`, `m_transitionWakeup`
+- `src/DirettaSync.cpp`: Added `interruptibleWait()` helper, updated `open()` and `reopenForFormatChange()`
+
+**Impact:** Faster shutdown response during format changes (DSD→PCM, rate changes).
+
+---
+
 ## 2026-01-19 - FFmpeg Version Mismatch Detection
 
 ### Problem
