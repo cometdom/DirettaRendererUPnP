@@ -389,12 +389,6 @@ public:
         m_ringBuffer.setS24PackModeHint(hint);
     }
 
-    // EXPERIMENTAL: Force full reopen on next open() call
-    // When set, bypasses quick-reconnect even for same-format tracks.
-    // Use case: User-initiated track changes (vs gapless sequential playback)
-    // Set this flag before stopping playback on user interaction.
-    void setForceFullReopen(bool force) { m_forceFullReopen = force; }
-
     //=========================================================================
     // Flow Control (G1: DSD jitter reduction)
     //=========================================================================
@@ -512,10 +506,6 @@ private:
     std::atomic<bool> m_running{false};
     std::atomic<bool> m_stopRequested{false};
     std::atomic<bool> m_draining{false};
-
-    // EXPERIMENTAL: Force full reopen on user-initiated track changes
-    // Cleared after use in open()
-    bool m_forceFullReopen{false};
     std::atomic<bool> m_workerActive{false};
     std::thread m_workerThread;
     std::mutex m_workerMutex;
@@ -537,6 +527,11 @@ private:
 
     // Ring buffer
     DirettaRingBuffer m_ringBuffer;
+
+    // SDK 148: Persistent stream buffer to bypass corrupted Stream class
+    // After Stop→Play, SDK 148's Stream objects are in corrupted state.
+    // We manage our own buffer and directly set diretta_stream.Data.P/Size fields.
+    std::vector<uint8_t> m_streamData;
 
     // Format parameters (atomic snapshot for audio thread)
     std::atomic<int> m_sampleRate{44100};

@@ -1,6 +1,46 @@
 # Changelog
 
-## 2026-01-19 - SDK 148 Critical Bug Fix: Double setSink Corruption
+## 2026-01-19 - SDK 148 Complete Solution: Stream Class Bypass
+
+### Problem
+
+SDK 148 introduces breaking changes that corrupt `DIRETTA::Stream` objects after Stop→Play sequences (track changes). Any method call on these corrupted objects (`resize()`, `get_16()`, etc.) causes segmentation fault.
+
+**SDK 148 Breaking Changes:**
+1. `getNewStream()` signature changed from `Stream&` to `diretta_stream&` (pure virtual)
+2. Stream copy semantics deleted (only move allowed)
+3. Inheritance changed from `private diretta_stream` to `public diretta_stream`
+
+### Solution
+
+**Bypass Stream Class Methods:**
+- Added persistent buffer `std::vector<uint8_t> m_streamData`
+- Directly set `diretta_stream` C structure fields instead of using `Stream` methods:
+  ```cpp
+  baseStream.Data.P = m_streamData.data();
+  baseStream.Size = currentBytesPerBuffer;
+  ```
+
+This works because the SDK only reads `Data.P` (pointer) and `Size` fields from `diretta_stream`. By managing our own buffer and bypassing the corrupted `Stream` class methods, we avoid the crash entirely.
+
+**Behavior matches SDK 147:**
+- Quick resume for same-format track changes (no full reconnect)
+- Full close/reopen only on format changes
+- Removed EXPERIMENTAL force full reopen feature (no longer needed)
+
+### Files Changed
+
+- `src/DirettaSync.h` - Added `m_streamData` persistent buffer, removed `m_forceFullReopen`
+- `src/DirettaSync.cpp:getNewStream()` - Bypass Stream class, use own buffer
+- `src/DirettaRenderer.cpp` - Removed `setForceFullReopen()` call
+
+### Documentation
+
+- `docs/SDK_148_MIGRATION_JOURNAL.md` - Complete migration analysis
+
+---
+
+## 2026-01-19 - SDK 148 Critical Bug Fix: Double setSink Corruption (SUPERSEDED)
 
 ### Root Cause
 

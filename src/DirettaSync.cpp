@@ -414,20 +414,7 @@ bool DirettaSync::open(const AudioFormat& format) {
                   << format.bitDepth << "bit/" << format.channels << "ch"
                   << (format.isDSD ? " DSD" : " PCM") << std::endl;
 
-        // EXPERIMENTAL: Check force full reopen flag (user-initiated track change)
-        // When set, bypass quick path even for same format
-        if (m_forceFullReopen) {
-            std::cout << "[DirettaSync] EXPERIMENTAL: Force full reopen requested (user interaction)" << std::endl;
-            m_forceFullReopen = false;  // Clear flag after use
-
-            // Use standard reopen sequence for clean transition
-            if (!reopenForFormatChange()) {
-                std::cerr << "[DirettaSync] Failed to reopen for user-initiated change" << std::endl;
-                return false;
-            }
-            needFullConnect = true;
-            // Skip to full connect path (after the if-else block)
-        } else if (sameFormat) {
+        if (sameFormat) {
             std::cout << "[DirettaSync] Same format - quick resume (no setSink)" << std::endl;
 
             // Send silence before transition to flush Diretta pipeline
@@ -650,6 +637,12 @@ bool DirettaSync::open(const AudioFormat& format) {
     if (!sinkSet) {
         std::cerr << "[DirettaSync] Failed to set sink after " << maxAttempts << " attempts" << std::endl;
         return false;
+    }
+
+    // SDK 148: Query format support after setSink to initialize internal structures
+    // This may be required for stream objects to be properly allocated
+    if (needFullConnect) {
+        inquirySupportFormat(m_targetAddress);
     }
 
     applyTransferMode(m_config.transferMode, cycleTime);
@@ -1305,8 +1298,10 @@ float DirettaSync::getBufferLevel() const {
 //=============================================================================
 
 bool DirettaSync::getNewStream(diretta_stream& baseStream) {
-    // SDK 148+ uses diretta_stream& but passes DIRETTA::Stream objects
-    DIRETTA::Stream& stream = static_cast<DIRETTA::Stream&>(baseStream);
+    // SDK 148 WORKAROUND: Do NOT use DIRETTA::Stream class methods!
+    // After Stop→Play (track change), SDK 148's Stream objects are corrupted.
+    // Any method call (resize, get_16, etc.) causes segfault.
+    // Solution: Use our own persistent buffer and directly set diretta_stream fields.
 
     m_workerActive = true;
 
@@ -1341,13 +1336,18 @@ bool DirettaSync::getNewStream(diretta_stream& baseStream) {
         m_framesPerBufferAccumulator.store(acc, std::memory_order_relaxed);
     }
 
-    if (stream.size() != static_cast<size_t>(currentBytesPerBuffer)) {
-        // Note: SDK 148's resize_noremap() crashes on freshly created streams
-        // after reopenForFormatChange(). Using standard resize() for safety.
-        stream.resize(currentBytesPerBuffer);
+    // SDK 148 WORKAROUND: Use our own buffer instead of Stream::resize()
+    // Resize our persistent buffer if needed
+    if (m_streamData.size() != static_cast<size_t>(currentBytesPerBuffer)) {
+        m_streamData.resize(currentBytesPerBuffer);
     }
 
-    uint8_t* dest = reinterpret_cast<uint8_t*>(stream.get_16());
+    // Directly set the diretta_stream C structure fields
+    // The SDK only reads Data.P (pointer) and Size fields
+    baseStream.Data.P = m_streamData.data();
+    baseStream.Size = currentBytesPerBuffer;
+
+    uint8_t* dest = m_streamData.data();
 
     RingAccessGuard ringGuard(m_ringUsers, m_reconfiguring);
     if (!ringGuard.active()) {
