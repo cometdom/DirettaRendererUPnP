@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.3.3]
+### 🐛 Bug Fixes
+**Fixed:** Random playback failure when skipping tracks ("zapping")
+
+Some users experienced an issue where skipping from one track to another would result in no audio playback, even though the progress bar in the UPnP control app continued to advance. Stopping and restarting playback would fix the issue.
+
+**Root causes identified and fixed:**
+
+1. **Play state notification without verification**
+   - The UPnP controller was notified "PLAYING" even when the decoder failed to open
+   - Now properly checks `AudioEngine::play()` return value before notifying
+   - If playback fails, controller is notified "STOPPED" instead
+
+2. **DAC stabilization delay skipped after Auto-STOP**
+   - When changing tracks during playback, an "Auto-STOP" is triggered for JPlay iOS compatibility
+   - The DAC stabilization delay timer (`lastStopTime`) was not updated during Auto-STOP
+   - This could cause the next playback to start before the DAC was ready
+   - Now properly records stop time in both manual Stop and Auto-STOP scenarios
+
+**Impact:** More reliable track skipping, especially with rapid navigation through playlists.
+
+
 ## [1.3.2]
 ### 🐛 Bug Fixes
 Fixed: DSD gapless playback on standard networks (MTU 1500)
