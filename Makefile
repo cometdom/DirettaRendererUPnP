@@ -291,14 +291,13 @@ FFMPEG_HEADER_VERSION := $(shell \
 # Map libavformat major version to FFmpeg version
 # libavformat 62 = FFmpeg 8.x, 61 = FFmpeg 7.x, 60 = FFmpeg 6.x, 59 = FFmpeg 5.x, 58 = FFmpeg 4.x
 FFMPEG_HEADER_FFVERSION := $(shell \
-    case "$(FFMPEG_HEADER_VERSION)" in \
-        62) echo "8.x" ;; \
-        61) echo "7.x" ;; \
-        60) echo "6.x" ;; \
-        59) echo "5.x" ;; \
-        58) echo "4.x" ;; \
-        *) echo "unknown" ;; \
-    esac)
+    v="$(FFMPEG_HEADER_VERSION)"; \
+    if [ "$$v" = "62" ]; then echo "8.x"; \
+    elif [ "$$v" = "61" ]; then echo "7.x"; \
+    elif [ "$$v" = "60" ]; then echo "6.x"; \
+    elif [ "$$v" = "59" ]; then echo "5.x"; \
+    elif [ "$$v" = "58" ]; then echo "4.x"; \
+    else echo "unknown"; fi)
 
 # Detect runtime library version
 FFMPEG_LIB_VERSION := $(shell \
@@ -308,19 +307,13 @@ FFMPEG_LIB_VERSION := $(shell \
 
 # Map runtime library to FFmpeg version
 FFMPEG_LIB_FFVERSION := $(shell \
-    case "$(FFMPEG_LIB_VERSION)" in \
-        62) echo "8.x" ;; \
-        61) echo "7.x" ;; \
-        60) echo "6.x" ;; \
-        59) echo "5.x" ;; \
-        58) echo "4.x" ;; \
-        8) echo "8.x" ;; \
-        7) echo "7.x" ;; \
-        6) echo "6.x" ;; \
-        5) echo "5.x" ;; \
-        4) echo "4.x" ;; \
-        *) echo "unknown" ;; \
-    esac)
+    v="$(FFMPEG_LIB_VERSION)"; \
+    if [ "$$v" = "62" ] || [ "$$v" = "8" ]; then echo "8.x"; \
+    elif [ "$$v" = "61" ] || [ "$$v" = "7" ]; then echo "7.x"; \
+    elif [ "$$v" = "60" ] || [ "$$v" = "6" ]; then echo "6.x"; \
+    elif [ "$$v" = "59" ] || [ "$$v" = "5" ]; then echo "5.x"; \
+    elif [ "$$v" = "58" ] || [ "$$v" = "4" ]; then echo "4.x"; \
+    else echo "unknown"; fi)
 
 # Display FFmpeg configuration
 $(info )
