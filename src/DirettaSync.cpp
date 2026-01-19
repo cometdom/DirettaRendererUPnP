@@ -673,6 +673,9 @@ void DirettaSync::close() {
     DIRETTA::Sync::close();
     m_sdkOpen = false;
 
+    // Brief delay for target to process disconnect (like reopenForFormatChange)
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
     // Stop worker thread
     m_running = false;
     {
@@ -1261,11 +1264,9 @@ float DirettaSync::getBufferLevel() const {
 //=============================================================================
 
 bool DirettaSync::getNewStream(diretta_stream& baseStream) {
-    // v2.0.1 FIX for SDK 148: Work directly on SDK stream
-    // SDK 148 changed getNewStream signature from Stream& to diretta_stream&
-    // The baseStream IS a full Stream object (Stream inherits publicly from diretta_stream)
-    // We resize the SDK stream directly - this is safe as long as we're connected
-    DIRETTA::Stream& stream = static_cast<DIRETTA::Stream&>(baseStream);
+    // v2.0.1 FIX for SDK 148: Use our own buffer, bypass Stream methods entirely
+    // SDK 148's Stream methods may crash on corrupted stream after reconnect
+    // Solution: Allocate our own buffer and point baseStream.Data.P directly to it
 
     m_workerActive = true;
 
@@ -1300,23 +1301,25 @@ bool DirettaSync::getNewStream(diretta_stream& baseStream) {
         m_framesPerBufferAccumulator.store(acc, std::memory_order_relaxed);
     }
 
-    // v2.0.1 FIX: Use SDK 148's resize_noremap() for efficiency
-    // This avoids memory reallocation if the internal capacity is sufficient
+    // v2.0.1 FIX: Use our own persistent buffer instead of SDK's Stream
+    // This completely avoids SDK 148's Stream methods that may crash after reconnect
     if (g_verbose && m_streamCount.load(std::memory_order_relaxed) < 10) {
         std::cout << "[getNewStream] bpb=" << currentBytesPerBuffer
-                  << " stream.size=" << stream.size() << std::endl;
+                  << " m_streamData.size=" << m_streamData.size() << std::endl;
     }
 
-    // Resize SDK stream directly - prefer resize_noremap() to avoid reallocation
-    if (stream.size() != static_cast<size_t>(currentBytesPerBuffer)) {
-        if (!stream.resize_noremap(currentBytesPerBuffer)) {
-            stream.resize(currentBytesPerBuffer);
-        }
+    // Ensure our buffer is large enough (grow only, never shrink for efficiency)
+    if (m_streamData.size() < static_cast<size_t>(currentBytesPerBuffer)) {
+        m_streamData.resize(currentBytesPerBuffer);
     }
 
-    uint8_t* dest = stream.get();
+    // Point SDK's baseStream to our buffer
+    uint8_t* dest = m_streamData.data();
+    baseStream.Data.P = dest;
+    baseStream.Size = currentBytesPerBuffer;
+
     if (!dest) {
-        std::cerr << "[getNewStream] ERROR: stream.get() returned null!" << std::endl;
+        std::cerr << "[getNewStream] ERROR: m_streamData.data() returned null!" << std::endl;
         m_workerActive = false;
         return false;
     }

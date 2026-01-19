@@ -398,6 +398,12 @@ private:
     bool m_forceFullReopen{false};
     std::atomic<bool> m_workerActive{false};
 
+    // v2.0.1 FIX for SDK 148: Own persistent buffer for getNewStream()
+    // SDK 148's Stream methods may crash on corrupted stream after reconnect
+    // We allocate our own buffer and point baseStream.Data.P to it
+    std::vector<uint8_t> m_streamData;
+    size_t m_streamDataCapacity{0};
+
     std::thread m_workerThread;
     std::mutex m_workerMutex;
     std::mutex m_configMutex;
