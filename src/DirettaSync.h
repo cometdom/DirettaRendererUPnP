@@ -535,11 +535,6 @@ private:
     // Ring buffer
     DirettaRingBuffer m_ringBuffer;
 
-    // SDK 148: Persistent stream buffer to bypass corrupted Stream class
-    // After Stop→Play, SDK 148's Stream objects are in corrupted state.
-    // We manage our own buffer and directly set diretta_stream.Data.P/Size fields.
-    std::vector<uint8_t> m_streamData;
-
     // Format parameters (atomic snapshot for audio thread)
     std::atomic<int> m_sampleRate{44100};
     std::atomic<int> m_channels{2};
