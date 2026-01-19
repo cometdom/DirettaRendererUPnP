@@ -1254,12 +1254,10 @@ float DirettaSync::getBufferLevel() const {
 //=============================================================================
 
 bool DirettaSync::getNewStream(diretta_stream& baseStream) {
-    // v2.0.1 FIX for SDK 148: Use persistent buffer approach
+    // v2.0.1 FIX for SDK 148: Work directly on SDK stream
     // SDK 148 changed getNewStream signature from Stream& to diretta_stream&
-    // The baseStream may not be a full Stream object, so we can't use Stream methods safely.
-    // Solution: Fill our own m_streamBuffer, then use move() to transfer to SDK
-    // IMPORTANT: We cast to Stream& for method access - this works because SDK 148
-    // actually passes a Stream object (Stream inherits publicly from diretta_stream)
+    // The baseStream IS a full Stream object (Stream inherits publicly from diretta_stream)
+    // We resize the SDK stream directly - this is safe as long as we're connected
     DIRETTA::Stream& stream = static_cast<DIRETTA::Stream&>(baseStream);
 
     m_workerActive = true;
@@ -1295,22 +1293,23 @@ bool DirettaSync::getNewStream(diretta_stream& baseStream) {
         m_framesPerBufferAccumulator.store(acc, std::memory_order_relaxed);
     }
 
-    // v2.0.1 FIX: Use our own buffer to avoid SDK 148 corruption issue
-    // SDK 148 passes corrupted streams after disconnect/reconnect - resize() crashes
-    // Solution: resize our own m_streamBuffer, fill it, then move() to SDK stream
+    // v2.0.1 FIX: Use SDK 148's resize_noremap() for efficiency
+    // This avoids memory reallocation if the internal capacity is sufficient
     if (g_verbose && m_streamCount.load(std::memory_order_relaxed) < 10) {
         std::cout << "[getNewStream] bpb=" << currentBytesPerBuffer
-                  << " m_streamBuffer.size=" << m_streamBuffer.size() << std::endl;
+                  << " stream.size=" << stream.size() << std::endl;
     }
 
-    // Resize our own buffer (safe - we control its state)
-    if (m_streamBuffer.size() != static_cast<size_t>(currentBytesPerBuffer)) {
-        m_streamBuffer.resize(currentBytesPerBuffer);
+    // Resize SDK stream directly - prefer resize_noremap() to avoid reallocation
+    if (stream.size() != static_cast<size_t>(currentBytesPerBuffer)) {
+        if (!stream.resize_noremap(currentBytesPerBuffer)) {
+            stream.resize(currentBytesPerBuffer);
+        }
     }
 
-    uint8_t* dest = m_streamBuffer.get();
+    uint8_t* dest = stream.get();
     if (!dest) {
-        std::cerr << "[getNewStream] ERROR: m_streamBuffer.get() returned null!" << std::endl;
+        std::cerr << "[getNewStream] ERROR: stream.get() returned null!" << std::endl;
         m_workerActive = false;
         return false;
     }
@@ -1318,7 +1317,6 @@ bool DirettaSync::getNewStream(diretta_stream& baseStream) {
     RingAccessGuard ringGuard(m_ringUsers, m_reconfiguring);
     if (!ringGuard.active()) {
         std::memset(dest, currentSilenceByte, currentBytesPerBuffer);
-        m_streamBuffer.move(stream);  // v2.0.1: Transfer our buffer to SDK, m_streamBuffer becomes empty
         m_workerActive = false;
         return true;
     }
@@ -1331,7 +1329,6 @@ bool DirettaSync::getNewStream(diretta_stream& baseStream) {
     if (silenceRemaining > 0) {
         std::memset(dest, currentSilenceByte, currentBytesPerBuffer);
         m_silenceBuffersRemaining.fetch_sub(1, std::memory_order_acq_rel);
-        m_streamBuffer.move(stream);  // v2.0.1: Transfer our buffer to SDK, m_streamBuffer becomes empty
         m_workerActive = false;
         return true;
     }
@@ -1339,7 +1336,6 @@ bool DirettaSync::getNewStream(diretta_stream& baseStream) {
     // Stop requested
     if (m_stopRequested.load(std::memory_order_acquire)) {
         std::memset(dest, currentSilenceByte, currentBytesPerBuffer);
-        m_streamBuffer.move(stream);  // v2.0.1: Transfer our buffer to SDK, m_streamBuffer becomes empty
         m_workerActive = false;
         return true;
     }
@@ -1347,7 +1343,6 @@ bool DirettaSync::getNewStream(diretta_stream& baseStream) {
     // Prefill not complete
     if (!m_prefillComplete.load(std::memory_order_acquire)) {
         std::memset(dest, currentSilenceByte, currentBytesPerBuffer);
-        m_streamBuffer.move(stream);  // v2.0.1: Transfer our buffer to SDK, m_streamBuffer becomes empty
         m_workerActive = false;
         return true;
     }
@@ -1390,7 +1385,6 @@ bool DirettaSync::getNewStream(diretta_stream& baseStream) {
             DIRETTA_LOG("Post-online stabilization complete (" << count << " buffers)");
         }
         std::memset(dest, currentSilenceByte, currentBytesPerBuffer);
-        m_streamBuffer.move(stream);  // v2.0.1: Transfer our buffer to SDK, m_streamBuffer becomes empty
         m_workerActive = false;
         return true;
     }
@@ -1409,16 +1403,13 @@ bool DirettaSync::getNewStream(diretta_stream& baseStream) {
     if (avail < static_cast<size_t>(currentBytesPerBuffer)) {
         m_underrunCount.fetch_add(1, std::memory_order_relaxed);
         std::memset(dest, currentSilenceByte, currentBytesPerBuffer);
-        m_streamBuffer.move(stream);  // v2.0.1: Transfer our buffer to SDK, m_streamBuffer becomes empty
         m_workerActive = false;
         return true;
     }
 
-    // Pop from ring buffer
+    // Pop from ring buffer directly into SDK stream
     m_ringBuffer.pop(dest, currentBytesPerBuffer);
 
-    // v2.0.1: Transfer our filled buffer to SDK
-    m_streamBuffer.move(stream);  // m_streamBuffer becomes empty, will be resized on next call
     m_workerActive = false;
     return true;
 }
