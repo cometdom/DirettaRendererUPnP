@@ -714,6 +714,11 @@ void DirettaSync::release() {
 
     // Clear format state so next open() starts fresh
     m_hasPreviousFormat = false;
+
+    // v2.0.1 FIX: Reset cached consumer generation to force reload on next getNewStream()
+    // Without this, if m_consumerStateGen wraps around to match m_cachedConsumerGen,
+    // stale cached values could be used after SDK reopen
+    m_cachedConsumerGen = UINT32_MAX;  // Force mismatch on next getNewStream()
 }
 
 bool DirettaSync::reopenForFormatChange() {
@@ -799,6 +804,9 @@ void DirettaSync::fullReset() {
 
         m_ringBuffer.clear();
     }
+
+    // v2.0.1 FIX: Reset cached consumer generation to force reload on next getNewStream()
+    m_cachedConsumerGen = UINT32_MAX;
 
     m_stopRequested = false;
 }
@@ -1242,7 +1250,7 @@ float DirettaSync::getBufferLevel() const {
 //=============================================================================
 
 bool DirettaSync::getNewStream(diretta_stream& baseStream) {
-    // SDK 148+ uses diretta_stream& but passes DIRETTA::Stream objects
+    // SDK 148+ passes DIRETTA::Stream objects through diretta_stream& interface
     DIRETTA::Stream& stream = static_cast<DIRETTA::Stream&>(baseStream);
 
     m_workerActive = true;
@@ -1278,11 +1286,22 @@ bool DirettaSync::getNewStream(diretta_stream& baseStream) {
         m_framesPerBufferAccumulator.store(acc, std::memory_order_relaxed);
     }
 
+    // v2.0.1 DEBUG: Log stream operations to identify crash location
+    if (g_verbose && m_streamCount.load(std::memory_order_relaxed) < 5) {
+        std::cout << "[getNewStream] bpb=" << currentBytesPerBuffer
+                  << " stream.size=" << stream.size() << std::endl;
+    }
+
     if (stream.size() != static_cast<size_t>(currentBytesPerBuffer)) {
         stream.resize(currentBytesPerBuffer);
     }
 
-    uint8_t* dest = reinterpret_cast<uint8_t*>(stream.get_16());
+    uint8_t* dest = stream.get();
+    if (!dest) {
+        std::cerr << "[getNewStream] ERROR: stream.get() returned null!" << std::endl;
+        m_workerActive = false;
+        return false;
+    }
 
     RingAccessGuard ringGuard(m_ringUsers, m_reconfiguring);
     if (!ringGuard.active()) {
