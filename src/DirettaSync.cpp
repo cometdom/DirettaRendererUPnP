@@ -1294,13 +1294,32 @@ bool DirettaSync::getNewStream(diretta_stream& baseStream) {
     // v2.0.1 DEBUG: Log stream operations to identify crash location
     if (g_verbose && m_streamCount.load(std::memory_order_relaxed) < 10) {
         std::cout << "[getNewStream] bpb=" << currentBytesPerBuffer
-                  << " stream.size=" << stream.size() << std::endl;
+                  << " stream.size=" << stream.size() << std::flush;
     }
 
     // v2.0.1 FIX: Always resize the output stream to ensure it's properly allocated
     // SDK 148 may pass uninitialized/empty streams after reopen
-    if (stream.size() != static_cast<size_t>(currentBytesPerBuffer)) {
-        stream.resize(currentBytesPerBuffer);
+    try {
+        if (stream.size() != static_cast<size_t>(currentBytesPerBuffer)) {
+            if (g_verbose && m_streamCount.load(std::memory_order_relaxed) < 10) {
+                std::cout << " resizing..." << std::flush;
+            }
+            stream.resize(currentBytesPerBuffer);
+            if (g_verbose && m_streamCount.load(std::memory_order_relaxed) < 10) {
+                std::cout << " done" << std::flush;
+            }
+        }
+        if (g_verbose && m_streamCount.load(std::memory_order_relaxed) < 10) {
+            std::cout << std::endl;
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "[getNewStream] EXCEPTION in stream.resize(): " << e.what() << std::endl;
+        m_workerActive = false;
+        return false;
+    } catch (...) {
+        std::cerr << "[getNewStream] UNKNOWN EXCEPTION in stream.resize()" << std::endl;
+        m_workerActive = false;
+        return false;
     }
 
     uint8_t* dest = stream.get();
