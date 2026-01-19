@@ -225,12 +225,10 @@ bool DirettaRenderer::start() {
                                   << format.bitDepth << "bit "
                                   << (format.isDSD ? "DSD" : "PCM") << std::endl;
 
-                        // Send silence BEFORE stopping to flush Diretta pipeline
-                        // This prevents crackling on format transitions (gapless case)
-                        m_direttaSync->sendPreTransitionSilence();
-
-                        // Stop current playback to trigger full reopen
-                        m_direttaSync->stopPlayback(true);
+                        // v2.0.1 FIX: Use stopPlayback(false) to send silence before stopping
+                        // This flushes the Diretta pipeline and prevents crackling on format transitions
+                        // With immediate=true, no silence was sent, causing DAC sync issues
+                        m_direttaSync->stopPlayback(false);
                         needsOpen = true;
                     }
                 }
@@ -373,16 +371,19 @@ bool DirettaRenderer::start() {
 
                 std::cout << "[DirettaRenderer] Auto-STOP before URI change" << std::endl;
 
+                // v2.0.1 FIX: Record stop time for DAC stabilization delay in onPlay
+                // Without this, the stabilization delay is skipped after Auto-STOP
+                m_lastStopTime = std::chrono::steady_clock::now();
+
                 m_audioEngine->stop();
                 waitForCallbackComplete();
 
                 // Don't close DirettaSync - keep connection alive for quick track transitions
                 // Format changes are handled in DirettaSync::open()
                 if (m_direttaSync && m_direttaSync->isOpen()) {
-                    // Send silence BEFORE stopping to flush Diretta pipeline
-                    // This prevents crackling on DSD→PCM or DSD rate change transitions
-                    m_direttaSync->sendPreTransitionSilence();
-                    m_direttaSync->stopPlayback(true);
+                    // v2.0.1 FIX: Use stopPlayback(false) to send silence before stopping
+                    // With immediate=true, no silence was sent, causing DAC sync issues
+                    m_direttaSync->stopPlayback(false);
                 }
 
                 m_upnp->notifyStateChange("STOPPED");
@@ -428,7 +429,13 @@ bool DirettaRenderer::start() {
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
             }
 
-            m_audioEngine->play();
+            // v2.0.1 FIX: Check play() return value before notifying PLAYING
+            // Without this check, control point shows PLAYING even when decoder failed to open
+            if (!m_audioEngine->play()) {
+                std::cerr << "[DirettaRenderer] AudioEngine::play() failed" << std::endl;
+                m_upnp->notifyStateChange("STOPPED");
+                return;
+            }
             m_upnp->notifyStateChange("PLAYING");
         };
 

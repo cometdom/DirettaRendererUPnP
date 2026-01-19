@@ -1,5 +1,36 @@
 # Changelog
 
+## [2.0.0] - Track Change Playback Fix
+
+### Bug Fixes
+
+**Fixed:** Random playback failure when skipping tracks ("zapping")
+
+Users reported that skipping from one track to another would sometimes result in no audio playback, even though the progress bar in the UPnP control app continued to advance. This issue was more severe than the similar bug on v1.3.x due to SDK 148 changes.
+
+**Root causes identified and fixed:**
+
+1. **Play state notification without verification**
+   - The UPnP controller was notified "PLAYING" even when the decoder failed to open
+   - Now properly checks `AudioEngine::play()` return value before notifying
+   - If playback fails, controller is notified "STOPPED" instead
+
+2. **DAC stabilization delay skipped after Auto-STOP**
+   - When changing tracks during playback, an "Auto-STOP" is triggered
+   - The DAC stabilization delay timer (`m_lastStopTime`) was not updated during Auto-STOP
+   - This could cause the next playback to start before the DAC was ready
+   - Now properly records stop time in both manual Stop and Auto-STOP scenarios
+
+3. **Silence not sent before stopping (critical for SDK 148)**
+   - `stopPlayback(true)` was being called with `immediate=true`
+   - This skipped the silence buffer mechanism that flushes the Diretta pipeline
+   - Changed to `stopPlayback(false)` to properly send silence before stopping
+   - This allows the DAC to gracefully handle format transitions
+
+**Impact:** More reliable track skipping, especially with rapid navigation and format changes (DSD↔PCM).
+
+---
+
 ## 2026-01-18 (Session 7) - SDK 148 Compatibility & PCM Timing Fix
 
 ### SDK 148 Compatibility
