@@ -508,11 +508,13 @@ private:
     std::atomic<bool> m_draining{false};
     std::atomic<bool> m_workerActive{false};
 
-    // v2.0.1 FIX for SDK 148: Own persistent buffer for getNewStream()
-    // SDK 148's Stream methods may crash on corrupted stream after reconnect
-    // We allocate our own buffer and point baseStream.Data.P to it
+    // SDK 148 API: Application-managed buffer for getNewStream()
+    // SDK 148 changed getNewStream(Stream&) to getNewStream(diretta_stream&)
+    // The application is now responsible for memory management:
+    // - Allocate own buffer and assign to diretta_stream.Data.P
+    // - Set diretta_stream.Size to buffer size
+    // (Confirmed by Yu Harada: "If a segment fault occurs, there is a problem with how memory is managed")
     std::vector<uint8_t> m_streamData;
-    size_t m_streamDataCapacity{0};
 
     std::thread m_workerThread;
     std::mutex m_workerMutex;

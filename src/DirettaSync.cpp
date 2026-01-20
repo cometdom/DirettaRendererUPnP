@@ -729,8 +729,7 @@ void DirettaSync::close() {
     stop();
     disconnect(true);  // Wait for proper disconnection before returning
 
-    // v2.0.1 FIX for SDK 148: Close SDK completely to reset internal Stream state
-    // SDK 148 leaves Stream in corrupted state after disconnect - must close/reopen
+    // SDK 148: Close SDK completely to allow clean reopen on next track
     DIRETTA::Sync::close();
     m_sdkOpen = false;
 
@@ -1075,10 +1074,22 @@ void DirettaSync::configureRingPCM(int rate, int channels, int direttaBps, int i
     int bytesPerFrame = channels * direttaBps;
     int framesBase = rate / 1000;
     int framesRemainder = rate % 1000;
+    int bytesPerBuffer = framesBase * bytesPerFrame;
+
+    // Limit bytesPerBuffer to MTU to avoid network fragmentation
+    // MTU 1500 - 24 bytes overhead = 1476 effective payload
+    // Align down to frame boundary for clean audio
+    constexpr int MTU_PAYLOAD = 1476;
+    if (bytesPerBuffer > MTU_PAYLOAD) {
+        int maxFrames = MTU_PAYLOAD / bytesPerFrame;
+        bytesPerBuffer = maxFrames * bytesPerFrame;
+        DIRETTA_LOG("PCM buffer limited to MTU: " << bytesPerBuffer << " bytes (" << maxFrames << " frames)");
+    }
+
     m_bytesPerFrame.store(bytesPerFrame, std::memory_order_release);
     m_framesPerBufferRemainder.store(static_cast<uint32_t>(framesRemainder), std::memory_order_release);
     m_framesPerBufferAccumulator.store(0, std::memory_order_release);
-    m_bytesPerBuffer.store(framesBase * bytesPerFrame, std::memory_order_release);
+    m_bytesPerBuffer.store(bytesPerBuffer, std::memory_order_release);
 
     m_prefillTarget = DirettaBuffer::calculatePrefill(bytesPerSecond, false,
         m_isLowBitrate.load(std::memory_order_acquire));
@@ -1087,6 +1098,7 @@ void DirettaSync::configureRingPCM(int rate, int channels, int direttaBps, int i
 
     DIRETTA_LOG("Ring PCM: " << rate << "Hz " << channels << "ch "
                 << direttaBps << "bps, buffer=" << ringSize
+                << ", bytesPerBuffer=" << bytesPerBuffer
                 << ", prefill=" << m_prefillTarget);
 }
 
@@ -1115,6 +1127,17 @@ void DirettaSync::configureRingDSD(uint32_t byteRate, int channels) {
     size_t bytesPerBuffer = inputBytesPerMs;
     bytesPerBuffer = ((bytesPerBuffer + (4 * channels - 1)) / (4 * channels)) * (4 * channels);
     if (bytesPerBuffer < 64) bytesPerBuffer = 64;
+
+    // Limit bytesPerBuffer to MTU to avoid network fragmentation
+    // MTU 1500 - 24 bytes overhead = 1476 effective payload
+    // Align down to DSD block boundary (4 * channels)
+    constexpr size_t MTU_PAYLOAD = 1476;
+    if (bytesPerBuffer > MTU_PAYLOAD) {
+        size_t blockSize = 4 * channels;
+        bytesPerBuffer = (MTU_PAYLOAD / blockSize) * blockSize;
+        DIRETTA_LOG("DSD buffer limited to MTU: " << bytesPerBuffer << " bytes");
+    }
+
     m_bytesPerBuffer.store(static_cast<int>(bytesPerBuffer), std::memory_order_release);
     m_bytesPerFrame.store(0, std::memory_order_release);
     m_framesPerBufferRemainder.store(0, std::memory_order_release);
@@ -1125,7 +1148,8 @@ void DirettaSync::configureRingDSD(uint32_t byteRate, int channels) {
     m_prefillComplete = false;
 
     DIRETTA_LOG("Ring DSD: byteRate=" << byteRate << " ch=" << channels
-                << " buffer=" << ringSize << " prefill=" << m_prefillTarget);
+                << " buffer=" << ringSize << " bytesPerBuffer=" << bytesPerBuffer
+                << " prefill=" << m_prefillTarget);
 }
 
 //=============================================================================
@@ -1320,10 +1344,10 @@ float DirettaSync::getBufferLevel() const {
 //=============================================================================
 
 bool DirettaSync::getNewStream(diretta_stream& baseStream) {
-    // SDK 148 WORKAROUND: Do NOT use DIRETTA::Stream class methods!
-    // After Stop→Play (track change), SDK 148's Stream objects are corrupted.
-    // Any method call (resize, get_16, etc.) causes segfault.
-    // Solution: Use our own persistent buffer and directly set diretta_stream fields.
+    // SDK 148 API: Application-managed buffer
+    // SDK 148 changed from getNewStream(Stream&) to getNewStream(diretta_stream&)
+    // The application must manage memory: allocate buffer, assign to Data.P and Size
+    // (Confirmed by Yu Harada: memory management is application's responsibility)
 
     m_workerActive = true;
 

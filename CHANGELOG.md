@@ -1,44 +1,58 @@
 # Changelog
 
+## 2026-01-20 (Session 9) - SDK 148 API Clarification
+
+### Yu Harada's Response
+
+Contacted Yu Harada regarding SDK 148 migration. His response clarified the expected usage:
+
+> "Sync::getNewStream has changed its arguments. This is the base struct for Stream in the previous version. If a segment fault occurs, there is a problem with how memory is managed."
+
+### Interpretation
+
+SDK 148's `getNewStream(diretta_stream&)` API requires **application-managed memory**:
+- The application must allocate its own buffer
+- Assign buffer pointer to `diretta_stream.Data.P`
+- Set buffer size in `diretta_stream.Size`
+
+This is the **correct usage pattern**, not a workaround. The `DIRETTA::Stream` class methods are not intended for use with SDK 148's `getNewStream()`.
+
+### Updated Documentation
+
+Comments in code updated to reflect this is the expected API usage, not a bug workaround.
+
+---
+
 ## 2026-01-19 (Session 8) - SDK 148 Track Change Fix
 
 ### Problem
 
-SDK 148 introduces breaking changes that corrupt `DIRETTA::Stream` objects after Stop→Play sequences (track changes). Any method call on these corrupted objects (`resize()`, `get_16()`, etc.) causes segmentation fault.
+SDK 148 introduces API changes requiring application-managed memory for `getNewStream()`. Initial implementation incorrectly used `DIRETTA::Stream` class methods, causing segmentation faults during track changes.
 
-**SDK 148 Breaking Changes:**
+**SDK 148 API Changes:**
 1. `getNewStream()` signature changed from `Stream&` to `diretta_stream&` (pure virtual)
 2. Stream copy semantics deleted (only move allowed)
 3. Inheritance changed from `private diretta_stream` to `public diretta_stream`
 
 ### Solution
 
-**Bypass Stream Class Methods:**
+**Application-Managed Buffer (correct SDK 148 pattern):**
 - Added persistent buffer `std::vector<uint8_t> m_streamData`
-- Directly set `diretta_stream` C structure fields instead of using `Stream` methods:
+- Directly set `diretta_stream` C structure fields:
   ```cpp
   baseStream.Data.P = m_streamData.data();
   baseStream.Size = currentBytesPerBuffer;
   ```
 
-This works because the SDK only reads `Data.P` (pointer) and `Size` fields from `diretta_stream`. By managing our own buffer and bypassing the corrupted `Stream` class methods, we avoid the crash entirely.
-
-**Behavior matches SDK 147:**
-- Quick resume for same-format track changes (no full reconnect)
-- Full close/reopen only on format changes
-- Removed EXPERIMENTAL force full reopen feature (no longer needed)
+This is the correct usage pattern for SDK 148 as confirmed by Yu Harada.
 
 ### Files Changed
 
-- `src/DirettaSync.h` - Added `m_streamData` persistent buffer, removed `m_forceFullReopen`
-- `src/DirettaSync.cpp:getNewStream()` - Bypass Stream class, use own buffer
+- `src/DirettaSync.h` - Added `m_streamData` application-managed buffer
+- `src/DirettaSync.cpp:getNewStream()` - Correct SDK 148 memory management
 - `src/DirettaRenderer.cpp` - Removed `setForceFullReopen()` call
 
-### Documentation
-
-- `docs/SDK_148_MIGRATION_JOURNAL.md` - Complete migration analysis
-
-**Impact:** Reliable track skipping with SDK 148, no more segmentation faults.
+**Impact:** Reliable track skipping with SDK 148.
 
 ---
 
