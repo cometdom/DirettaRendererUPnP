@@ -1072,24 +1072,43 @@ void DirettaSync::configureRingPCM(int rate, int channels, int direttaBps, int i
     ringSize = m_ringBuffer.size();
 
     int bytesPerFrame = channels * direttaBps;
-    int framesBase = rate / 1000;
-    int framesRemainder = rate % 1000;
-    int bytesPerBuffer = framesBase * bytesPerFrame;
 
-    // Limit bytesPerBuffer to MTU to avoid network fragmentation
-    // MTU 1500 - 24 bytes overhead = 1476 effective payload
-    // Align down to frame boundary for clean audio
-    constexpr int MTU_PAYLOAD = 1476;
-    if (bytesPerBuffer > MTU_PAYLOAD) {
-        int maxFrames = MTU_PAYLOAD / bytesPerFrame;
-        bytesPerBuffer = maxFrames * bytesPerFrame;
-        DIRETTA_LOG("PCM buffer limited to MTU: " << bytesPerBuffer << " bytes (" << maxFrames << " frames)");
+    // Calculate bytesPerBuffer to match DirettaCycleCalculator
+    // The cycle time is calculated as: cycleTimeUs = (efficientMTU / bytesPerSecond) * 1000000
+    // So bytesPerBuffer should equal efficientMTU (MTU - 24 bytes overhead)
+    constexpr int OVERHEAD = 24;
+    int efficientMTU = static_cast<int>(m_effectiveMTU) - OVERHEAD;
+    if (efficientMTU < 64) efficientMTU = 1476;  // Fallback
+
+    // Align to frame boundary for clean audio
+    int framesPerBuffer = efficientMTU / bytesPerFrame;
+    int bytesPerBuffer = framesPerBuffer * bytesPerFrame;
+
+    // For low sample rates (<=96kHz), 1ms worth of data fits in MTU, use that instead
+    // This gives better timing resolution and matches original behavior
+    int bytesPerMs = (rate / 1000) * bytesPerFrame;
+    if (bytesPerMs <= efficientMTU) {
+        // Low sample rate: use 1ms buffers with drift correction for 44.1kHz family
+        int framesBase = rate / 1000;
+        int framesRemainder = rate % 1000;
+        bytesPerBuffer = framesBase * bytesPerFrame;
+
+        m_bytesPerFrame.store(bytesPerFrame, std::memory_order_release);
+        m_framesPerBufferRemainder.store(static_cast<uint32_t>(framesRemainder), std::memory_order_release);
+        m_framesPerBufferAccumulator.store(0, std::memory_order_release);
+        m_bytesPerBuffer.store(bytesPerBuffer, std::memory_order_release);
+
+        DIRETTA_LOG("PCM buffer (1ms): " << bytesPerBuffer << " bytes (" << framesBase << " frames)");
+    } else {
+        // High sample rate: use MTU-sized buffers, no drift correction needed
+        // Cycle time and buffer size are matched via DirettaCycleCalculator
+        m_bytesPerFrame.store(bytesPerFrame, std::memory_order_release);
+        m_framesPerBufferRemainder.store(0, std::memory_order_release);
+        m_framesPerBufferAccumulator.store(0, std::memory_order_release);
+        m_bytesPerBuffer.store(bytesPerBuffer, std::memory_order_release);
+
+        DIRETTA_LOG("PCM buffer (MTU): " << bytesPerBuffer << " bytes (" << framesPerBuffer << " frames)");
     }
-
-    m_bytesPerFrame.store(bytesPerFrame, std::memory_order_release);
-    m_framesPerBufferRemainder.store(static_cast<uint32_t>(framesRemainder), std::memory_order_release);
-    m_framesPerBufferAccumulator.store(0, std::memory_order_release);
-    m_bytesPerBuffer.store(bytesPerBuffer, std::memory_order_release);
 
     m_prefillTarget = DirettaBuffer::calculatePrefill(bytesPerSecond, false,
         m_isLowBitrate.load(std::memory_order_acquire));
@@ -1123,19 +1142,24 @@ void DirettaSync::configureRingDSD(uint32_t byteRate, int channels) {
     m_ringBuffer.resize(ringSize, 0x69);  // DSD silence
     ringSize = m_ringBuffer.size();
 
-    uint32_t inputBytesPerMs = (byteRate / 1000) * channels;
-    size_t bytesPerBuffer = inputBytesPerMs;
-    bytesPerBuffer = ((bytesPerBuffer + (4 * channels - 1)) / (4 * channels)) * (4 * channels);
+    // Calculate bytesPerBuffer to match DirettaCycleCalculator
+    // Use efficientMTU (MTU - 24 bytes overhead) aligned to DSD block boundary
+    constexpr int OVERHEAD = 24;
+    int efficientMTU = static_cast<int>(m_effectiveMTU) - OVERHEAD;
+    if (efficientMTU < 64) efficientMTU = 1476;  // Fallback
+
+    size_t blockSize = 4 * channels;
+    size_t bytesPerBuffer = (efficientMTU / blockSize) * blockSize;
     if (bytesPerBuffer < 64) bytesPerBuffer = 64;
 
-    // Limit bytesPerBuffer to MTU to avoid network fragmentation
-    // MTU 1500 - 24 bytes overhead = 1476 effective payload
-    // Align down to DSD block boundary (4 * channels)
-    constexpr size_t MTU_PAYLOAD = 1476;
-    if (bytesPerBuffer > MTU_PAYLOAD) {
-        size_t blockSize = 4 * channels;
-        bytesPerBuffer = (MTU_PAYLOAD / blockSize) * blockSize;
-        DIRETTA_LOG("DSD buffer limited to MTU: " << bytesPerBuffer << " bytes");
+    // For low DSD rates where 1ms fits in MTU, use 1ms buffers
+    uint32_t inputBytesPerMs = (byteRate / 1000) * channels;
+    size_t bytesPerMsAligned = ((inputBytesPerMs + blockSize - 1) / blockSize) * blockSize;
+    if (bytesPerMsAligned <= static_cast<size_t>(efficientMTU)) {
+        bytesPerBuffer = bytesPerMsAligned;
+        DIRETTA_LOG("DSD buffer (1ms): " << bytesPerBuffer << " bytes");
+    } else {
+        DIRETTA_LOG("DSD buffer (MTU): " << bytesPerBuffer << " bytes");
     }
 
     m_bytesPerBuffer.store(static_cast<int>(bytesPerBuffer), std::memory_order_release);
