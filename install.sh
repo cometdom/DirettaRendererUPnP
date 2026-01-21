@@ -1048,17 +1048,116 @@ configure_firewall() {
 # =============================================================================
 
 setup_systemd_service() {
-    print_header "Systemd Service Setup"
+    print_header "Systemd Service Installation"
 
-    if ! confirm "Create systemd service for auto-start?"; then
+    local INSTALL_DIR="/opt/diretta-renderer-upnp"
+    local SERVICE_FILE="/etc/systemd/system/diretta-renderer.service"
+    local CONFIG_FILE="$INSTALL_DIR/diretta-renderer.conf"
+    local WRAPPER_SCRIPT="$INSTALL_DIR/start-renderer.sh"
+    local BINARY_PATH="$SCRIPT_DIR/bin/DirettaRendererUPnP"
+    local SYSTEMD_DIR="$SCRIPT_DIR/systemd"
+
+    # Check if binary exists
+    if [ ! -f "$BINARY_PATH" ]; then
+        print_error "Binary not found at: $BINARY_PATH"
+        print_info "Please build the renderer first (option 3)"
+        return 1
+    fi
+
+    print_success "Binary found: $BINARY_PATH"
+
+    if ! confirm "Install systemd service to $INSTALL_DIR?"; then
         print_info "Skipping systemd service setup"
         return 0
     fi
 
-    local service_file="/etc/systemd/system/diretta-renderer.service"
-    local bin_path="$SCRIPT_DIR/bin/DirettaRendererUPnP"
+    print_info "1. Creating installation directory..."
+    sudo mkdir -p "$INSTALL_DIR"
 
-    sudo tee "$service_file" > /dev/null <<EOF
+    print_info "2. Copying binary..."
+    sudo cp "$BINARY_PATH" "$INSTALL_DIR/"
+    sudo chmod +x "$INSTALL_DIR/DirettaRendererUPnP"
+    print_success "Binary copied to $INSTALL_DIR/DirettaRendererUPnP"
+
+    print_info "3. Installing wrapper script..."
+    if [ -f "$SYSTEMD_DIR/start-renderer.sh" ]; then
+        sudo cp "$SYSTEMD_DIR/start-renderer.sh" "$WRAPPER_SCRIPT"
+        sudo chmod +x "$WRAPPER_SCRIPT"
+        print_success "Wrapper script installed: $WRAPPER_SCRIPT"
+    else
+        # Create a basic wrapper script if not found
+        sudo tee "$WRAPPER_SCRIPT" > /dev/null <<'WRAPPER_EOF'
+#!/bin/bash
+# Diretta UPnP Renderer - Startup Script
+# This script is called by systemd to start the renderer
+
+INSTALL_DIR="/opt/diretta-renderer-upnp"
+CONFIG_FILE="$INSTALL_DIR/diretta-renderer.conf"
+
+# Default values
+RENDERER_NAME="Diretta Renderer"
+RENDERER_PORT="4005"
+RENDERER_BUFFER="2.0"
+RENDERER_NETWORK=""
+RENDERER_EXTRA_ARGS=""
+
+# Load configuration if exists
+if [ -f "$CONFIG_FILE" ]; then
+    source "$CONFIG_FILE"
+fi
+
+# Build command line arguments
+ARGS="--port $RENDERER_PORT --buffer $RENDERER_BUFFER"
+[ -n "$RENDERER_NAME" ] && ARGS="$ARGS --name \"$RENDERER_NAME\""
+[ -n "$RENDERER_NETWORK" ] && ARGS="$ARGS --network $RENDERER_NETWORK"
+[ -n "$RENDERER_EXTRA_ARGS" ] && ARGS="$ARGS $RENDERER_EXTRA_ARGS"
+
+# Start the renderer
+exec "$INSTALL_DIR/DirettaRendererUPnP" $ARGS
+WRAPPER_EOF
+        sudo chmod +x "$WRAPPER_SCRIPT"
+        print_success "Wrapper script created: $WRAPPER_SCRIPT"
+    fi
+
+    print_info "4. Creating configuration file..."
+    if [ ! -f "$CONFIG_FILE" ]; then
+        if [ -f "$SYSTEMD_DIR/diretta-renderer.conf" ]; then
+            sudo cp "$SYSTEMD_DIR/diretta-renderer.conf" "$CONFIG_FILE"
+        else
+            # Create default configuration
+            sudo tee "$CONFIG_FILE" > /dev/null <<'CONFIG_EOF'
+# Diretta UPnP Renderer Configuration
+# Edit these values and restart the service
+
+# Renderer name (displayed in UPnP control points)
+RENDERER_NAME="Diretta Renderer"
+
+# UPnP port (default: 4005)
+RENDERER_PORT="4005"
+
+# Buffer size in seconds (default: 2.0)
+RENDERER_BUFFER="2.0"
+
+# Network interface (leave empty for auto-detect)
+# Example: RENDERER_NETWORK="eth0"
+RENDERER_NETWORK=""
+
+# Additional arguments (optional)
+# Example: RENDERER_EXTRA_ARGS="--verbose --gapless"
+RENDERER_EXTRA_ARGS=""
+CONFIG_EOF
+        fi
+        print_success "Configuration file created: $CONFIG_FILE"
+    else
+        print_info "Configuration file already exists, keeping current settings"
+    fi
+
+    print_info "5. Installing systemd service..."
+    if [ -f "$SYSTEMD_DIR/diretta-renderer.service" ]; then
+        sudo cp "$SYSTEMD_DIR/diretta-renderer.service" "$SERVICE_FILE"
+    else
+        # Create service file if not found
+        sudo tee "$SERVICE_FILE" > /dev/null <<'SERVICE_EOF'
 [Unit]
 Description=Diretta UPnP Renderer
 After=network-online.target
@@ -1067,8 +1166,8 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=root
-WorkingDirectory=$SCRIPT_DIR/bin
-ExecStart=$bin_path --port 4005 --buffer 2.0
+WorkingDirectory=/opt/diretta-renderer-upnp
+ExecStart=/opt/diretta-renderer-upnp/start-renderer.sh
 Restart=on-failure
 RestartSec=5
 StandardOutput=journal
@@ -1079,14 +1178,36 @@ AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN
 
 [Install]
 WantedBy=multi-user.target
-EOF
+SERVICE_EOF
+    fi
+    print_success "Service file installed: $SERVICE_FILE"
 
+    print_info "6. Reloading systemd daemon..."
     sudo systemctl daemon-reload
-    sudo systemctl enable diretta-renderer
 
-    print_success "Systemd service created and enabled"
-    print_info "Start with: sudo systemctl start diretta-renderer"
-    print_info "View logs with: sudo journalctl -u diretta-renderer -f"
+    print_info "7. Enabling service (start on boot)..."
+    sudo systemctl enable diretta-renderer.service
+
+    echo ""
+    print_success "Systemd Service Installation Complete!"
+    echo ""
+    echo "  Configuration: $CONFIG_FILE"
+    echo "  Service file:  $SERVICE_FILE"
+    echo "  Install dir:   $INSTALL_DIR"
+    echo ""
+    echo "  Next steps:"
+    echo "    1. Edit configuration (optional):"
+    echo "       sudo nano $CONFIG_FILE"
+    echo ""
+    echo "    2. Start the service:"
+    echo "       sudo systemctl start diretta-renderer"
+    echo ""
+    echo "    3. Check status:"
+    echo "       sudo systemctl status diretta-renderer"
+    echo ""
+    echo "    4. View logs:"
+    echo "       sudo journalctl -u diretta-renderer -f"
+    echo ""
 }
 
 # =============================================================================
@@ -1218,19 +1339,22 @@ show_main_menu() {
     echo "Installation options:"
     echo ""
     echo "  1) Full installation (recommended)"
-    echo "     - Install dependencies, FFmpeg, build, configure"
+    echo "     - Dependencies, FFmpeg, build, systemd service"
     echo ""
     echo "  2) Install dependencies only"
     echo "     - Base packages and FFmpeg"
     echo ""
     echo "  3) Build only"
-    echo "     - Assumes dependencies are installed"
+    echo "     - Compile the renderer (assumes dependencies installed)"
     echo ""
-    echo "  4) Configure only"
-    echo "     - Network, firewall, systemd service"
+    echo "  4) Install systemd service only"
+    echo "     - Install renderer as system service (assumes built)"
+    echo ""
+    echo "  5) Configure network only"
+    echo "     - Network interface and firewall setup"
     echo ""
     if [ "$OS" = "fedora" ]; then
-    echo "  5) Aggressive Fedora optimization"
+    echo "  6) Aggressive Fedora optimization"
     echo "     - For dedicated audio servers only"
     echo ""
     fi
@@ -1251,14 +1375,21 @@ run_full_installation() {
 
     echo ""
     echo "Quick Start:"
-    echo "  1. Start the renderer:"
-    echo "     sudo ./bin/DirettaRendererUPnP --port 4005 --buffer 2.0"
     echo ""
-    echo "  2. Or use systemd service:"
+    echo "  1. Edit configuration (optional):"
+    echo "     sudo nano /opt/diretta-renderer-upnp/diretta-renderer.conf"
+    echo ""
+    echo "  2. Start the service:"
     echo "     sudo systemctl start diretta-renderer"
     echo ""
-    echo "  3. Open your UPnP control point (JPlay, BubbleUPnP, etc.)"
-    echo "  4. Select 'Diretta Renderer' as output device"
+    echo "  3. Check status:"
+    echo "     sudo systemctl status diretta-renderer"
+    echo ""
+    echo "  4. View logs:"
+    echo "     sudo journalctl -u diretta-renderer -f"
+    echo ""
+    echo "  5. Open your UPnP control point (JPlay, BubbleUPnP, etc.)"
+    echo "     Select 'Diretta Renderer' as output device"
     echo ""
     echo "Documentation:"
     echo "  - README.md - Overview and quick start"
@@ -1290,10 +1421,13 @@ main() {
             build_renderer
             exit 0
             ;;
-        --configure|-c)
+        --service|-s)
+            setup_systemd_service
+            exit 0
+            ;;
+        --network|-n)
             configure_network
             configure_firewall
-            setup_systemd_service
             exit 0
             ;;
         --optimize|-o)
@@ -1307,7 +1441,8 @@ main() {
             echo "  --full, -f       Full installation"
             echo "  --deps, -d       Install dependencies only"
             echo "  --build, -b      Build only"
-            echo "  --configure, -c  Configure only"
+            echo "  --service, -s    Install systemd service only"
+            echo "  --network, -n    Configure network only"
             echo "  --optimize, -o   Aggressive Fedora optimization"
             echo "  --help, -h       Show this help"
             echo ""
@@ -1320,8 +1455,8 @@ main() {
     while true; do
         show_main_menu
 
-        local max_option=4
-        [ "$OS" = "fedora" ] && max_option=5
+        local max_option=5
+        [ "$OS" = "fedora" ] && max_option=6
 
         read -p "Choose option [1-$max_option/q]: " choice
 
@@ -1340,11 +1475,14 @@ main() {
                 build_renderer
                 ;;
             4)
-                configure_network
-                configure_firewall
                 setup_systemd_service
                 ;;
             5)
+                configure_network
+                configure_firewall
+                print_success "Network configuration complete"
+                ;;
+            6)
                 if [ "$OS" = "fedora" ]; then
                     optimize_fedora_aggressive
                 else
