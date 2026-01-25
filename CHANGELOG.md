@@ -62,7 +62,7 @@ Version 2.0.0 is a **complete rewrite** of DirettaRendererUPnP focused on low-la
 - Root cause: `bytesPerBuffer` vs SDK cycle time mismatch (~4% data deficit)
 - Solution: Synchronized buffer sizing with `DirettaCycleCalculator`
 
-**IPv6 Overhead Fix (thanks to Alfred):**
+**IPv6 Overhead Fix (thanks to Hoorna):**
 - Fixed stuttering on networks with MTU 1500 (standard Ethernet)
 - Root cause: Diretta uses IPv6 (48 bytes overhead) but code assumed IPv4 (24 bytes)
 - With MTU 1500: packets were 24 bytes too large, causing fragmentation
