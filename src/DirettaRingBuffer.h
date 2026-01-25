@@ -408,6 +408,35 @@ public:
     }
 
     /**
+     * @brief Push with 16-to-24 bit upsampling
+     * @return Input bytes consumed
+     *
+     * Converts 16-bit samples to packed 24-bit format.
+     * Used when sink only supports 24-bit (not 32-bit).
+     */
+    size_t push16To24(const uint8_t* data, size_t inputSize) {
+        if (size_ == 0) return 0;
+        size_t numSamples = inputSize / 2;
+        if (numSamples == 0) return 0;
+
+        size_t maxSamples = STAGING_SIZE / 3;
+        size_t free = getFreeSpace();
+        size_t maxSamplesByFree = free / 3;
+
+        if (numSamples > maxSamples) numSamples = maxSamples;
+        if (numSamples > maxSamplesByFree) numSamples = maxSamplesByFree;
+        if (numSamples == 0) return 0;
+
+        prefetch_audio_buffer(data, numSamples * 2);
+
+        size_t stagedBytes = convert16To24(m_staging16To32, data, numSamples);
+        size_t written = writeToRing(m_staging16To32, stagedBytes);
+        size_t samplesWritten = written / 3;
+
+        return samplesWritten * 2;
+    }
+
+    /**
      * @brief Optimized DSD planar push using pre-selected conversion mode
      *
      * Uses specialized conversion functions with no per-iteration branch checks.
@@ -596,6 +625,26 @@ public:
         return outputBytes;
     }
 
+    /**
+     * Convert 16-bit to packed 24-bit (scalar - AVX2 shuffle for 3-byte output is complex)
+     * Input: 2 bytes per sample (16-bit)
+     * Output: 3 bytes per sample (16-bit value in upper bits, LSB padded with 0)
+     * Returns: number of output bytes written
+     *
+     * Note: Scalar is efficient enough for this relatively rare case
+     * (16-bit input to 24-bit-only sink)
+     */
+    size_t convert16To24(uint8_t* dst, const uint8_t* src, size_t numSamples) {
+        size_t outputBytes = 0;
+        for (size_t i = 0; i < numSamples; i++) {
+            dst[outputBytes + 0] = 0x00;              // padding (LSB)
+            dst[outputBytes + 1] = src[i * 2 + 0];    // 16-bit LSB
+            dst[outputBytes + 2] = src[i * 2 + 1];    // 16-bit MSB
+            outputBytes += 3;
+        }
+        return outputBytes;
+    }
+
 #else // !DIRETTA_HAS_AVX2 - Scalar implementations for ARM64 and other architectures
 
     /**
@@ -634,6 +683,20 @@ public:
             dst[outputBytes + 2] = src[i * 2 + 0];
             dst[outputBytes + 3] = src[i * 2 + 1];
             outputBytes += 4;
+        }
+        return outputBytes;
+    }
+
+    /**
+     * Convert 16-bit to packed 24-bit (scalar version)
+     */
+    size_t convert16To24(uint8_t* dst, const uint8_t* src, size_t numSamples) {
+        size_t outputBytes = 0;
+        for (size_t i = 0; i < numSamples; i++) {
+            dst[outputBytes + 0] = 0x00;              // padding (LSB)
+            dst[outputBytes + 1] = src[i * 2 + 0];    // 16-bit LSB
+            dst[outputBytes + 2] = src[i * 2 + 1];    // 16-bit MSB
+            outputBytes += 3;
         }
         return outputBytes;
     }

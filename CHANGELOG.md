@@ -68,6 +68,12 @@ Version 2.0.0 is a **complete rewrite** of DirettaRendererUPnP focused on low-la
 - With MTU 1500: packets were 24 bytes too large, causing fragmentation
 - Solution: Changed network overhead from 24 to 48 bytes (IPv6 header 40 + UDP 8)
 
+**16-bit Audio Segfault Fix (thanks to SwissMountainsBear):**
+- Fixed crash when playing 16-bit audio on 24-bit-only sinks
+- Root cause: Missing conversion path for 16-bit input to 24-bit sink
+- Code calculated bytesPerFrame using sink's 3 bytes but input only had 2 bytes
+- Solution: Added `push16To24()` and `convert16To24()` conversion functions
+
 **SDK 148 Track Change Fix:**
 - Application-managed memory pattern for `getNewStream(diretta_stream&)`
 - Persistent buffer with direct C structure field assignment
