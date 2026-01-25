@@ -1077,10 +1077,11 @@ void DirettaSync::configureRingPCM(int rate, int channels, int direttaBps, int i
 
     // Calculate bytesPerBuffer to match DirettaCycleCalculator
     // The cycle time is calculated as: cycleTimeUs = (efficientMTU / bytesPerSecond) * 1000000
-    // Diretta uses IPv6: 40 bytes IPv6 header + 8 bytes UDP header = 48 bytes overhead
-    constexpr int OVERHEAD = 48;
+    // SDK's m_effectiveMTU already accounts for IP/UDP headers, only Diretta overhead (~3 bytes)
+    // Tested by Hoorna: OVERHEAD=3 works at MTU 1500
+    constexpr int OVERHEAD = 3;
     int efficientMTU = static_cast<int>(m_effectiveMTU) - OVERHEAD;
-    if (efficientMTU < 64) efficientMTU = 1452;  // Fallback (1500 - 48)
+    if (efficientMTU < 64) efficientMTU = 1497;  // Fallback (1500 - 3)
 
     // Align to frame boundary for clean audio
     int framesPerBuffer = efficientMTU / bytesPerFrame;
@@ -1146,10 +1147,11 @@ void DirettaSync::configureRingDSD(uint32_t byteRate, int channels) {
     ringSize = m_ringBuffer.size();
 
     // Calculate bytesPerBuffer to match DirettaCycleCalculator
-    // Diretta uses IPv6: 40 bytes IPv6 header + 8 bytes UDP header = 48 bytes overhead
-    constexpr int OVERHEAD = 48;
+    // SDK's m_effectiveMTU already accounts for IP/UDP headers, only Diretta overhead (~3 bytes)
+    // Tested by Hoorna: OVERHEAD=3 works at MTU 1500
+    constexpr int OVERHEAD = 3;
     int efficientMTU = static_cast<int>(m_effectiveMTU) - OVERHEAD;
-    if (efficientMTU < 64) efficientMTU = 1452;  // Fallback (1500 - 48)
+    if (efficientMTU < 64) efficientMTU = 1497;  // Fallback (1500 - 3)
 
     size_t blockSize = 4 * channels;
     size_t bytesPerBuffer = (efficientMTU / blockSize) * blockSize;
@@ -1483,8 +1485,8 @@ bool DirettaSync::getNewStream(diretta_stream& baseStream) {
 
             // Calculate cycle time based on MTU and data rate
             // cycleTime = (efficientMTU / bytesPerSecond) in microseconds
-            // Diretta uses IPv6: 40 bytes IPv6 header + 8 bytes UDP header = 48 bytes
-            int efficientMTU = static_cast<int>(m_effectiveMTU) - 48;
+            // SDK's m_effectiveMTU already accounts for IP/UDP, only Diretta overhead (~3 bytes)
+            int efficientMTU = static_cast<int>(m_effectiveMTU) - 3;
             double bytesPerSecond = static_cast<double>(currentSampleRate) * 2 / 8.0;  // 2ch, 1bit
             double cycleTimeUs = (static_cast<double>(efficientMTU) / bytesPerSecond) * 1000000.0;
 

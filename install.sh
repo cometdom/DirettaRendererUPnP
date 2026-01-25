@@ -127,7 +127,7 @@ install_base_dependencies() {
                 yasm \
                 pkg-config
             ;;
-        arch|manjaro)
+        arch|archarm|manjaro)
             print_info "Using Pacman package manager..."
             sudo pacman -Sy --needed --noconfirm \
                 base-devel \
@@ -179,7 +179,7 @@ install_ffmpeg_build_deps() {
                 libvorbis-dev \
                 libxml2-dev
             ;;
-        arch|manjaro)
+        arch|archarm|manjaro)
             sudo pacman -Sy --needed --noconfirm \
                 gmp \
                 gnutls \
@@ -286,7 +286,7 @@ install_ffmpeg_8_build_deps() {
             sudo apt install -y \
                 libgnutls28-dev
             ;;
-        arch|manjaro)
+        arch|archarm|manjaro)
             sudo pacman -Sy --needed --noconfirm \
                 gnutls
             ;;
@@ -549,7 +549,7 @@ install_ffmpeg_system() {
                 libavutil-dev \
                 libswresample-dev
             ;;
-        arch|manjaro)
+        arch|archarm|manjaro)
             sudo pacman -Sy --needed --noconfirm ffmpeg
             ;;
     esac

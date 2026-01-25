@@ -249,9 +249,10 @@ namespace DirettaBuffer {
 
 class DirettaCycleCalculator {
 public:
-    // IPv6 header (40 bytes) + UDP header (8 bytes) = 48 bytes overhead
-    // Diretta uses IPv6 addressing for the link between Host and Target
-    static constexpr int OVERHEAD = 48;
+    // Diretta protocol overhead only (~3 bytes)
+    // The SDK's m_effectiveMTU already accounts for IP/UDP headers
+    // Tested by Hoorna: OVERHEAD=3 works at MTU 1500, OVERHEAD=2 causes stuttering
+    static constexpr int OVERHEAD = 3;
 
     explicit DirettaCycleCalculator(uint32_t mtu = 1500)
         : m_mtu(mtu), m_efficientMTU(mtu - OVERHEAD) {}
