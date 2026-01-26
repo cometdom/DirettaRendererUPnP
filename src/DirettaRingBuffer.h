@@ -391,10 +391,11 @@ public:
             effectiveMode = S24PackMode::LsbAligned;  // Safe default for standard formats
         }
 
-        // DEBUG: Uncomment to test MSB mode on ARM (diagnostic for distortion issue)
-        // #if defined(__aarch64__) || defined(_M_ARM64)
-        // effectiveMode = S24PackMode::MsbAligned;  // Force MSB for ARM testing
-        // #endif
+        // ARM64 fix: FFmpeg on ARM produces MSB-aligned S24 data (byte 0 = padding)
+        // while x86 FFmpeg produces LSB-aligned (byte 3 = padding)
+        #if defined(__aarch64__) || defined(_M_ARM64)
+        effectiveMode = S24PackMode::MsbAligned;  // Force MSB for ARM
+        #endif
 
         size_t stagedBytes = (effectiveMode == S24PackMode::MsbAligned)
             ? convert24BitPackedShifted_AVX2(m_staging24BitPack, data, numSamples)
