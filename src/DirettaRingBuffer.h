@@ -351,6 +351,18 @@ public:
 
         prefetch_audio_buffer(data, numSamples * 4);
 
+        // DEBUG: Log first samples to diagnose ARM distortion (remove after debugging)
+        static int s_debugLogCount = 0;
+        if (s_debugLogCount < 3 && numSamples >= 4) {
+            fprintf(stderr, "[S24 DEBUG] First 4 samples (hex): ");
+            for (int s = 0; s < 4; s++) {
+                fprintf(stderr, "[%02X %02X %02X %02X] ",
+                    data[s*4+0], data[s*4+1], data[s*4+2], data[s*4+3]);
+            }
+            fprintf(stderr, "\n");
+            s_debugLogCount++;
+        }
+
         // S24 mode selection - trust FFmpeg hint when available
         // Only run sample detection when hint is Unknown (rare/exotic formats)
         if (m_s24PackMode == S24PackMode::Unknown || m_s24PackMode == S24PackMode::Deferred) {
@@ -378,6 +390,11 @@ public:
         if (effectiveMode == S24PackMode::Deferred || effectiveMode == S24PackMode::Unknown) {
             effectiveMode = S24PackMode::LsbAligned;  // Safe default for standard formats
         }
+
+        // DEBUG: Uncomment to test MSB mode on ARM (diagnostic for distortion issue)
+        // #if defined(__aarch64__) || defined(_M_ARM64)
+        // effectiveMode = S24PackMode::MsbAligned;  // Force MSB for ARM testing
+        // #endif
 
         size_t stagedBytes = (effectiveMode == S24PackMode::MsbAligned)
             ? convert24BitPackedShifted_AVX2(m_staging24BitPack, data, numSamples)
