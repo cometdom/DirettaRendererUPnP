@@ -81,13 +81,12 @@ Version 2.0.0 is a **complete rewrite** of DirettaRendererUPnP focused on low-la
 - Solution: Use compiler-defined `__AVX2__` macro for proper detection
 - CPUs without AVX2 now correctly use scalar implementations
 
-**S24 Detection Fix (ARM/RPi5 distortion):**
-- Fixed audio distortion on certain tracks (especially on ARM hosts like RPi5)
-- Root cause: Sample-based S24 detection could incorrectly detect MsbAligned mode
-- When byte 0 (LSB) was zero in quiet passages and byte 3 had garbage/sign-extension
-- Detection would override the correct FFmpeg hint, causing wrong byte extraction
-- Solution: Trust FFmpeg codec hint (FLAC, ALAC, PCM_S24 → LsbAligned) completely
-- Sample-based detection now only runs when FFmpeg hint is Unknown
+**S24 Detection Fix (ARM64 distortion):**
+- Fixed audio distortion on 24-bit playback on ARM64 platforms (RPi4, RPi5, etc.)
+- Root cause: FFmpeg on ARM64 outputs S24 samples in MSB-aligned format (byte 0 = padding)
+- x86 FFmpeg outputs LSB-aligned format (byte 3 = padding)
+- Solution: Force MSB-aligned extraction on ARM64 platforms
+- Diagnostic: `[00 XX XX XX]` pattern = MSB (ARM), `[XX XX XX 00]` = LSB (x86)
 
 **SDK 148 Track Change Fix:**
 - Application-managed memory pattern for `getNewStream(diretta_stream&)`
