@@ -66,6 +66,7 @@ This renderer uses the **Diretta Host SDK**, which is proprietary software by Yu
 - [Architecture](#architecture)
 - [Features](#features)
 - [Requirements](#requirements)
+- [Upgrading from v1.x](#upgrading-from-v1x)
 - [Quick Start](#quick-start)
 - [Supported Formats](#supported-formats)
 - [Performance](#performance)
@@ -222,6 +223,39 @@ The renderer automatically detects and optimizes for your CPU:
 - **Diretta Host SDK**: Version 148 (download from [diretta.link](https://www.diretta.link/hostsdk.html))
 - **FFmpeg**: Version 5.x or later
 - **libupnp**: UPnP/DLNA library
+
+---
+
+## Upgrading from v1.x
+
+If you have version 1.3.3 or earlier installed, **a clean installation is required**. Version 2.0 has a completely different architecture and configuration format.
+
+### Step 1: Stop and disable the service
+
+```bash
+sudo systemctl stop diretta-renderer
+sudo systemctl disable diretta-renderer
+```
+
+### Step 2: Remove old installation
+
+```bash
+# Remove installed files
+sudo rm -rf /opt/diretta-renderer-upnp
+
+# Remove old systemd service
+sudo rm -f /etc/systemd/system/diretta-renderer.service
+sudo systemctl daemon-reload
+
+# Remove old source directory (backup your custom configs first!)
+rm -rf ~/DirettaRendererUPnP
+```
+
+### Step 3: Fresh install v2.0
+
+Follow the [Quick Start](#quick-start) instructions below for a clean installation.
+
+> **Note:** The v2.0 configuration file (`diretta-renderer.conf`) has a different format than v1.x. Your old configuration will not work with v2.0.
 
 ---
 
