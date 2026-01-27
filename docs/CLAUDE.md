@@ -450,7 +450,17 @@ When modifying this codebase:
 ## Credits
 
 - Original DirettaRendererUPnP by Dominique COMET (cometdom)
-- MPD Diretta Output Plugin v0.4.0 for `DIRETTA::Sync` API patterns (swissmountainsbear)
-- leeeanh for their brilliant optimisation strategies
 - Diretta Host SDK by Yu Harada
+
+### Key Contributors
+
+- **SwissMountainsBear** - Ported and adapted the core Diretta integration code from his [MPD Diretta Output Plugin](https://github.com/swissmountainsbear/mpd-diretta-output-plugin). The `DIRETTA::Sync` architecture, `getNewStream()` callback, same-format fast path, and buffer management were directly contributed from his plugin.
+
+- **leeeanh** - Brilliant optimization strategies that made v2.0 a true low-latency solution:
+  - Lock-free SPSC ring buffer with atomic operations
+  - Power-of-2 bitmask modulo (10-20× faster)
+  - Cache-line separation (`alignas(64)`)
+  - Zero heap allocation hot path
+  - AVX2 SIMD batch conversions
+
 - Claude Code for refactoring assistance
