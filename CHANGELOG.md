@@ -4,7 +4,7 @@
 
 ### 🚀 Complete Architecture Rewrite
 
-Version 2.0.0 is a **complete rewrite** of DirettaRendererUPnP focused on low-latency and jitter reduction. It uses the Diretta SDK at a lower level (`DIRETTA::Sync` instead of `DIRETTA::SyncBuffer`) for finer timing control, following recommendations from **Yu Harada** (Diretta SDK author), inspired by the architecture of **SwissMountainsBear**'s MPD Diretta Output Plugin, and incorporating advanced optimizations from **leeeanh**.
+Version 2.0.0 is a **complete rewrite** of DirettaRendererUPnP focused on low-latency and jitter reduction. It uses the Diretta SDK at a lower level (`DIRETTA::Sync` instead of `DIRETTA::SyncBuffer`) for finer timing control, following recommendations from **Yu Harada** (Diretta SDK author), with core Diretta integration code contributed by **SwissMountainsBear** (ported from his MPD Diretta Output Plugin), and incorporating advanced optimizations from **leeeanh**.
 
 **SDK Changes:**
 - Inherits `DIRETTA::Sync` directly (pull model with `getNewStream()` callback)
@@ -190,7 +190,7 @@ chmod +x install.sh
 
 #### Key Contributors
 
-- **SwissMountainsBear** - His [MPD Diretta Output Plugin](https://github.com/swissmountainsbear/mpd-diretta-output-plugin) was the foundation for understanding the `DIRETTA::Sync` API. The v2.0 architecture (pull model with `getNewStream()` callback, same-format fast path, buffer management patterns) was directly inspired by his pioneering work. This project would not exist in its current form without his contribution.
+- **SwissMountainsBear** - Ported and adapted the core Diretta integration code from his [MPD Diretta Output Plugin](https://github.com/swissmountainsbear/mpd-diretta-output-plugin). The `DIRETTA::Sync` architecture, `getNewStream()` callback implementation, same-format fast path, and buffer management patterns were directly contributed from his plugin. This project would not exist in its current form without his code contribution.
 
 - **leeeanh** - Brilliant optimization strategies that made v2.0 a true low-latency solution:
   - Lock-free SPSC ring buffer design with atomic operations

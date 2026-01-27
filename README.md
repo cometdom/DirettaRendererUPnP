@@ -16,7 +16,7 @@
 
 ## What's New in v2.0
 
-Version 2.0 is a **complete rewrite** focused on low-latency and jitter reduction. It uses the Diretta SDK at a lower level (`DIRETTA::Sync` instead of `DIRETTA::SyncBuffer`) for finer timing control, following recommendations from **Yu Harada** (Diretta SDK author), inspired by the architecture of **SwissMountainsBear**'s MPD Diretta Output Plugin, and incorporating advanced optimizations from **leeeanh**.
+Version 2.0 is a **complete rewrite** focused on low-latency and jitter reduction. It uses the Diretta SDK at a lower level (`DIRETTA::Sync` instead of `DIRETTA::SyncBuffer`) for finer timing control, following recommendations from **Yu Harada** (Diretta SDK author), with core Diretta integration code contributed by **SwissMountainsBear** (ported from his MPD Diretta Output Plugin), and incorporating advanced optimizations from **leeeanh**.
 
 ### Key Improvements over v1.x
 
@@ -561,7 +561,7 @@ This is normal and ensures clean transitions.
 
 #### Key Contributors
 
-- **SwissMountainsBear** - His [MPD Diretta Output Plugin](https://github.com/swissmountainsbear/mpd-diretta-output-plugin) was instrumental in understanding the `DIRETTA::Sync` API patterns. The same-format fast path and `getNewStream()` callback implementation were directly inspired by his work. Without his pioneering effort, the v2.0 architecture would not have been possible.
+- **SwissMountainsBear** - Ported and adapted the core Diretta integration code from his [MPD Diretta Output Plugin](https://github.com/swissmountainsbear/mpd-diretta-output-plugin). The `DIRETTA::Sync` architecture, `getNewStream()` callback implementation, same-format fast path, and buffer management patterns were directly contributed from his plugin. This project would not exist in its current form without his code contribution.
 
 - **leeeanh** - Brilliant optimization strategies that transformed v2.0 performance. His contributions include:
   - Lock-free SPSC ring buffer design with atomic operations
