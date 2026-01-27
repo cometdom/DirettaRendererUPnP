@@ -187,8 +187,18 @@ chmod +x install.sh
 ### 🙏 Credits
 
 - **Yu Harada** - Diretta SDK guidance and `DIRETTA::Sync` API recommendations
-- **leeeanh** - Lock-free patterns, ring buffer optimizations, consumer hot path analysis
-- **SwissMountainsBear** - Same-format fast path inspiration from MPD plugin
+
+#### Key Contributors
+
+- **SwissMountainsBear** - His [MPD Diretta Output Plugin](https://github.com/swissmountainsbear/mpd-diretta-output-plugin) was the foundation for understanding the `DIRETTA::Sync` API. The v2.0 architecture (pull model with `getNewStream()` callback, same-format fast path, buffer management patterns) was directly inspired by his pioneering work. This project would not exist in its current form without his contribution.
+
+- **leeeanh** - Brilliant optimization strategies that made v2.0 a true low-latency solution:
+  - Lock-free SPSC ring buffer design with atomic operations
+  - Power-of-2 buffer sizing with bitmask modulo (10-20× faster than division)
+  - Cache-line separation (`alignas(64)`) eliminating false sharing
+  - Consumer hot path analysis leading to zero heap allocations
+  - AVX2 SIMD batch conversion strategy (8-32× throughput improvement)
+  - Condition variable flow control replacing blocking sleeps
 
 ---
 

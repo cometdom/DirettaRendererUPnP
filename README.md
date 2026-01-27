@@ -558,8 +558,20 @@ This is normal and ensures clean transitions.
 ### Special Thanks
 
 - **Yu Harada** - Creator of Diretta protocol and SDK, guidance on low-level API usage
-- **leeeanh** - Lock-free patterns, power-of-2 ring buffer, cache-line optimization
-- **swissmountainsbear** - MPD Diretta Output Plugin patterns for `DIRETTA::Sync` API
+
+#### Key Contributors
+
+- **SwissMountainsBear** - His [MPD Diretta Output Plugin](https://github.com/swissmountainsbear/mpd-diretta-output-plugin) was instrumental in understanding the `DIRETTA::Sync` API patterns. The same-format fast path and `getNewStream()` callback implementation were directly inspired by his work. Without his pioneering effort, the v2.0 architecture would not have been possible.
+
+- **leeeanh** - Brilliant optimization strategies that transformed v2.0 performance. His contributions include:
+  - Lock-free SPSC ring buffer design with atomic operations
+  - Power-of-2 buffer sizing with bitmask modulo (10-20x faster)
+  - Cache-line separation (`alignas(64)`) to eliminate false sharing
+  - Consumer hot path analysis leading to zero-allocation audio path
+  - AVX2 SIMD strategy for batch format conversions
+
+#### Also Thanks To
+
 - **FFmpeg team** - Audio decoding library
 - **libupnp developers** - UPnP/DLNA implementation
 - **Audiophile community** - Testing and feedback
