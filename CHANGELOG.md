@@ -4,7 +4,7 @@
 
 ### 🚀 Complete Architecture Rewrite
 
-Version 2.0.0 is a **complete rewrite** of DirettaRendererUPnP focused on low-latency and jitter reduction. It uses the Diretta SDK at a lower level (`DIRETTA::Sync` instead of `DIRETTA::SyncBuffer`) for finer timing control, following recommendations from **Yu Harada** (Diretta SDK author) and incorporating advanced optimizations from **leeeanh**.
+Version 2.0.0 is a **complete rewrite** of DirettaRendererUPnP focused on low-latency and jitter reduction. It uses the Diretta SDK at a lower level (`DIRETTA::Sync` instead of `DIRETTA::SyncBuffer`) for finer timing control, following recommendations from **Yu Harada** (Diretta SDK author), inspired by the architecture of **SwissMountainsBear**'s MPD Diretta Output Plugin, and incorporating advanced optimizations from **leeeanh**.
 
 **SDK Changes:**
 - Inherits `DIRETTA::Sync` directly (pull model with `getNewStream()` callback)
