@@ -292,9 +292,6 @@ sudo pacman -S base-devel ffmpeg libupnp
 git clone https://github.com/cometdom/DirettaRendererUPnP.git
 cd DirettaRendererUPnP
 
-# Checkout v2.0 branch
-git checkout v2.0.0
-
 # Make the install script executable
 chmod +x install.sh
 
