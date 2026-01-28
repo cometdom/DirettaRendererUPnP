@@ -1,4 +1,4 @@
-# Diretta UPnP Renderer v2.0
+# Diretta UPnP Renderer v2.0.1
 
 **The world's first native UPnP/DLNA renderer with Diretta protocol support - Low-Latency Edition**
 
@@ -8,9 +8,15 @@
 
 ---
 
-![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)
+![Version](https://img.shields.io/badge/version-2.0.1-blue.svg)
 ![Low Latency](https://img.shields.io/badge/Latency-Low-green.svg)
 ![SDK](https://img.shields.io/badge/SDK-DIRETTA::Sync-orange.svg)
+
+---
+
+## What's New in v2.0.1
+
+**Bug Fix:** Fixed white noise when playing 24-bit audio on DACs that only support 24-bit output (not 32-bit), such as the TEAC UD-701N. The issue was caused by incorrect byte extraction in the S24 format conversion. See [CHANGELOG.md](CHANGELOG.md) for details.
 
 ---
 
@@ -105,7 +111,7 @@ Diretta is a proprietary audio streaming protocol developed by Yu Harada that en
 
 ## Architecture
 
-Version 2.0 uses a simplified, performance-focused architecture:
+Version 2.x uses a simplified, performance-focused architecture:
 
 ```
 ┌─────────────────────────────┐
@@ -114,7 +120,7 @@ Version 2.0 uses a simplified, performance-focused architecture:
               │ UPnP/DLNA Protocol (HTTP/SOAP/SSDP)
               ▼
 ┌───────────────────────────────────────────────────────────────┐
-│  DirettaRendererUPnP v2.0                                     │
+│  DirettaRendererUPnP v2.x                                     │
 │  ┌─────────────────┐  ┌─────────────────┐  ┌───────────────┐  │
 │  │   UPnPDevice    │─▶│ DirettaRenderer │─▶│  AudioEngine  │  │
 │  │ (discovery,     │  │ (orchestrator,  │  │ (FFmpeg       │  │
@@ -228,7 +234,7 @@ The renderer automatically detects and optimizes for your CPU:
 
 ## Upgrading from v1.x
 
-If you have version 1.3.3 or earlier installed, **a clean installation is required**. Version 2.0 has a completely different architecture and configuration format.
+If you have version 1.3.3 or earlier installed, **a clean installation is required**. Version 2.x has a completely different architecture and configuration format.
 
 ### Step 1: Stop and disable the service
 
@@ -251,11 +257,11 @@ sudo systemctl daemon-reload
 rm -rf ~/DirettaRendererUPnP
 ```
 
-### Step 3: Fresh install v2.0
+### Step 3: Fresh install v2.x
 
 Follow the [Quick Start](#quick-start) instructions below for a clean installation.
 
-> **Note:** The v2.0 configuration file (`diretta-renderer.conf`) has a different format than v1.x. Your old configuration will not work with v2.0.
+> **Note:** The v2.x configuration file (`diretta-renderer.conf`) has a different format than v1.x. Your old configuration will not work with v2.x.
 
 ---
 
