@@ -1,6 +1,6 @@
-# Diretta UPnP Renderer
+# Diretta UPnP Renderer v2.0
 
-**The world's first native UPnP/DLNA renderer with Diretta protocol support**
+**The world's first native UPnP/DLNA renderer with Diretta protocol support - Low-Latency Edition**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Platform](https://img.shields.io/badge/Platform-Linux-blue.svg)](https://www.linux.org/)
@@ -8,54 +8,74 @@
 
 ---
 
-![Version](https://img.shields.io/badge/version-1.3.2-blue.svg)
-![Gapless enhanced ](https://img.shields.io/badge/Gapless-enhanced-green.svg)
-![Transfer Mode ](https://img.shields.io/badge/Transfer-Mode-orange.svg)
+![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)
+![Low Latency](https://img.shields.io/badge/Latency-Low-green.svg)
+![SDK](https://img.shields.io/badge/SDK-DIRETTA::Sync-orange.svg)
 
 ---
-DSD gapless playback on standard networks (MTU 1500) ✅ Fixed in v1.3.2
+
+## What's New in v2.0
+
+Version 2.0 is a **complete rewrite** focused on low-latency and jitter reduction. It uses the Diretta SDK (by **Yu Harada**) at a lower level (`DIRETTA::Sync` instead of `DIRETTA::SyncBuffer`) for finer timing control, with core Diretta integration code contributed by **SwissMountainsBear** (ported from his MPD Diretta Output Plugin), and incorporating advanced optimizations from **leeeanh**.
+
+### Key Improvements over v1.x
+
+| Metric | v1.x | v2.0 | Improvement |
+|--------|------|------|-------------|
+| PCM buffer latency | ~1000ms | ~300ms | **70% reduction** |
+| Time to first audio | ~50ms | ~30ms | **40% faster** |
+| Jitter (DSD flow control) | ±2.5ms | ±50µs | **50x reduction** |
+| Ring buffer operations | 10-20 cycles | 1 cycle | **10-20x faster** |
+| 24-bit conversion | ~1 sample/cycle | ~8 samples/cycle | **8x faster** |
+| DSD interleave | ~1 byte/cycle | ~32 bytes/cycle | **32x faster** |
+
+### Technical Highlights
+
+- **Low-level SDK integration**: Inherits `DIRETTA::Sync` directly with `getNewStream()` callback (pull model)
+- **Lock-free audio path**: Zero mutex locks in the critical audio path using atomic operations
+- **SIMD optimizations**: AVX2/AVX-512 format conversions for maximum throughput
+- **Zero heap allocations**: Pre-allocated buffers eliminate allocation jitter during playback
+- **Power-of-2 ring buffer**: Bitmask modulo for single-cycle position calculations
+- **Cache-line separation**: 64-byte aligned atomics to eliminate false sharing
+
 ---
 
-## ❤️ Support This Project
+## Support This Project
 
 If you find this renderer valuable, you can support development:
 
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/cometdom)
 
 **Important notes:**
-- ✅ Donations are **optional** and appreciated
-- ✅ Help cover test equipment and coffee ☕
-- ❌ **No guarantees** for features, support, or timelines
-- ❌ The project remains free and open source for everyone
-
-This is a hobby project - donations support development but don't create obligations.
-
-Thank you! 🎵
+- Donations are **optional** and appreciated
+- Help cover test equipment and coffee
+- **No guarantees** for features, support, or timelines
+- The project remains free and open source for everyone
 
 ---
-## ⚠️ IMPORTANT - PERSONAL USE ONLY
+
+## IMPORTANT - PERSONAL USE ONLY
 
 This renderer uses the **Diretta Host SDK**, which is proprietary software by Yu Harada available for **personal use only**. Commercial use is strictly prohibited. See [LICENSE](LICENSE) for details.
 
 ---
 
-## 📖 Table of Contents
+## Table of Contents
 
 - [Overview](#overview)
 - [Architecture](#architecture)
 - [Features](#features)
 - [Requirements](#requirements)
+- [Upgrading from v1.x](#upgrading-from-v1x)
 - [Quick Start](#quick-start)
 - [Supported Formats](#supported-formats)
 - [Performance](#performance)
 - [Compatible Control Points](#compatible-control-points)
 - [System Optimization](#system-optimization)
+- [CPU Tuning](#cpu-isolation--tuning-advanced)
 - [Command Line Options](#command-line-options)
-- [Advanced Settings](#advanced-settings)
-- [Multi-Homed Systems](#multi-homed-systems--network-interface-selection)
-- [Documentation](#documentation)
 - [Troubleshooting](#troubleshooting)
-- [Contributing](#contributing)
+- [Documentation](#documentation)
 - [Credits](#credits)
 - [License](#license)
 
@@ -74,121 +94,87 @@ Diretta is a proprietary audio streaming protocol developed by Yu Harada that en
 
 ### Key Benefits
 
-- ✅ **Bit-perfect streaming** - Bypasses OS audio stack entirely
-- ✅ **Ultra-low latency** - Direct network-to-DAC path via Diretta Target
-- ✅ **High-resolution support** - Up to DSD1024 and PCM 1536kHz
-- ✅ **Gapless playback** - Seamless track transitions
-- ✅ **UPnP/DLNA compatible** - Works with any UPnP control point
-- ✅ **Network optimization** - Adaptive packet sizing with jumbo frame support
+- **Bit-perfect streaming** - Bypasses OS audio stack entirely
+- **Ultra-low latency** - ~300ms PCM buffer (vs ~1s in v1.x)
+- **High-resolution support** - Up to DSD1024 and PCM 1536kHz
+- **Gapless playback** - Seamless track transitions
+- **UPnP/DLNA compatible** - Works with any UPnP control point
+- **Network optimization** - Adaptive packet sizing with jumbo frame support
 
 ---
 
 ## Architecture
 
-### Complete Signal Path
+Version 2.0 uses a simplified, performance-focused architecture:
 
 ```
-┌─────────────────────────┐
-│  UPnP Control Point     │  (JPlay, BubbleUPnP, etc.)
-│  (Phone/Tablet/PC)      │
-└───────────┬─────────────┘
-            │ UPnP/DLNA Protocol
-            ▼
-┌─────────────────────────┐
-│  Diretta UPnP Renderer  │
-│  ┌───────────────────┐  │
-│  │  UPnP Device      │  │  Handles UPnP protocol
-│  ├───────────────────┤  │
-│  │  AudioEngine      │  │  Manages playback, FFmpeg decoding
-│  ├───────────────────┤  │
-│  │  DirettaOutput    │  │  Interfaces with Diretta SDK
-│  └───────────────────┘  │
-└───────────┬─────────────┘
-            │ Diretta Protocol (UDP/Ethernet)
-            │ Bit-perfect audio samples
-            ▼
-┌─────────────────────────┐
-│     Diretta TARGET      │  
-│  - Receives packets     │
-│  - Clock synchronization│
-│                         │
-└───────────┬─────────────┘
-            |
-            |
-            ▼
-┌─────────────────────────┐
-│          DAC            │  
-│  - D/A conversion       │
-└───────────┬─────────────┘
-            │
-            ▼
-        🔊 Speakers
+┌─────────────────────────────┐
+│  UPnP Control Point         │  (JPlay, BubbleUPnP, mConnect, etc.)
+└─────────────┬───────────────┘
+              │ UPnP/DLNA Protocol (HTTP/SOAP/SSDP)
+              ▼
+┌───────────────────────────────────────────────────────────────┐
+│  DirettaRendererUPnP v2.0                                     │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌───────────────┐  │
+│  │   UPnPDevice    │─▶│ DirettaRenderer │─▶│  AudioEngine  │  │
+│  │ (discovery,     │  │ (orchestrator,  │  │ (FFmpeg       │  │
+│  │  transport)     │  │  threading)     │  │  decode)      │  │
+│  └─────────────────┘  └────────┬────────┘  └───────┬───────┘  │
+│                                │                   │          │
+│                                ▼                   ▼          │
+│                  ┌─────────────────────────────────────────┐  │
+│                  │           DirettaSync                   │  │
+│                  │  ┌───────────────────────────────────┐  │  │
+│                  │  │       DirettaRingBuffer           │  │  │
+│                  │  │  (lock-free SPSC, AVX2 convert)   │  │  │
+│                  │  └───────────────────────────────────┘  │  │
+│                  │              │                          │  │
+│                  │              ▼ getNewStream() callback  │  │
+│                  │  ┌───────────────────────────────────┐  │  │
+│                  │  │      DIRETTA::Sync (SDK)          │  │  │
+│                  │  └───────────────────────────────────┘  │  │
+│                  └─────────────────────────────────────────┘  │
+└───────────────────────────────────────────────────────────────┘
+              │ Diretta Protocol (UDP/Ethernet)
+              ▼
+┌─────────────────────────────┐
+│      Diretta TARGET         │  (Memory Play, GentooPlayer, etc.)
+└─────────────┬───────────────┘
+              ▼
+┌─────────────────────────────┐
+│            DAC              │
+└─────────────────────────────┘
 ```
 
-### Component Details
+### v2.0 vs v1.x Architecture
 
-#### 1. **UPnP Control Point** (Your music player app)
-- **Examples**: JPlay iOS, BubbleUPnP, mConnect, Linn Kazoo
-- **Role**: Sends playback commands (Play, Stop, Pause, Seek)
-- **Protocol**: UPnP/DLNA over HTTP
-
-#### 2. **Diretta Renderer** (This application)
-- **Components**:
-  - `UPnPDevice`: Handles UPnP protocol and device discovery
-  - `AudioEngine`: Decodes audio files (FLAC, WAV, ALAC, etc.) using FFmpeg
-  - `DirettaOutput`: Interfaces with Diretta Host SDK
-- **Role**: 
-  - Receives UPnP commands from control point
-  - Streams and decodes audio files from media server
-  - Sends decoded PCM/DSD to Diretta Target via Diretta protocol
-- **Network**: Uses Ethernet with jumbo frames (up to 16k MTU)
-
-#### 3. **Diretta Target** (Endpoint software or hardware)
-- **Examples**: 
-  - **Software**: Memory Play (endpoint mode), GentooPlayer, Diretta Target PC
-  - **Hardware**: Some DACs with native Diretta support (rare)
-- **Role**: 
-  - Receives Diretta audio stream
-  - Outputs to DAC via USB, I2S, or SPDIF
-  - Handles timing and synchronization
-- **Location**: Usually runs on a separate computer/device connected to the DAC
-
-#### 4. **DAC** (Digital-to-Analog Converter)
-- **Examples**: Holo Audio Spring 3, May KTE, Rockna, T+A DAC 200
-- **Role**: Converts digital audio to analog signal
-- **Connection**: USB, I2S, SPDIF, or AES from Diretta Target
-
----
-
-### Why This Architecture?
-
-**Traditional Renderer → DAC:**
-```
-Renderer → OS Audio Stack → USB Driver → DAC
-           ↑ Adds latency, jitter, potential quality loss
-```
-
-**Diretta Renderer → Target → DAC:**
-```
-Renderer → Ethernet (Diretta) → Target → DAC
-           ↑ Bypasses OS audio stack
-           ↑ Bit-perfect transmission
-           ↑ Ultra-low latency
-```
-
-The **Diretta Target** acts as a dedicated audio endpoint that receives the pristine digital stream and outputs it directly to your DAC, completely bypassing the OS audio subsystem.
+| Component | v1.x | v2.0 |
+|-----------|------|------|
+| SDK Base Class | `DIRETTA::SyncBuffer` | `DIRETTA::Sync` |
+| Data Model | Push (SDK manages timing) | Pull (`getNewStream()` callback) |
+| Ring Buffer | Standard | Lock-free SPSC with AVX2 |
+| Format Conversion | Per-sample | SIMD batch (8-32 samples) |
+| Thread Safety | Mutex-based | Lock-free atomics |
 
 ---
 
 ## Features
 
 ### Audio Quality
-- **Bit-perfect streaming**: No resampling or processing
+- **Bit-perfect streaming**: No resampling or processing (when formats match)
+- **PCM Bypass mode**: Direct path for bit-perfect playback when no conversion needed
 - **High-resolution support**:
   - PCM: Up to 32-bit/1536kHz
   - DSD: DSD64, DSD128, DSD256, DSD512, DSD1024
-- **Format support**: FLAC, ALAC, WAV, AIFF, MP3, AAC, OGG
+- **Format support**: FLAC, ALAC, WAV, AIFF, DSF, DFF, MP3, AAC, OGG
 - **Gapless playback**: Seamless album listening experience
+
+### Low-Latency Optimizations
+- **Reduced buffers**: 300ms PCM (was 1s), 800ms DSD
+- **Micro-sleeps**: 500µs flow control (was 10ms)
+- **Lock-free path**: Zero mutex in audio hot path
+- **SIMD conversions**: AVX2 for 8-32x throughput
+- **Zero allocations**: Pre-allocated buffers in steady state
 
 ### UPnP/DLNA Features
 - **Full transport control**: Play, Stop, Pause, Resume, Seek
@@ -197,76 +183,79 @@ The **Diretta Target** acts as a dedicated audio endpoint that receives the pris
 - **Position tracking**: Real-time playback position updates
 
 ### Network Optimization
-- **Adaptive packet sizing**:
-  - CD-quality (16/44.1): ~1-3k packets (prevents fragmentation)
-  - Hi-Res/DSD: ~16k packets (maximizes throughput)
-- **Jumbo frame support**: Up to 16k MTU for maximum performance
-- **Network interface detection**: Automatic MTU configuration
-- **Buffer management**: Configurable buffer size (1-5 seconds)
-
-### Diretta Integration
-- **Native SDK integration**: Uses Diretta Host SDK 147
-- **Automatic target discovery**: Finds Diretta Target endpoints on network
-- **Format negotiation**: Automatic format compatibility checking
-- **Connection management**: Robust error handling and reconnection
-
-Note: DSD seek is not supported (prevents audio distortion). 
+- **Adaptive packet sizing**: Synchronized with SDK cycle time
+- **Jumbo frame support**: Up to 16KB MTU for maximum performance
+- **Automatic MTU detection**: Configures optimal packet size
 
 ---
 
 ## Requirements
 
-## Supported Architectures
+### Supported Architectures
 
 The renderer automatically detects and optimizes for your CPU:
 
-- **x64** (Intel/AMD): v2 (baseline), v3 (AVX2), v4 (AVX512), zen4 (AMD Ryzen 7000+)
-- **ARM64**: Raspberry Pi 4+, Apple Silicon
-- **RISC-V**: Experimental support
+| Architecture | Variants | Notes |
+|--------------|----------|-------|
+| **x64 (Intel/AMD)** | v2 (baseline), v3 (AVX2), v4 (AVX-512), zen4 | AVX2 recommended but not required |
+| **ARM64** | Standard (4KB pages), k16 (16KB pages) | Pi 4/5 supported |
+| **RISC-V** | Experimental | riscv64 |
 
-Simply run `make` - the Makefile will select the optimal library for your hardware!
+**Note on older x64 CPUs:** CPUs without AVX2 (Sandy Bridge, Ivy Bridge - 2011-2012) are fully supported. The build system automatically detects CPU capabilities and uses optimized scalar implementations when AVX2 is not available. Use the `x64-linux-15v2` SDK variant for these systems.
 
-### Custom Build Options
-```bash
-make VARIANT=15v4      # Force AVX512 (x64)
-make VARIANT=15zen4    # AMD Zen 4 optimized
-make NOLOG=1           # Production build (no debug logs)
-make list-variants     # Show all available options
-```
-## Platform Support
+### Platform Support
 
-### Officially Supported ✅
-- **Linux x64** (Fedora, Ubuntu, Arch, AudioLinux)
-- **Linux ARM64** (Raspberry Pi 4/5)
-
-### Not Supported ❌
-- **Windows**: No native Windows version planned
-- **macOS**: Not tested, may work with modifications
-
-### Why Linux only?
-This is a personal project maintained by one developer in their free time. 
-Supporting multiple platforms would require significant additional effort 
-for development, testing, and user support.
-
-**Community contributions welcome**, but Windows/macOS support is not a priority.
+| Platform | Status |
+|----------|--------|
+| **Linux x64** | Supported (Fedora, Ubuntu, Arch, AudioLinux) |
+| **Linux ARM64** | Supported (Raspberry Pi 4/5) |
+| **Windows** | Not supported |
+| **macOS** | Not supported |
 
 ### Hardware
 - **Minimum**: Dual-core CPU, 1GB RAM, Gigabit Ethernet
 - **Recommended**: Quad-core CPU, 2GB RAM, 2.5/10G Ethernet with jumbo frames
-- **Network**: Gigabit Ethernet (10G recommended for DSD512+)
-- **Diretta Target**: Separate device/computer running Diretta Target software or hardware
-- **DAC**: Any DAC supported by your Diretta Target (USB, I2S, SPDIF)
+- **Network**: Gigabit Ethernet minimum (10G recommended for DSD512+)
+- **MTU**: 1500 bytes minimum, 9000+ recommended for high-res audio
 
 ### Software
-- **OS**: Linux (Fedora, Ubuntu, Arch, or AudioLinux recommended)
-- **Kernel**: Linux kernel 5.x+ (RT kernel recommended for optimal performance)
-- **Diretta Host SDK**: Version 147 (download from [diretta.link](https://www.diretta.link/hostsdk.html))
-- **Libraries**: FFmpeg, libupnp, pthread
+- **OS**: Linux with kernel 5.x+ (RT kernel recommended)
+- **Diretta Host SDK**: Version 148 (download from [diretta.link](https://www.diretta.link/hostsdk.html))
+- **FFmpeg**: Version 5.x or later
+- **libupnp**: UPnP/DLNA library
 
-### Network
-- **MTU**: 9000 bytes recommended (jumbo frames)
-- **Switch**: Managed switch with jumbo frame support
-- **Latency**: <1ms on local network
+---
+
+## Upgrading from v1.x
+
+If you have version 1.3.3 or earlier installed, **a clean installation is required**. Version 2.0 has a completely different architecture and configuration format.
+
+### Step 1: Stop and disable the service
+
+```bash
+sudo systemctl stop diretta-renderer
+sudo systemctl disable diretta-renderer
+```
+
+### Step 2: Remove old installation
+
+```bash
+# Remove installed files
+sudo rm -rf /opt/diretta-renderer-upnp
+
+# Remove old systemd service
+sudo rm -f /etc/systemd/system/diretta-renderer.service
+sudo systemctl daemon-reload
+
+# Remove old source directory (backup your custom configs first!)
+rm -rf ~/DirettaRendererUPnP
+```
+
+### Step 3: Fresh install v2.0
+
+Follow the [Quick Start](#quick-start) instructions below for a clean installation.
+
+> **Note:** The v2.0 configuration file (`diretta-renderer.conf`) has a different format than v1.x. Your old configuration will not work with v2.0.
 
 ---
 
@@ -281,8 +270,8 @@ sudo dnf install -y gcc-c++ make ffmpeg-free-devel libupnp-devel
 
 **Ubuntu/Debian:**
 ```bash
-sudo apt install -y build-essential libavformat-dev libavcodec-dev libavutil-dev \
-    libswresample-dev libupnp-dev
+sudo apt install -y build-essential libavformat-dev libavcodec-dev \
+    libavutil-dev libswresample-dev libupnp-dev
 ```
 
 **Arch Linux:**
@@ -293,360 +282,129 @@ sudo pacman -S base-devel ffmpeg libupnp
 ### 2. Download Diretta Host SDK
 
 1. Visit [diretta.link](https://www.diretta.link/hostsdk.html)
-2. Navigate to "Download Preview" section
-3. Download **DirettaHostSDK_147** (or latest version)
-4. Extract to one of these locations:
-   - `~/DirettaHostSDK_147`
-   - `./DirettaHostSDK_147`
-   - `/opt/DirettaHostSDK_147`
+2. Download **DirettaHostSDK_148** (or latest version)
+3. Extract to `~/DirettaHostSDK_148`
 
-### 3. Clone and Build
+### 3. Clone and Install
 
 ```bash
 # Clone repository
 git clone https://github.com/cometdom/DirettaRendererUPnP.git
 cd DirettaRendererUPnP
 
-# Build (Makefile auto-detects SDK location)
-make
+# Make the install script executable
+chmod +x install.sh
 
-## Upgrade from v1.2.2
-
-**configuration changes needed!**
-
-1. Backup your current version:
-   ```bash
-   cp bin/DirettaRendererUPnP bin/DirettaRendererUPnP.v1.2.2.backup
-   ```
-
-2. Update binary:
-   ```bash
-   cd DirettaRendererUPnP
-   git pull
-   make clean && make or make NOLOG=1
-   ```
-
-3. Test:
-   ```bash
-   sudo ./bin/DirettaRendererUPnP --target 1 --verbose (+other options you need)
-   ```
-
-# Before installing service (if updating to version 1.2.2 - settings will be lost)
-```bash
-sudo rm /opt/diretta-renderer-upnp/diretta-renderer.conf
-
-sudo rm /opt/diretta-renderer-upnp/start-renderer.sh
-
-sudo systemctl stop diretta-renderer
-```
-# Install service
-```bash
-cd systemd
-chmod +x install-systemd.sh
-
-sudo ./install-systemd.sh
-
-#Next steps:
- 1. Edit configuration (optional):
-     sudo nano /opt/diretta-renderer-upnp/diretta-renderer.conf
- 2. Reload daemon:
-     sudo systemctl daemon-reload
- 3. Enable the service:
-     sudo systemctl enable diretta-renderer
- 4. Start the service:
-     sudo systemctl start diretta-renderer
- 5. Check status:
-     sudo systemctl status diretta-renderer 
- 6. View logs:
-     sudo journalctl -u diretta-renderer -f
- 7. Stop the service:
-     sudo systemctl stop diretta-renderer
- 8. Disable auto-start:
-     sudo systemctl disable diretta-renderer       
-```
-## 🎵 Gapless Pro Edition
----
-### Seamless Track Transitions
-DirettaRendererUPnP now features **Gapless Pro** - true seamless playback using native Diretta SDK methods:
-
-- **Zero-gap transitions** between tracks of the same format
-- **Pre-buffering** for instant track changes
-- **Preserved crossfades** in DJ mixes and live albums
-- **Format change support** with minimal interruption
-
-**Perfect for:**
-- 🎸 Live concerts and albums
-- 🎨 Conceptual albums (Pink Floyd, Radiohead, etc.)
-- 🎧 Audiophile listening sessions
-- 🎵 Curated playlists with artistic flow
-
-### Rock-Solid Stability
-v1.2.0 eliminates the format change crashes reported in v1.1.1:
-
-- **70-90% reduction** in format change related crashes
-- Intelligent buffer draining before format transitions
-- Anti-deadlock callback system
-- Enhanced error handling and recovery
-
-### Adaptive Network Performance
-Automatic network optimization based on your audio format:
-
-| Format | Optimization | Benefit |
-|--------|--------------|---------|
-| **DSD64-1024** | Maximum throughput | Handles massive data rates |
-| **Hi-Res (≥192kHz)** | Adaptive timing | Smooth high-resolution playback |
-| **Standard (44-48kHz)** | Fixed stable timing | Reliable everyday listening |
-
----
-
-## Quick Start
-
-### Gapless Playback (Enabled by Default)
-
-```bash
-sudo ./bin/DirettaRendererUPnP --target 1
+# Run the interactive installer
+./install.sh
 ```
 
-Gapless works automatically with compatible control points (Roon, BubbleUPnP, etc.)
+The installer provides an interactive menu with options for:
+- Building the application (auto-detects architecture and SDK)
+- Installing as a systemd service
+- Configuring automatic startup
+- Setting up the Diretta target
 
+### 4. Configure Network (Recommended)
 
-### Low Latency Setup
+Enable jumbo frames for best performance:
 
-For minimal latency with gapless still working:
-
-```bash
-sudo ./bin/DirettaRendererUPnP --target 1 --buffer 0.5
-# Total latency: ~1.5 seconds
-```
-
-### Verbose Logging
-
-See gapless in action:
-
-```bash
-sudo ./bin/DirettaRendererUPnP --target 1 --verbose
-```
-
-Expected logs during gapless transitions:
-```
-[AudioEngine] 🎵 Preparing next track for gapless
-[AudioEngine] ♻️  Reusing pre-loaded next track decoder
-[DirettaOutput] 🎵 Preparing next track for gapless...
-[DirettaOutput] ✅ Next track prepared for gapless transition
-```
----
-
-## Advanced Usage
-
-### Buffer Sizing
-
-Choose buffer size based on your network:
-
-```bash
-# No latency 
---buffer 0.0
-
-# Minimal latency (stable network required)
---buffer 0.5    # ~1.5s total latency
-
-# Default (recommended)
---buffer 2.0    # ~3s total latency
-
-# Maximum stability (WiFi, problematic networks)
---buffer 4.0    # ~5s total latency
-```
-
-**Note:** Gapless works perfectly regardless of buffer size!
-
-### 4. Configure Network
-
-Enable jumbo frames:
 ```bash
 # Temporary (until reboot)
-sudo ip link set enp4s0 mtu 9000
+sudo ip link set eth0 mtu 9000
 
 # Permanent (NetworkManager)
 sudo nmcli connection modify "Your Connection" 802-3-ethernet.mtu 9000
 sudo nmcli connection up "Your Connection"
 ```
 
-### Network Optimization
-
-#### Multi-homed Systems (3-tier architecture)
-
-If you have separate control and audio networks:
-
-```bash
-# Bind to control network interface
-sudo ./bin/DirettaRendererUPnP --interface eth0 --target 1
-
-# Or bind to specific IP
-sudo ./bin/DirettaRendererUPnP --bind-ip 192.168.1.10 --target 1
-```
-
-#### Jumbo Frames (Advanced)
-
-For maximum performance with capable hardware:
-
-```bash
-# RTL8125 cards support 16k MTU
---mtu 16128
-```
-
----
-
 ### 5. Run
 
 ```bash
-sudo ./bin/DirettaRendererUPnP --port 4005 --buffer 2.0
-```
-
-### 6. Configure Your Diretta Target
-
-Ensure your **Diretta Target** (Memory Play, GentooPlayer, etc.) is:
-- Running on your network
-- Connected to your DAC (USB/I2S/SPDIF)
-- Configured to accept Diretta connections
-
-### List Diretta Targets
-Before starting the renderer, you can scan for Diretta target devices on the current network:
-
-```bash
+# List available Diretta targets
 sudo ./bin/DirettaRendererUPnP --list-targets
-```
 
-Example output:
-
-text
-[1] Target #1
-    IP Address: fe80::5c53:8aff:fefb:f63a,19644
-    MTU: 1500 bytes
-
-[2] Target #2
-    IP Address: fe80::5c53:8aff:fefb:f63a,19646
-    MTU: 1500 bytes
-
-[3] Target #3
-    IP Address: fe80::5c53:8aff:fefb:f63a,19648
-    MTU: 1500 bytes
-Where:
-[1] / [2] / [3] are internal Target indices.
-
-IP Address and MTU can be used to distinguish between different Diretta devices. 
-**To be improved:** Currently cannot output user-friendly target names.
-
-### Select Diretta Target
-
-Based on the output of `--list-targets`, you can select a specific Diretta Target by its index.
-
-Syntax:
-
-```bash
-sudo ./bin/DirettaRendererUPnP --target <index> [other_parameters]
-```
-
-Examples:
-
-Use the first Target:
-
-```bash
+# Run with specific target
 sudo ./bin/DirettaRendererUPnP --target 1
+
+# Run with verbose logging (for troubleshooting)
+sudo ./bin/DirettaRendererUPnP --target 1 --verbose
 ```
 
-Use with port, buffer, and other parameters:
+### 6. Connect from Control Point
 
-```bash
-sudo ./bin/DirettaRendererUPnP --target 2 --port 4005 --buffer 2.0
-```
-Notes:
-<index> starts from 1, corresponding to the [1] [2] [3] ... shown in the --list-targets output.
-If --target is not specified and there is only one Diretta Target detected on the network, it will be used automatically.
-
-
-### 7. Connect from Control Point
-
-Open your UPnP control point (JPlay, BubbleUPnP, etc.) and look for "Diretta Renderer" in available devices.
+Open your UPnP control point (JPlay, BubbleUPnP, mConnect, etc.) and look for "Diretta Renderer" in available devices.
 
 ---
 
 ## Supported Formats
 
-| Format Type | Bit Depth | Sample Rates | Container | Notes |
-|-------------|-----------|--------------|-----------|-------|
-| **PCM** | 16/24/32-bit | 44.1kHz - 1536kHz | FLAC, ALAC, WAV, AIFF | Uncompressed or lossless compressed |
-| **DSD** | 1-bit | DSD64 - DSD1024 | DSF, DFF | Native DSD support |
-| **Lossy** | Variable | Up to 192kHz | MP3, AAC, OGG | Transcoded to PCM |
+| Format Type | Bit Depth | Sample Rates | Container | SIMD Optimization |
+|-------------|-----------|--------------|-----------|-------------------|
+| **PCM** | 16-bit | 44.1kHz - 384kHz | FLAC, WAV, AIFF | AVX2 16x |
+| **PCM** | 24-bit | 44.1kHz - 384kHz | FLAC, ALAC, WAV | AVX2 8x |
+| **PCM** | 32-bit | 44.1kHz - 1536kHz | WAV | memcpy |
+| **DSD** | 1-bit | DSD64 - DSD1024 | DSF, DFF | AVX2 32x |
+| **Lossy** | Variable | Up to 192kHz | MP3, AAC, OGG | - |
 
-### Protocol Info (UPnP)
+### PCM Bypass Mode
 
-The renderer advertises the following formats via UPnP ProtocolInfo:
-- `audio/flac` - FLAC files
-- `audio/x-flac` - Alternative FLAC MIME type
-- `audio/wav` - WAV files
-- `audio/x-wav` - Alternative WAV MIME type
-- `audio/L16` - Raw PCM
-- `audio/mp3` - MP3 files
-- `audio/mpeg` - MPEG audio
-- And many more...
+When source and target formats match exactly, the renderer uses a **bypass mode** that skips all processing for true bit-perfect playback. Log message: `[AudioDecoder] PCM BYPASS enabled - bit-perfect path`
+
+### DSD Conversion Modes
+
+DSD conversion mode is selected once per track for optimal performance:
+
+| Mode | Use Case |
+|------|----------|
+| Passthrough | DSF→LSB target, DFF→MSB target |
+| BitReverseOnly | DSF→MSB target, DFF→LSB target |
+| ByteSwapOnly | Little-endian targets |
+| BitReverseAndSwap | Little-endian + bit order mismatch |
 
 ---
 
 ## Performance
 
-### Network Performance
+### Buffer Configuration
 
-Adaptive packet sizing optimizes network usage based on audio format:
+| Parameter | v1.x | v2.0 | Benefit |
+|-----------|------|------|---------|
+| PCM Buffer | ~1000ms | ~300ms | 70% lower latency |
+| DSD Buffer | ~1000ms | ~800ms | Better stability |
+| PCM Prefill | 50ms | 30ms | Faster start |
+| Flow Control | 10ms sleep | 500µs wait | 96% less jitter |
 
-| Format | Sample Rate | Bit Depth | Packet Size | Bandwidth | Strategy |
-|--------|-------------|-----------|-------------|-----------|----------|
-| CD | 44.1kHz | 16-bit | 1-3KB | ~172 KB/s | Small packets (no fragmentation) |
-| Hi-Res | 96kHz | 24-bit | Up to 16KB | ~690 KB/s | Jumbo frames (max throughput) |
-| Hi-Res | 192kHz | 24-bit | Up to 16KB | ~1.4 MB/s | Jumbo frames |
-| DSD64 | 2.8MHz | 1-bit | Up to 16KB | ~345 KB/s | Jumbo frames |
-| DSD256 | 11.2MHz | 1-bit | Up to 16KB | ~1.4 MB/s | Jumbo frames |
+### SIMD Throughput
 
-### Buffer Settings
+| Conversion | Function | Throughput |
+|------------|----------|------------|
+| 24-bit pack (LSB) | `convert24BitPacked_AVX2()` | 8 samples/instruction |
+| 24-bit pack (MSB) | `convert24BitPackedShifted_AVX2()` | 8 samples/instruction |
+| 16→32 upsample | `convert16To32_AVX2()` | 16 samples/instruction |
+| DSD interleave | `convertDSD_*()` | 32 bytes/instruction |
 
-| Buffer Size | Latency | Stability | Use Case |
-|-------------|---------|-----------|----------|
-| 1.0s | Low | Good | Local network, CD-quality |
-| 2.0s | Medium | Better | **Recommended default** |
-| 3.0s | Medium-High | Best | Hi-Res, problematic networks |
-| 4.0s+ | High | Maximum | DSD512+, maximum stability |
+### Network Requirements
 
-### Buffer Management
-
-Three-tier buffering system:
-1. **AudioEngine buffer:** Decoding (very small, ~0.1s)
-2. **DirettaOutput buffer:** Network (`--buffer` setting, default 2s)
-3. **Gapless queue:** Pre-loaded next track (1s)
-
-Total latency = DirettaOutput buffer + Gapless queue
+| Audio Format | Data Rate | Recommended MTU |
+|--------------|-----------|-----------------|
+| CD Quality (16/44.1) | ~172 KB/s | 1500 (standard) |
+| Hi-Res (24/96) | ~690 KB/s | 1500+ |
+| Hi-Res (24/192) | ~1.4 MB/s | 9000 (jumbo) |
+| DSD256 | ~1.4 MB/s | 9000 (jumbo) |
+| DSD512 | ~2.8 MB/s | 9000+ (jumbo) |
 
 ---
 
 ## Compatible Control Points
 
-Tested and working with:
-
 | Control Point | Platform | Rating | Notes |
 |---------------|----------|--------|-------|
-| **JPlay iOS** | iOS | ⭐⭐⭐⭐⭐ | Excellent, full feature support |
-| **BubbleUPnP** | Android | ⭐⭐⭐⭐⭐ | Excellent, highly configurable |
-| **mConnect** | iOS/Android | ⭐⭐⭐⭐ | Very good, clean interface |
-| **Linn Kazoo** | iOS/Android | ⭐⭐⭐⭐ | Good, designed for Linn systems but needs Openhome (BubbleUPnP sever)
-| **gerbera** | Web | ⭐⭐⭐ | Basic functionality |
+| **JPlay iOS** | iOS | Excellent | Full feature support |
+| **BubbleUPnP** | Android | Excellent | Highly configurable |
+| **mConnect** | iOS/Android | Very Good | Clean interface |
+| **Linn Kazoo** | iOS/Android | Good | Needs OpenHome (BubbleUPnP server) |
 
-### Recommended Settings
-## JPLAY iOS
-- **Force STOP before playback**: if you have problem switching from a track to another or album to another. You don't need it if switching is working fine.
-- **Gapless**: On (if desired)
-
-## AUDIRVANA
-- **Universal gapless enabled**: if you notice pink noise after few seconds of playback
-- **DSD**: DSD isn’t functioning properly, as the DAC plays PCM instead (e.g., DSD64 → PCM 352.4 kHz). So you can set NO DSD.
-- **The --no-gapless option is no longer supported.**
-If you want Audirvana to work with the Diretta Host SDK, please reach out to the Audirvana Team.
 ---
 
 ## System Optimization
@@ -659,7 +417,7 @@ echo performance | sudo tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governo
 
 ### Real-Time Priority
 ```bash
-# Allow real-time scheduling
+# Allow real-time scheduling (renderer sets SCHED_FIFO priority 50)
 sudo setcap cap_sys_nice+ep ./bin/DirettaRendererUPnP
 ```
 
@@ -670,540 +428,181 @@ sudo sysctl -w net.core.rmem_max=16777216
 sudo sysctl -w net.core.wmem_max=16777216
 ```
 
-### AudioLinux
-If using AudioLinux distribution:
-- RT kernel is pre-configured
-- Network optimizations applied
-- CPU governor set to performance
-- Just configure jumbo frames and run!
+### CPU Isolation & Tuning (Advanced)
 
----
+For maximum audio quality, you can isolate CPU cores for the renderer using the included tuner scripts. This prevents system tasks from interrupting audio processing.
 
-## Documentation
+**Features:**
+- Automatic CPU topology detection (AMD Ryzen, Intel Core)
+- CPU isolation via kernel parameters (isolcpus, nohz_full, rcu_nocbs)
+- IRQ affinity to housekeeping cores
+- Real-time FIFO scheduling
+- Thread distribution across isolated cores
 
-- **[Installation Guide](docs/INSTALLATION.md)**: Detailed setup instructions
-- **[Configuration Guide](docs/CONFIGURATION.md)**: All options and tuning
-- **[Troubleshooting Guide](docs/TROUBLESHOOTING.md)**: Common issues and solutions
-- **[Contributing Guidelines](CONTRIBUTING.md)**: How to contribute
-- **[Changelog](CHANGELOG.md)**: Version history
+#### Quick Start
 
----
-
-## Troubleshooting
-
-### Renderer Not Found
 ```bash
-# Check if running
-ps aux | grep DirettaRendererUPnP
+# 1. Preview detected CPU topology (no changes)
+sudo ./diretta-renderer-tuner.sh detect
 
-# Check network
-ip addr show
-
-# Check firewall
-sudo firewall-cmd --list-all
+# Example output for Ryzen 9 5900X:
+#   Vendor:          AuthenticAMD
+#   Model:           AMD Ryzen 9 5900X
+#   Physical cores:  12
+#   Logical CPUs:    24
+#   SMT/HT:          true (2 threads/core)
+#   Housekeeping:    CPUs 0,12
+#   Renderer:        CPUs 1-11,13-23
 ```
 
-### No Audio Output
-1. **Verify Diretta Target is running** and connected to DAC
-2. **Check Diretta Target can see the renderer** (check Target's interface/logs)
-3. **Test with Memory Play first** to ensure Diretta setup is correct
-4. Check network connectivity between renderer and Diretta Target
-5. Check buffer size: Try increasing to 3-4 seconds
+#### Apply Tuning
 
-### Audio Dropouts
+Choose one of two modes:
+
+**With SMT (Hyper-Threading enabled):**
 ```bash
-# Increase buffer
-./bin/DirettaRendererUPnP --buffer 3.0
-
-# Check network
-ping <DIRETTA_TARGET_IP>
-iperf3 -c <DIRETTA_TARGET_IP>
+sudo ./diretta-renderer-tuner.sh apply
+# Reboot required
 ```
 
-### Connection Failed (0x0 Error)
-This means the Diretta Target is refusing the connection:
-1. **Ensure Diretta Target is running** and not in use by another application
-2. **Check Target accepts your audio format** (16-bit, 24-bit, etc.)
-3. **Test with Memory Play** sending to the same Target
-4. Some Targets (like GentooPlayer) may require 24-bit minimum - see [Issue Tracker](https://github.com/cometdom/DirettaRendererUPnP/issues)
+**Without SMT (physical cores only, lower latency):**
+```bash
+sudo ./diretta-renderer-tuner-nosmt.sh apply
+# Reboot required
+```
 
-For more solutions, see the [Troubleshooting Guide](docs/TROUBLESHOOTING.md).
+#### Check Status
+
+```bash
+sudo ./diretta-renderer-tuner.sh status
+```
+
+#### Revert Changes
+
+```bash
+sudo ./diretta-renderer-tuner.sh revert
+# Reboot required
+```
+
+#### Which Mode to Choose?
+
+| Mode | CPUs Available | Latency | Use Case |
+|------|----------------|---------|----------|
+| **With SMT** | All logical CPUs | Good | General use, multi-tasking |
+| **Without SMT** | Physical cores only | Best | Dedicated audio machine |
+
+For a dedicated audio server, **nosmt** mode provides more consistent latency because each core has no resource contention from SMT siblings.
 
 ---
 
-## Command-Line Options
+## Command Line Options
 
 ### Basic Options
 
 ```bash
 --name, -n <name>       Renderer name (default: Diretta Renderer)
 --port, -p <port>       UPnP port (default: auto)
---buffer, -b <seconds>  Buffer size in seconds (default: 2.0)
 --target, -t <index>    Select Diretta target by index (1, 2, 3...)
---no-gapless            Disable gapless playback
---verbose               Enable verbose debug output
+--list-targets          List available Diretta targets and exit
+--verbose, -v           Enable verbose debug output
+--interface <name>      Bind to specific network interface
 ```
-
-## Advanced Settings
-
-Fine-tune the Diretta protocol behavior for optimal performance:
-
-### Thread Mode (`--thread-mode <value>`)
-
-Controls real-time thread behavior using a bitmask. Add values together for multiple flags.
-
-**Available flags:**
-| Value | Flag | Description |
-|-------|------|-------------|
-| 1 | Critical | REALTIME priority (default) |
-| 2 | NoShortSleep | Disable short sleep intervals |
-| 4 | NoSleep4Core | Disable sleep for 4-core systems |
-| 8 | SocketNoBlock | Non-blocking socket operations |
-| 16 | OccupiedCPU | Maximize CPU utilization |
-| 32/64/128 | FEEDBACK | Moving average feedback control |
-| 256 | NOFASTFEEDBACK | Disable fast feedback |
-| 512 | IDLEONE | Idle one thread |
-| 1024 | IDLEALL | Idle all threads |
-| 2048 | NOSLEEPFORCE | Force no sleep |
-| 4096 | LIMITRESEND | Limit resend operations |
-| 8192 | NOJUMBOFRAME | Disable jumbo frames |
-| 16384 | NOFIREWALL | Bypass firewall optimizations |
-| 32768 | NORAWSOCKET | Disable raw sockets |
-
-**Examples:**
-```bash
-# Default (Critical only)
---thread-mode 1
-
-# Critical + OccupiedCPU (high performance)
---thread-mode 17
-
-# Critical + FEEDBACK32
---thread-mode 33
-```
-
-### Transfer Mode (v1.3.0+)
-
-DirettaRendererUPnP supports two transfer timing modes for advanced audio control.
-
-### VarMax Mode (Default)
-
-Adaptive cycle timing that automatically adjusts between minimum and maximum values for optimal bandwidth usage.
-
-```bash
-sudo ./DirettaRendererUPnP --target 1
-```
-
-**Characteristics:**
-- Cycle time varies dynamically (333 µs to 10000 µs by default)
-- Optimal bandwidth efficiency
-- Best for most users and use cases
-
-### Fix Mode
-
-Fixed cycle timing that maintains a constant, precise timing value. Requested by audiophile users who report sonic differences with specific frequencies.
-
-```bash
-sudo ./DirettaRendererUPnP --target 1 --transfer-mode fix --cycle-time 1893
-```
-
-**Characteristics:**
-- Cycle time remains constant at specified value
-- Precise timing control for audio experimentation
-- Requires explicit `--cycle-time` parameter
-- Some users report perceiving sonic differences
-
-### Popular Cycle Time Values
-
-| Cycle Time (µs) | Frequency (Hz) | Notes |
-|-----------------|----------------|-------|
-| 1893 | 528 | Reported as "musical" by some audiophiles |
-| 2000 | 500 | Nice round number, 0.5 kHz |
-| 1000 | 1000 | 1 kHz timing |
 
 ### Examples
 
 ```bash
-# Default VarMax mode
-sudo ./DirettaRendererUPnP --target 1
+# List targets
+sudo ./bin/DirettaRendererUPnP --list-targets
 
-# VarMax with custom maximum cycle time
-sudo ./DirettaRendererUPnP --target 1 --cycle-time 5000
-
-# Fix mode at 528 Hz (1893 µs)
-sudo ./DirettaRendererUPnP --target 1 --transfer-mode fix --cycle-time 1893
-
-# Fix mode at 500 Hz (2000 µs)
-sudo ./DirettaRendererUPnP --target 1 --transfer-mode fix --cycle-time 2000
-```
-
-### Help
-
-```bash
-./DirettaRendererUPnP --help
-```
-
-Look for the "Transfer Mode Options" section for complete documentation.
-
-### Technical Details
-
-- **VarMax mode**: Uses Diretta SDK `configTransferVarMax()`
-- **Fix mode**: Uses Diretta SDK `configTransferFix()`
-- Cycle time is displayed in both microseconds and Hertz for Fix mode
-- Validation ensures Fix mode always has an explicit cycle-time value
-
-### Notes
-
-This feature enables experimentation with precise timing control. While some audiophile users report perceiving sonic differences with specific fixed frequencies, scientific evidence for audible differences is limited. Your experience may vary.
-
-
-## Performance Tuning Examples
-
-### High-Resolution Audio (DSD512, PCM768)
-```bash
---buffer 3.0 --thread-mode 17 --cycle-time 8000
-```
-
-### Low-Latency Setup
-```bash
---buffer 1.5 --thread-mode 33 --cycle-time 5000 --info-cycle 2500
-```
-
-### Maximum Stability (slower systems)
-```bash
---buffer 4.0 --thread-mode 1 --cycle-time 10000
-```
-
-### Jumbo Frames Optimization
-```bash
---mtu 16128 --thread-mode 17 --buffer 2.0
-```
-## Multi-Homed Systems & Network Interface Selection
-
-For systems with multiple network interfaces (multi-homed configurations), you can specify which interface to use for UPnP discovery and communication.
-
-### Why This Matters
-
-In configurations with multiple networks (e.g., 3-tier architecture), the renderer needs to advertise itself on the correct network where your UPnP control points are located.
-
-**Common scenarios:**
-- Separate control network and audio network
-- VPN connections alongside local network
-- Multiple Ethernet adapters
-- Bridged network configurations
-
-### Command Line Options
-
-```bash
---interface <name>     Bind to specific network interface (e.g., eth0, eno1, enp6s0)
---bind-ip <address>    Bind to specific IP address (e.g., 192.168.1.10)
-```
-
-**Note:** If not specified, the renderer will automatically use the first available network interface.
-
-### Usage Examples
-
-#### List your network interfaces:
-```bash
-ip link show
-ip addr show
-```
-
-#### Single network (default behavior):
-```bash
+# Basic usage
 sudo ./bin/DirettaRendererUPnP --target 1
-```
-The renderer automatically uses the first available interface.
 
-#### Specify interface by name (recommended):
-```bash
+# Custom name and port
+sudo ./bin/DirettaRendererUPnP --target 1 --name "Living Room" --port 4005
+
+# Verbose mode for troubleshooting
+sudo ./bin/DirettaRendererUPnP --target 1 --verbose
+
+# Bind to specific network interface
 sudo ./bin/DirettaRendererUPnP --target 1 --interface eth0
 ```
 
-#### Specify by IP address:
-```bash
-sudo ./bin/DirettaRendererUPnP --target 1 --bind-ip 192.168.1.10
-```
-
-### 3-Tier Architecture Example
-
-This configuration separates control points from the Diretta audio network:
-
-**Network topology:**
-```
-Control Points (JPlay, Roon, etc.)
-         ↓
-    192.168.1.x (eth0)
-         ↓
-    Linux Host (eth0 + eth1)
-         ↓
-    192.168.2.x (eth1)
-         ↓
-    Diretta DAC
-```
-
-**Configuration:**
-
-The renderer must bind to `eth0` (control network) while targeting the DAC on `eth1` (audio network):
-
-```bash
-sudo ./bin/DirettaRendererUPnP --interface eth0 --target 1
-```
-
-The `--target` parameter will automatically connect to the Diretta DAC discovered on the audio network (192.168.2.x).
-
-### Systemd Configuration
-
-Edit `/opt/diretta-renderer-upnp/diretta-renderer.conf`:
-
-```bash
-# For 3-tier architecture
-NETWORK_INTERFACE="eth0"      # Interface with control points
-TARGET=1                       # Diretta DAC (will be found on eth1)
-
-# Or specify by IP
-NETWORK_INTERFACE="192.168.1.10"
-```
-
-Then restart:
-```bash
-sudo systemctl restart diretta-renderer
-```
-
-### Troubleshooting
-
-**Problem:** Renderer not discovered by control points
-
-**Solution:** 
-1. Check which interface your control points are on:
-   ```bash
-   ip addr show
-   ```
-
-2. Bind the renderer to that interface:
-   ```bash
-   sudo ./bin/DirettaRendererUPnP --interface <control-network-interface> --target 1
-   ```
-
-**Problem:** "UpnpInit2 failed" error
-
-**Possible causes:**
-- Invalid interface name (check with `ip link show`)
-- IP address not assigned to any interface
-- Insufficient permissions (run with `sudo`)
-
-**Verify:**
-```bash
-# List all interfaces
-ip link show
-
-# Check IP addresses
-ip addr show <interface-name>
-
-# Test with specific interface
-sudo ./bin/DirettaRendererUPnP --interface eth0 --list-targets
-```
-### Network Interface Binding
-
-The renderer can bind to a specific network interface for UPnP operations. This is essential for multi-homed systems where you have:
-- Multiple network adapters
-- Separate networks for control and audio
-- VPN connections
-
-**Default behavior:** Auto-detect first available interface  
-**Recommended for multi-homed:** Specify the interface connected to your control points
-
-See [Multi-Homed Systems](#multi-homed-systems--network-interface-selection) for detailed examples.
-
 ---
-
-
-**New Features:**
-- 🌐 **Multi-interface support**: Added `--interface` and `--bind-ip` options for multi-homed systems
-  - Essential for 3-tier architecture configurations (separate control and audio networks)
-  - Fixes SSDP discovery issues on systems with multiple network interfaces
-  - Automatic interface detection remains default behavior
-
-**Improvements:**
-- Better error messages when UPnP initialization fails with specific interface
-- Added interface information in startup logs
-- Systemd configuration now supports `NETWORK_INTERFACE` parameter
-
-**Use cases:**
-- Control points on 192.168.1.x, Diretta DAC on 192.168.2.x
-- VPN connections alongside local network
-- Multiple Ethernet adapters
-
-**Example:**
-```bash
-# 3-tier: Control on eth0, DAC on eth1
-sudo ./bin/DirettaRendererUPnP --interface eth0 --target 1
-```
 
 ## Troubleshooting
 
-### Pink noise with Audirvana Studio + Qobuz streaming (24-bit)
-
-**Symptom:** Pink noise appears after 6-7 seconds when streaming from Qobuz in 24-bit mode.
-
-**Workaround:**
-1. In Audirvana Studio, limit output to 16-bit or 20-bit or ebale universal gapless or use oversmpling in Audirvana settings.
-2. Local 24-bit files work perfectly
-3. Other players (JPLAY iOS, mConnect, Roon) work correctly with 24-bit
-
-**Note:** This is a known compatibility issue between Audirvana's HTTP streaming pattern and the Diretta SDK. A fix is being investigated with the SDK developer.
-
-### Gapless Not Working?
-
-1. **Check your control point:**
-   - ✅ Roon: Excellent gapless support
-   - ✅ BubbleUPnP: Good support
-   - ✅ mConnect: Basic support
-   - ⚠️ JPlay iOS: Limited (no SetNextURI)
-
-2. **Enable verbose logging:**
-   ```bash
-   sudo ./bin/DirettaRendererUPnP --target 1 --verbose 2>&1 | tee gapless.log
-   ```
-   Look for "Preparing next track for gapless" messages
-
-3. **Verify gapless is enabled:**
-   ```bash
-   # Should show: "Gapless: enabled"
-   sudo ./bin/DirettaRendererUPnP --target 1 | grep Gapless
-   ```
-
-### Format Changes Have Gaps?
-
-This is normal! Format changes (e.g., 44.1kHz → 96kHz) require DAC resynchronization:
-- **Same format:** 0ms gap ✅
-- **Different format:** ~50-200ms gap ⚠️ (hardware limitation)
-
-### Crashes on Format Change?
-
-v1.2.0 should fix this! If still occurring:
-
-1. **Update to v1.2.0 Stable**
-2. **Enable verbose mode** to capture logs
-3. **Report the issue** with logs
-
-### Dropouts or buffer underruns
-
-Try increasing buffer size:
-```bash
---buffer 3.0
-```
-
-Or adjust thread mode for better CPU utilization:
-```bash
---thread-mode 17
-```
-
----
-
-## Performance Tips
-
-### Optimal Setup for Audiophile Use
+### Renderer Not Found by Control Point
 
 ```bash
-# Ethernet connection (recommended)
-# RTL8125 or Intel i226 NIC
-# Jumbo frames enabled in network
+# Check if renderer is running
+ps aux | grep DirettaRendererUPnP
 
-sudo ./bin/DirettaRendererUPnP \
-    --target 1 \
-    --buffer 1.0 \
-    --interface eth1 \
-    --verbose
+# Check firewall
+sudo firewall-cmd --list-all
+
+# Try binding to specific interface
+sudo ./bin/DirettaRendererUPnP --interface eth0 --target 1
 ```
 
-**Result:** 
-- ✅ Seamless gapless transitions
-- ✅ ~2 second total latency
-- ✅ Rock-solid stability
-- ✅ Optimized network performance
+### No Audio Output
 
-### Testing Gapless
+1. Verify Diretta Target is running and connected to DAC
+2. Check network connectivity: `ping <target_ip>`
+3. Run with `--verbose` to see detailed logs
+4. Ensure MTU is at least 1500 bytes
 
-**Recommended test albums:**
-- Pink Floyd - "The Dark Side of the Moon" (conceptual flow)
-- Any live concert album (continuous applause/ambience)
-- DJ mix compilations (crossfades)
+### Stuttering or Dropouts
 
-Play the album and listen for gaps between tracks - there should be none!
+1. **Check MTU**: Ensure your network supports at least 1500 bytes end-to-end
+2. **Enable jumbo frames**: Set MTU to 9000 for hi-res audio
+3. **Check CPU load**: Use `htop` to ensure no CPU bottleneck
+4. **Network quality**: Run `ping -c 100 <target>` to check for packet loss
+
+### Format Change Issues
+
+Format transitions (e.g., DSD→PCM, 44.1→96kHz) include settling delays:
+- DSD→PCM: 800ms
+- DSD rate change: 400ms
+- PCM rate change: 200ms
+
+This is normal and ensures clean transitions.
 
 ---
 
-Advanced configuration options are based on the Diretta SDK by Yu Harada.
+## Documentation
 
----
-## FAQ
-
-### Q: Do I need a DAC with Diretta support?
-**A:** No! You need a **Diretta Target** endpoint (software like Memory Play or GentooPlayer), which then connects to any DAC via USB/I2S/SPDIF.
-
-### Q: What's the difference between Diretta Host and Diretta Target?
-**A:** 
-- **Diretta Host** (this renderer): Sends audio over network via Diretta protocol
-- **Diretta Target** (separate software/hardware): Receives Diretta audio and outputs to DAC
-
-### Q: Can I use this without a Diretta Target?
-**A:** No, you need a Diretta Target endpoint. The most common solution is to install **Memory Play** in endpoint/target mode on a computer connected to your DAC.
-
-### Q: Does this work with Roon?
-**A:** No, this is a UPnP/DLNA renderer. For Roon, you would need a Roon Bridge, not this renderer.
-
-### Q: Why do I need jumbo frames?
-**A:** Jumbo frames significantly reduce CPU overhead and improve timing precision for high-resolution audio (96kHz+) and DSD. They're optional but highly recommended.
-
-### Q: What's better than a regular UPnP renderer?
-**A:** This renderer bypasses the OS audio stack by using the Diretta protocol. The audio goes directly from network to your Diretta Target to DAC, maintaining bit-perfect quality.
-
-### Q: Will there be a Windows version?
-**A:** No, Windows support is not planned. This is a one-person project and 
-I prefer to focus on making the Linux version excellent. 
-
-You can use **WSL2** to run the renderer on Windows, or consider dual-booting Linux.
-
-### Q: Can I pay for Windows support?
-**A:** Even with funding, I don't have the time to properly support Windows. 
-If you're interested in a Windows port, consider hiring a developer to fork 
-the project.
-
-### Q: Why is this free if it costs you time/money?
-**A:** I built this for myself and the audiophile community. It's a passion 
-project, not a business. However, if you find it valuable, see the "Support" 
-section below.
----
-
-## Roadmap
-
-- [ ] Volume control support (RenderingControl service)
-- [ ] Playlist support
-- [ ] Web UI for configuration
-- [ ] Raspberry Pi optimizations
-- [ ] Docker container
-- [ ] Metadata display improvements
-- [ ] Multi-room synchronization (if Diretta SDK adds support)
-
-
-## Contributing
-
-Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) for:
-- Code style guidelines
-- How to submit pull requests
-- Bug report templates
-- Feature request process
+| Document | Description |
+|----------|-------------|
+| [CHANGELOG.md](CHANGELOG.md) | Version history and changes |
+| [CLAUDE.md](CLAUDE.md) | Technical reference for developers |
+| [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | Detailed troubleshooting guide |
+| [docs/CONFIGURATION.md](docs/CONFIGURATION.md) | Configuration reference |
+| [docs/FORK_CHANGES.md](docs/FORK_CHANGES.md) | Differences from v1.x |
 
 ---
 
 ## Credits
 
 ### Author
-**Dominique** - Initial development and ongoing maintenance
+**Dominique COMET** ([@cometdom](https://github.com/cometdom)) - Original development and v2.0
 
 ### Special Thanks
-- **Yu Harada** - Creator of Diretta protocol and SDK
+
+- **Yu Harada** - Creator of Diretta protocol and SDK, guidance on low-level API usage
+
+#### Key Contributors
+
+- **SwissMountainsBear** - Ported and adapted the core Diretta integration code from his [MPD Diretta Output Plugin](https://github.com/swissmountainsbear/mpd-diretta-output-plugin). The `DIRETTA::Sync` architecture, `getNewStream()` callback implementation, same-format fast path, and buffer management patterns were directly contributed from his plugin. This project would not exist in its current form without his code contribution.
+
+- **leeeanh** - Brilliant optimization strategies that transformed v2.0 performance. His contributions include:
+  - Lock-free SPSC ring buffer design with atomic operations
+  - Power-of-2 buffer sizing with bitmask modulo (10-20x faster)
+  - Cache-line separation (`alignas(64)`) to eliminate false sharing
+  - Consumer hot path analysis leading to zero-allocation audio path
+  - AVX2 SIMD strategy for batch format conversions
+
+#### Also Thanks To
+
 - **FFmpeg team** - Audio decoding library
 - **libupnp developers** - UPnP/DLNA implementation
 - **Audiophile community** - Testing and feedback
@@ -1219,15 +618,7 @@ Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) for:
 
 This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) file for details.
 
-**IMPORTANT**: The Diretta Host SDK is proprietary software by Yu Harada and is licensed for **personal use only**. Commercial use is prohibited. See LICENSE file for full details.
-
----
-
-## Support
-
-- **Issues**: [GitHub Issues](https://github.com/cometdom/DirettaRendererUPnP/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/cometdom/DirettaRendererUPnP/discussions)
-- **Diretta Protocol**: [diretta.link](https://www.diretta.link)
+**IMPORTANT**: The Diretta Host SDK is proprietary software by Yu Harada and is licensed for **personal use only**. Commercial use is prohibited.
 
 ---
 
@@ -1237,6 +628,6 @@ This software is provided "as is" without warranty. While designed for high-qual
 
 ---
 
-**Enjoy bit-perfect, high-resolution audio streaming! 🎵**
+**Enjoy bit-perfect, low-latency audio streaming!**
 
-*Last updated: 2025-12-30*
+*Last updated: 2026-01-28*

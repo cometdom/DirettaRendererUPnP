@@ -11,29 +11,11 @@
 // Logging system - Variable globale définie dans main.cpp
 // ============================================================================
 extern bool g_verbose;
+#ifdef NOLOG
+#define DEBUG_LOG(x) do {} while(0)
+#else
 #define DEBUG_LOG(x) if (g_verbose) { std::cout << x << std::endl; }
-
-
-// Helper pour extraire une valeur d'un document IXML
-static const char* ixmlGetFirstDocumentItem(IXML_Document* doc, const char* item) {
-    IXML_NodeList* nodeList = ixmlDocument_getElementsByTagName(doc, (char*)item);
-    if (!nodeList) return nullptr;
-    
-    IXML_Node* node = ixmlNodeList_item(nodeList, 0);
-    if (!node) {
-        ixmlNodeList_free(nodeList);
-        return nullptr;
-    }
-    
-    IXML_Node* textNode = ixmlNode_getFirstChild(node);
-    const char* value = nullptr;
-    if (textNode) {
-        value = ixmlNode_getNodeValue(textNode);
-    }
-    
-    ixmlNodeList_free(nodeList);
-    return value;
-}
+#endif
 
 UPnPDevice::UPnPDevice(const Config& config)
     : m_config(config)
@@ -75,36 +57,36 @@ bool UPnPDevice::start() {
     
     DEBUG_LOG("[UPnPDevice] Starting...");
     
-// 1. Initialize libupnp
-// ⭐ MODIFIÉ: Bind to specific network interface if specified
-const char* interfaceName = m_config.networkInterface.empty() ? nullptr : m_config.networkInterface.c_str();
-
-if (interfaceName != nullptr) {
-    std::cout << "🌐 Binding UPnP to interface: " << interfaceName << std::endl;
-} else {
-    std::cout << "🌐 Using default interface for UPnP (auto-detect)" << std::endl;
-}
-
-int ret = UpnpInit2(interfaceName, m_config.port);  // ← interfaceName au lieu de nullptr
-if (ret != UPNP_E_SUCCESS) {
-    std::cerr << "[UPnPDevice] UpnpInit2 failed: " << ret << std::endl;
+    // 1. Initialize libupnp
+    // ⭐ MODIFIÉ: Bind to specific network interface if specified
+    const char* interfaceName = m_config.networkInterface.empty() ? nullptr : m_config.networkInterface.c_str();
     
-    // ⭐ NOUVEAU: Message d'aide pour multi-homed systems
     if (interfaceName != nullptr) {
-        std::cerr << "\n💡 Troubleshooting:" << std::endl;
-        std::cerr << "  - Verify interface exists: ip link show" << std::endl;
-        std::cerr << "  - Check IP is assigned: ip addr show " << interfaceName << std::endl;
-        std::cerr << "  - Or try IP address instead: --bind-ip 192.168.x.x" << std::endl;
+        std::cout << "🌐 Binding UPnP to interface: " << interfaceName << std::endl;
+    } else {
+        std::cout << "🌐 Using default interface for UPnP (auto-detect)" << std::endl;
     }
     
-    return false;
-}
+    int ret = UpnpInit2(interfaceName, m_config.port);  // ← interfaceName au lieu de nullptr
+    if (ret != UPNP_E_SUCCESS) {
+        std::cerr << "[UPnPDevice] UpnpInit2 failed: " << ret << std::endl;
+        
+        // ⭐ NOUVEAU: Message d'aide pour multi-homed systems
+        if (interfaceName != nullptr) {
+            std::cerr << "\n💡 Troubleshooting:" << std::endl;
+            std::cerr << "  - Verify interface exists: ip link show" << std::endl;
+            std::cerr << "  - Check IP is assigned: ip addr show " << interfaceName << std::endl;
+            std::cerr << "  - Or try IP address instead: --bind-ip 192.168.x.x" << std::endl;
+        }
+        
+        return false;
+    }
 
-// Afficher l'IP et port utilisés
-char* ipAddress = UpnpGetServerIpAddress();
-unsigned short port = UpnpGetServerPort();
-std::cout << "✓ UPnP initialized on " << (ipAddress ? ipAddress : "unknown") 
-          << ":" << port << std::endl;
+    // Afficher l'IP et port utilisés
+    char* ipAddress = UpnpGetServerIpAddress();
+    unsigned short port = UpnpGetServerPort();
+    std::cout << "✓ UPnP initialized on " << (ipAddress ? ipAddress : "unknown") 
+              << ":" << port << std::endl;
     
     // 2. Get server info
     m_ipAddress = UpnpGetServerIpAddress();
@@ -312,47 +294,8 @@ int UPnPDevice::handleActionRequest(UpnpActionRequest* request) {
         if (actionName == "GetProtocolInfo") {
             IXML_Document* response = createActionResponse("GetProtocolInfo");
             addResponseArg(response, "Source", "");
-            
-             // Liste explicite des formats supportés
-            // Requis par certains contrôleurs stricts comme Audirvana
-            std::string sinkProtocols = 
-                // WAV (requis par Audirvana)
-                "http-get:*:audio/wav:*,"
-                "http-get:*:audio/x-wav:*,"
-                "http-get:*:audio/wave:*,"
-                "http-get:*:audio/x-pn-wav:*,"
-                // AIFF (requis par Audirvana)
-                "http-get:*:audio/aiff:*,"
-                "http-get:*:audio/x-aiff:*,"
-                // FLAC
-                "http-get:*:audio/flac:*,"
-                "http-get:*:audio/x-flac:*,"
-                // ALAC (Apple Lossless)
-                "http-get:*:audio/m4a:*,"
-                "http-get:*:audio/x-m4a:*,"
-                "http-get:*:audio/mp4:*,"
-                // MP3
-                "http-get:*:audio/mpeg:*,"
-                "http-get:*:audio/mp3:*,"
-                "http-get:*:audio/x-mpeg:*,"
-                // OGG
-                "http-get:*:audio/ogg:*,"
-                "http-get:*:audio/x-ogg:*,"
-                // DSD (DSF/DFF)
-                "http-get:*:audio/dsd:*,"
-                "http-get:*:audio/x-dsd:*,"
-                "http-get:*:audio/dsf:*,"
-                "http-get:*:audio/x-dsf:*,"
-                "http-get:*:audio/dff:*,"
-                "http-get:*:audio/x-dff:*,"
-                // WMA
-                "http-get:*:audio/x-ms-wma:*,"
-                // APE
-                "http-get:*:audio/x-ape:*,"
-                // Wildcard générique en dernier (pour compatibilité)
-                "http-get:*:audio/*:*";
-            
-            addResponseArg(response, "Sink", sinkProtocols);
+            // Use the protocol info generated by ProtocolInfoBuilder
+            addResponseArg(response, "Sink", m_protocolInfo);
             UpnpActionRequest_set_ActionResult(request, response);
             return UPNP_E_SUCCESS;
         }
@@ -414,22 +357,22 @@ int UPnPDevice::actionSetAVTransportURI(UpnpActionRequest* request) {
     
     DEBUG_LOG("[UPnPDevice] SetAVTransportURI: " << uri);
     
-{
-    std::lock_guard<std::mutex> lock(m_stateMutex);
-    m_currentURI = uri;
-    m_currentMetadata = metadata;
-    m_currentTrackURI = uri;
-    m_currentTrackMetadata = metadata;
-    m_currentPosition = 0;
-    m_trackDuration = 0;
-    
-    // Effacer l'ancienne queue gapless (nouveau contexte)
-    if (!m_nextURI.empty()) {
-        DEBUG_LOG("[UPnPDevice] ✓ Clearing old gapless queue (new context)");
-        m_nextURI.clear();
-        m_nextMetadata.clear();
+    {
+        std::lock_guard<std::mutex> lock(m_stateMutex);
+        m_currentURI = uri;
+        m_currentMetadata = metadata;
+        m_currentTrackURI = uri;
+        m_currentTrackMetadata = metadata;
+        m_currentPosition = 0;
+        m_trackDuration = 0;
+        
+        // Effacer l'ancienne queue gapless (nouveau contexte)
+        if (!m_nextURI.empty()) {
+            DEBUG_LOG("[UPnPDevice] ✓ Clearing old gapless queue (new context)");
+            m_nextURI.clear();
+            m_nextMetadata.clear();
+        }
     }
-}
     
     // Callback
     if (m_callbacks.onSetURI) {
@@ -527,20 +470,20 @@ int UPnPDevice::actionStop(UpnpActionRequest* request) {
     std::cout << "[UPnPDevice] ⛔ STOP ACTION RECEIVED" << std::endl;
     std::cout << "════════════════════════════════════════" << std::endl;
     
-{
-    std::lock_guard<std::mutex> lock(m_stateMutex);
-    DEBUG_LOG("[UPnPDevice] Changing state: " << m_transportState 
-              << " → STOPPED");
-    m_transportState = "STOPPED";
-    m_currentPosition = 0;
-    
-    // Effacer la queue gapless
-    if (!m_nextURI.empty()) {
-        DEBUG_LOG("[UPnPDevice] ✓ Clearing gapless queue: " << m_nextURI);
-        m_nextURI.clear();
-        m_nextMetadata.clear();
+    {
+        std::lock_guard<std::mutex> lock(m_stateMutex);
+        DEBUG_LOG("[UPnPDevice] Changing state: " << m_transportState 
+                  << " → STOPPED");
+        m_transportState = "STOPPED";
+        m_currentPosition = 0;
+        
+        // Effacer la queue gapless
+        if (!m_nextURI.empty()) {
+            DEBUG_LOG("[UPnPDevice] ✓ Clearing gapless queue: " << m_nextURI);
+            m_nextURI.clear();
+            m_nextMetadata.clear();
+        }
     }
-}
     
     // Callback
     if (m_callbacks.onStop) {
@@ -770,6 +713,7 @@ std::string UPnPDevice::formatTime(int seconds) const {
        << std::setw(2) << s;
     return ss.str();
 }
+
 // ============================================================================
 // Part 3 : Helper Functions & XML Generation - MISSING IMPLEMENTATIONS
 // ============================================================================

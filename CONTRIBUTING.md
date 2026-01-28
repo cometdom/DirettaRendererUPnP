@@ -1,37 +1,94 @@
-# Contributing to Diretta UPnP Renderer
+## Contributing
 
-Thank you for your interest in contributing to the Diretta UPnP Renderer project! 🎉
-
-This document provides guidelines for contributing to the project.
-
-## Table of Contents
-
-1. [Code of Conduct](#code-of-conduct)
-2. [How Can I Contribute?](#how-can-i-contribute)
-3. [Development Setup](#development-setup)
-4. [Coding Standards](#coding-standards)
-5. [Submitting Changes](#submitting-changes)
-6. [Reporting Bugs](#reporting-bugs)
-7. [Suggesting Enhancements](#suggesting-enhancements)
+**Note:** Contributions are welcome but there is no guarantee they will be reviewed or merged.
 
 ---
 
-## Code of Conduct
+## Credits
 
-### Our Standards
+### Original Author
 
-- Be respectful and inclusive
-- Welcome newcomers and help them learn
-- Focus on constructive criticism
-- Prioritize audio quality and user experience
-- Respect the personal-use-only nature of the Diretta SDK
+**Dominique COMET** ([@cometdom](https://github.com/cometdom)) - Original development
 
-### Unacceptable Behavior
+### Fork Maintainer
 
-- Harassment or discriminatory language
-- Trolling or inflammatory comments
-- Publishing others' private information
-- Distributing the Diretta SDK (it's proprietary)
+**SwissMontainsBear** ([@SwissMontainsBear](https://github.com/SwissMontainsBear))
+
+### Third-Party Components
+
+- [Diretta Host SDK](https://www.diretta.link) - Proprietary (personal use only)
+- [FFmpeg](https://ffmpeg.org) - LGPL/GPL
+- [libupnp](https://pupnp.sourceforge.io/) - BSD License
+
+---
+
+## License
+
+This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) file for details.
+
+**IMPORTANT**: The Diretta Host SDK is proprietary software by Yu Harada and is licensed for **personal use only**. Commercial use is prohibited.
+
+---
+
+## Disclaimer
+
+**THIS SOFTWARE IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.**
+
+The maintainer ([@SwissMontainsBear](https://github.com/SwissMontainsBear)):
+
+- **Does NOT provide technical support**
+- **Does NOT guarantee updates, bug fixes, or maintenance**
+- **Does NOT accept liability** for any issues arising from use of this software
+- **Does NOT guarantee responses** to issues or pull requests
+- Shares this code **purely as a courtesy** to the community
+
+**Use this software entirely at your own risk.**
+
+The maintainer is not responsible for any:
+
+- Hardware damage
+- Data loss
+- Audio equipment damage
+- Any other issues that may arise
+
+For questions about the Diretta protocol, contact [diretta.link](https://www.diretta.link).
+
+---
+
+**Enjoy bit-perfect audio streaming! 🎵**
+
+*This fork is provided as-is for the audiophile community.*
+
+```
+---
+
+## 3. CONTRIBUTING.md
+
+```markdown
+# Contributing to Diretta UPnP Renderer (Community Fork)
+
+> ⚠️ **Important Notice**
+> 
+> This is a personal project shared with the community as a courtesy.
+> 
+> - **No guarantee** that contributions will be reviewed or merged
+> - **No guarantee** that the project will be actively maintained
+> - **No support** is provided
+> 
+> Contribute with the understanding that this is a best-effort, hobby project.
+
+---
+
+Thank you for your interest in contributing! 🎵
+
+## Table of Contents
+
+1. [How Can I Contribute?](#how-can-i-contribute)
+2. [Development Setup](#development-setup)
+3. [Coding Standards](#coding-standards)
+4. [Submitting Changes](#submitting-changes)
+5. [Reporting Bugs](#reporting-bugs)
+6. [Suggesting Enhancements](#suggesting-enhancements)
 
 ---
 
@@ -42,14 +99,13 @@ This document provides guidelines for contributing to the project.
 - Test with different audio formats (FLAC, ALAC, DSD, etc.)
 - Test with different control points (JPlay, BubbleUPnP, etc.)
 - Test on different Linux distributions
-- Report any issues you find (see [Reporting Bugs](#reporting-bugs))
+- Report any issues you find
 
 ### 2. Documentation
 
 - Improve README, installation guides, or troubleshooting docs
 - Add examples of working configurations
-- Translate documentation to other languages
-- Create video tutorials or blog posts
+- Create tutorials
 
 ### 3. Code Contributions
 
@@ -81,23 +137,17 @@ sudo dnf install git gcc-c++ make ffmpeg-devel libupnp-devel
 ### Fork and Clone
 
 ```bash
-# Fork the repository on GitHub, then:
-git clone https://github.com/YOUR_USERNAME/DirettaUPnPRenderer.git
-cd DirettaUPnPRenderer
+git clone https://github.com/SwissMontainsBear/DirettaRendererUPnP-X.git
+cd DirettaRendererUPnP-X
 
-# Add upstream remote
-git remote add upstream https://github.com/ORIGINAL_OWNER/DirettaUPnPRenderer.git
+git remote add upstream https://github.com/SwissMontainsBear/DirettaRendererUPnP-X.git
 ```
 
 ### Build and Test
 
 ```bash
-# Build
 make clean
 make
-
-# Run tests (when available)
-make test
 
 # Test manually
 sudo ./bin/DirettaRendererUPnP --port 4005 --buffer 2.0
@@ -115,106 +165,42 @@ git merge upstream/main
 
 ## Coding Standards
 
-### C++ Style
-
-We follow modern C++ best practices (C++17):
+### C++ Style (C++17)
 
 #### Naming Conventions
 
 ```cpp
-// Classes: PascalCase
-class AudioEngine { };
-
-// Functions/methods: camelCase
-void processAudio();
-
-// Member variables: m_ prefix + camelCase
-std::string m_currentURI;
-
-// Constants: UPPER_SNAKE_CASE
-const int MAX_BUFFER_SIZE = 8192;
-
-// Namespaces: lowercase
-namespace diretta { }
+class AudioEngine { };           // Classes: PascalCase
+void processAudio();             // Functions: camelCase
+std::string m_currentURI;        // Members: m_ prefix
+const int MAX_BUFFER_SIZE;       // Constants: UPPER_SNAKE_CASE
+namespace diretta { }            // Namespaces: lowercase
 ```
 
 #### Formatting
 
 - **Indentation**: 4 spaces (no tabs)
 - **Braces**: Opening brace on same line
-```cpp
-void function() {
-    // code here
-}
-```
-- **Line length**: Aim for 100 characters, max 120
-- **Comments**: Use `//` for single-line, `/* */` for multi-line
+- **Line length**: Max 120 characters
 
 #### Best Practices
 
 ```cpp
-// ✅ Good: Use smart pointers
+// Use smart pointers
 std::unique_ptr<AudioEngine> m_audioEngine;
 
-// ✅ Good: Use const where possible
+// Use const where possible
 void process(const AudioBuffer& buffer);
 
-// ✅ Good: Clear variable names
-uint32_t sampleRate;
-
-// ❌ Avoid: Raw pointers for ownership
-AudioEngine* m_audioEngine;
-
-// ❌ Avoid: Magic numbers
-if (value > 44100) { }  // What does 44100 mean?
-
-// ✅ Better: Named constants
+// Use named constants
 const uint32_t CD_SAMPLE_RATE = 44100;
-if (value > CD_SAMPLE_RATE) { }
 ```
 
-### Error Handling
+### Logging Format
 
 ```cpp
-// ✅ Check return values
-if (!m_audioEngine->open(uri)) {
-    std::cerr << "[Error] Failed to open: " << uri << std::endl;
-    return false;
-}
-
-// ✅ Use exceptions for truly exceptional cases
-try {
-    parseConfig(configFile);
-} catch (const std::exception& e) {
-    std::cerr << "Configuration error: " << e.what() << std::endl;
-}
-```
-
-### Logging
-
-```cpp
-// Use consistent logging format
 std::cout << "[ComponentName] Message" << std::endl;
-std::cerr << "[ComponentName] ⚠️  Warning: " << details << std::endl;
-std::cerr << "[ComponentName] ❌ Error: " << details << std::endl;
-std::cout << "[ComponentName] ✓ Success" << std::endl;
-```
-
-### Comments
-
-```cpp
-// Explain WHY, not WHAT (code should be self-explanatory)
-
-// ❌ Bad comment (obvious)
-// Increment counter
-counter++;
-
-// ✅ Good comment (explains reasoning)
-// Use smaller packets for 16bit/44.1kHz to avoid fragmentation
-// even though jumbo frames are available
-if (isLowBitrate) {
-    m_syncBuffer->configTransferAuto(...);
-}
+std::cerr << "[ComponentName] Error: " << details << std::endl;
 ```
 
 ---
@@ -224,236 +210,237 @@ if (isLowBitrate) {
 ### Branch Naming
 
 ```bash
-# Feature branches
 git checkout -b feature/add-volume-control
-
-# Bug fix branches
 git checkout -b fix/audio-dropout-issue
-
-# Documentation
-git checkout -b docs/improve-installation-guide
+git checkout -b docs/improve-installation
 ```
 
 ### Commit Messages
 
-Follow this format:
-
 ```
 Short summary (50 chars or less)
 
-More detailed explanation if needed. Wrap at 72 characters.
-Explain the problem this commit solves and why this approach
-was chosen.
+Detailed explanation if needed. Wrap at 72 characters.
 
-- Bullet points are okay
 - Use present tense: "Add feature" not "Added feature"
-- Reference issues: "Fixes #123" or "Related to #456"
+- Reference issues: "Fixes #123"
 ```
 
-Examples:
+### Pull Request Checklist
 
-```
-Add support for volume control via UPnP
-
-Implements the RenderingControl service to allow volume
-adjustment from control points. Uses ALSA mixer API.
-
-Fixes #42
-```
-
-```
-Fix audio dropouts with 16bit/44.1kHz files
-
-Previously, jumbo frames were used for all formats,
-causing fragmentation with low-bitrate files. Now
-automatically switches to smaller packets.
-
-Related to #56, #78
-```
-
-### Pull Request Process
-
-1. **Update documentation** if adding features
-2. **Add tests** if applicable (when test framework exists)
-3. **Ensure code compiles** without warnings
-4. **Test your changes** with real audio playback
-5. **Update CHANGELOG** (if exists)
-
-#### Pull Request Template
-
-```markdown
-## Description
-Brief description of what this PR does.
-
-## Type of Change
-- [ ] Bug fix
-- [ ] New feature
-- [ ] Documentation update
-- [ ] Performance improvement
-
-## Testing
-How was this tested? Include:
-- Audio formats tested (FLAC, DSD, etc.)
-- Control points tested (JPlay, BubbleUPnP, etc.)
-- Linux distributions tested
-
-## Checklist
 - [ ] Code compiles without warnings
 - [ ] Tested with real audio playback
 - [ ] Documentation updated (if needed)
 - [ ] No Diretta SDK files included
-```
 
 ---
 
 ## Reporting Bugs
 
-### Before Submitting a Bug Report
+> ⚠️ **No guarantee of response or fix.**
 
-1. **Check existing issues** - your bug may already be reported
-2. **Try the latest version** - it may already be fixed
-3. **Read troubleshooting docs** - TROUBLESHOOTING.md
+### Before Submitting
+
+1. Check existing issues
+2. Try the latest version
+3. Read troubleshooting docs
 
 ### Bug Report Template
 
 ```markdown
 ## Bug Description
-Clear description of what the bug is.
+[Clear description]
 
 ## Steps to Reproduce
-1. Start renderer with command: `sudo ./bin/...`
-2. Play file: `artist - track.flac`
-3. Observe behavior: audio cuts out after 30 seconds
-
-## Expected Behavior
-Audio should play smoothly without interruptions.
-
-## Actual Behavior
-Audio cuts out after 30 seconds, then resumes.
+1. 
+2. 
+3. 
 
 ## System Information
-- OS: Fedora 38
-- Kernel: 6.5.0-rt (RT kernel)
-- Network card: Intel I219-V
-- MTU: 9000
-- DAC: Holo Audio Spring 3
-- Audio format: FLAC 24bit/192kHz
+- OS: 
+- Audio format: 
+- DAC: 
 
 ## Logs
-```
-[paste relevant logs here]
-```
-
-## Additional Context
-Using dedicated audio network. Switch supports jumbo frames.
+[paste logs]
 ```
 
 ---
 
 ## Suggesting Enhancements
 
-We welcome feature suggestions! Please include:
-
-### Enhancement Template
-
 ```markdown
 ## Feature Description
-What feature would you like to see?
+[What feature would you like?]
 
 ## Use Case
-Why would this feature be useful? Who would benefit?
+[Why would this be useful?]
 
 ## Proposed Implementation
-(Optional) How could this be implemented?
-
-## Alternatives Considered
-(Optional) What other approaches did you consider?
-
-## Additional Context
-Any other relevant information.
-```
-
-### Examples of Good Enhancement Requests
-
-- "Add playlist support for queue management"
-- "Implement volume control via UPnP RenderingControl"
-- "Add web UI for configuration"
-- "Support for multiple Diretta targets"
-
----
-
-## Development Tips
-
-### Debugging
-
-```bash
-# Build with debug symbols
-make clean
-CXXFLAGS="-g -DDEBUG" make
-
-# Run with GDB
-sudo gdb ./bin/DirettaRendererUPnP
-(gdb) run --port 4005 --buffer 2.0
-```
-
-### Testing Different Formats
-
-Keep test files in `test_audio/` (git-ignored):
-```
-test_audio/
-├── cd_quality/
-│   └── test_16bit_44.1kHz.flac
-├── hi_res/
-│   └── test_24bit_192kHz.flac
-└── dsd/
-    └── test_dsd64.dsf
-```
-
-### Network Testing
-
-```bash
-# Simulate packet loss
-sudo tc qdisc add dev enp4s0 root netem loss 1%
-
-# Remove simulation
-sudo tc qdisc del dev enp4s0 root
-
-# Monitor packets
-sudo tcpdump -i enp4s0 -w capture.pcap
+[Optional: How could this work?]
 ```
 
 ---
 
-## Code Review Process
+## Important Reminders
 
-1. Maintainers will review your PR
-2. Address feedback and update PR
-3. Once approved, your PR will be merged
-4. Your contribution will be acknowledged!
-
----
-
-## Recognition
-
-Contributors will be:
-- Listed in CONTRIBUTORS.md
-- Credited in release notes
-- Acknowledged in README (for significant contributions)
+- **Do not include** the Diretta SDK in commits (it's proprietary)
+- **Personal use only** - commercial use prohibited due to SDK restrictions
+- **Test thoroughly** before submitting PRs
 
 ---
 
-## Questions?
+## No Support Guarantee
 
-- **General questions**: Open a GitHub Discussion
-- **Bug reports**: Open a GitHub Issue
-- **Security issues**: Email (to be determined)
+Please understand:
+
+|      |                                                        |
+| ---- | ------------------------------------------------------ |
+| ❌    | Pull requests may not be reviewed (or reviewed slowly) |
+| ❌    | Issues may not receive responses                       |
+| ❌    | No obligation to accept contributions                  |
+| ❌    | No obligation to provide feedback                      |
+
+This is a hobby project maintained in spare time.
+
+**If you need a feature urgently, consider maintaining your own fork.**
 
 ---
 
 ## Thank You! 🎵
 
-Your contributions help make high-quality audio streaming accessible to everyone!
+Your contributions are appreciated, even if response times are slow or unpredictable.
+
+```
+---
+
+## 4. .github/ISSUE_TEMPLATE/bug_report.md
+
+Create the directory structure `.github/ISSUE_TEMPLATE/` and add this file:
+
+```markdown
+---
+name: Bug Report
+about: Report a bug (no guarantee of response or fix)
+title: '[BUG] '
+labels: 'bug'
+assignees: ''
+---
+
+## ⚠️ Please Read First
+
+**This project is provided AS-IS without support.**
+
+- The maintainer may not respond to this issue
+- There is no guarantee this will be fixed
+- Response times may be very slow
+
+By submitting this issue, you acknowledge the above.
 
 ---
 
-*This contributing guide may be updated. Please check back periodically.*
+## Bug Description
+
+[Clear description of the bug]
+
+## Steps to Reproduce
+
+1. 
+2. 
+3. 
+
+## Expected Behavior
+
+[What should happen]
+
+## Actual Behavior
+
+[What actually happens]
+
+## System Information
+
+- **OS**: 
+- **Kernel**: 
+- **Network card**: 
+- **MTU**: 
+- **DAC**: 
+- **Diretta Target**: 
+- **Audio format**: 
+
+## Logs
+
+```
+
+[Paste relevant logs here]
+
+```
+## Additional Context
+
+[Any other information]
+```
+
+---
+
+## 5. .github/ISSUE_TEMPLATE/feature_request.md
+
+```markdown
+---
+name: Feature Request
+about: Suggest a feature (no guarantee of implementation)
+title: '[FEATURE] '
+labels: 'enhancement'
+assignees: ''
+---
+
+## ⚠️ Please Read First
+
+**This project is provided AS-IS without support.**
+
+- Feature requests may not be implemented
+- There is no roadmap or timeline
+- Consider forking if you need a feature urgently
+
+By submitting this request, you acknowledge the above.
+
+---
+
+## Feature Description
+
+[What feature would you like?]
+
+## Use Case
+
+[Why would this be useful? Who would benefit?]
+
+## Proposed Implementation
+
+[Optional: How could this be implemented?]
+
+## Alternatives Considered
+
+[Optional: Other approaches you considered]
+```
+
+---
+
+## 6. .github/ISSUE_TEMPLATE/config.yml
+
+```yaml
+blank_issues_enabled: false
+contact_links:
+  - name: ⚠️ Read Before Opening Issues
+    url: https://github.com/SwissMontainsBear/DirettaRendererUPnP-X#disclaimer
+    about: |
+      This project is provided AS-IS without support. 
+      Please read the disclaimer before opening issues.
+  - name: Original Project
+    url: https://github.com/cometdom/DirettaRendererUPnP
+    about: For the original project by Dominique COMET.
+  - name: Diretta Protocol
+    url: https://www.diretta.link
+    about: For questions about the Diretta protocol itself.
+```
+
+---
+
+## 

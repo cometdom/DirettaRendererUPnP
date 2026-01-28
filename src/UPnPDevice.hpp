@@ -6,7 +6,6 @@
 #include <functional>
 #include <memory>
 #include <mutex>
-#include <map>
 #include "ProtocolInfoBuilder.h"
 
 /**
@@ -70,7 +69,6 @@ public:
     void notifyStateChange(const std::string& state);
     void notifyTrackChange(const std::string& uri, const std::string& metadata);
     void notifyPositionChange(int seconds, int duration);
-    void notifyVolumeChange(int volume);
     
     // Getters
     std::string getDeviceURL() const;
@@ -141,11 +139,9 @@ private:
                        const std::string& name, 
                        const std::string& value);
     
-    std::string getArgumentValue(IXML_Document* actionDoc, 
+    std::string getArgumentValue(IXML_Document* actionDoc,
                                  const std::string& argName);
-    
-    int parseTime(const std::string& time) const;
-    
+
     // Configuration
     Config m_config;
     
@@ -179,7 +175,4 @@ private:
     
     // Protocol Info (cached at initialization)
     std::string m_protocolInfo;
-    
-    // Virtual directory for serving SCPD files
-    std::map<std::string, std::string> m_virtualFiles;
 };
