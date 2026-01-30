@@ -263,7 +263,7 @@ get_ffmpeg_8_minimal_opts() {
 --disable-swscale
 --enable-protocol=file,http,https,tcp
 --enable-demuxer=flac,wav,dsf,dff,aac,mov
---enable-decoder=flac,alac,pcm_s16le,pcm_s24le,pcm_s32le,dsd_lsbf,dsd_msbf,dsd_lsbf_planar,dsd_msbf_planar,aac
+--enable-decoder=flac,alac,pcm_s16le,pcm_s24le,pcm_s32le,pcm_f32le,dsd_lsbf,dsd_msbf,dsd_lsbf_planar,dsd_msbf_planar,aac
 --enable-muxer=flac,wav
 --enable-filter=aresample
 OPTS
@@ -454,7 +454,7 @@ test_ffmpeg_installation() {
     local decoders
     decoders=$("$ffmpeg_bin" -decoders 2>&1)
 
-    local required_decoders="flac alac dsd_lsbf dsd_msbf pcm_s16le pcm_s24le pcm_s32le"
+    local required_decoders="flac alac dsd_lsbf dsd_msbf pcm_s16le pcm_s24le pcm_s32le pcm_f32le"
     local all_found=true
 
     for dec in $required_decoders; do
