@@ -186,10 +186,10 @@ namespace DirettaRetry {
 
 namespace DirettaBuffer {
     constexpr float DSD_BUFFER_SECONDS = 0.8f;
-    constexpr float PCM_BUFFER_SECONDS = 0.3f;  // Was 1.0f - low latency
+    constexpr float PCM_BUFFER_SECONDS = 0.5f;  // Was 0.3f - increased for streaming stability
 
     constexpr size_t DSD_PREFILL_MS = 200;
-    constexpr size_t PCM_PREFILL_MS = 30;       // Was 50 - faster start
+    constexpr size_t PCM_PREFILL_MS = 80;       // Was 30ms - increased for HTTP streaming
     constexpr size_t PCM_LOWRATE_PREFILL_MS = 100;
 
     constexpr unsigned int DAC_STABILIZATION_MS = 100;
