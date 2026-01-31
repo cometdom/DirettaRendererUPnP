@@ -178,6 +178,8 @@ private:
     static void addDSDProtocols(std::vector<std::string>& protocols,
                                 const AudioCapabilities& caps) {
         // Add container format MIME types (for squeeze2UPnP/LMS compatibility)
+        protocols.push_back("http-get:*:audio/dsd:*");
+        protocols.push_back("http-get:*:audio/x-dsd:*");
         protocols.push_back("http-get:*:audio/dsf:*");
         protocols.push_back("http-get:*:audio/dff:*");
         protocols.push_back("http-get:*:audio/x-dsf:*");
