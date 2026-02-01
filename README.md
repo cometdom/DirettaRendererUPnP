@@ -222,7 +222,7 @@ The renderer automatically detects and optimizes for your CPU:
 - **Minimum**: Dual-core CPU, 1GB RAM, Gigabit Ethernet
 - **Recommended**: Quad-core CPU, 2GB RAM, 2.5/10G Ethernet with jumbo frames
 - **Network**: Gigabit Ethernet minimum (10G recommended for DSD512+)
-- **MTU**: 1500 bytes minimum, 9000+ recommended for high-res audio
+- **MTU**: 1500 minimum, jumbo frames recommended (9014 or 16128, must match Diretta Target)
 
 ### Software
 - **OS**: Linux with kernel 5.x+ (RT kernel recommended)
@@ -290,6 +290,29 @@ sudo pacman -S base-devel ffmpeg libupnp
 1. Visit [diretta.link](https://www.diretta.link/hostsdk.html)
 2. Download **DirettaHostSDK_148** (or latest version)
 3. Extract to `~/DirettaHostSDK_148`
+
+> **Tip: Transferring files from Windows to Linux**
+>
+> If you downloaded the SDK on Windows and need to transfer it to your Linux machine:
+>
+> **Using PowerShell or CMD** (OpenSSH is built into Windows 10/11):
+> ```powershell
+> # Transfer the SDK archive to your Linux machine
+> # Replace with actual filename (e.g., DirettaHostSDK_148_5.tar.zst)
+> scp C:\Users\YourName\Downloads\DirettaHostSDK_XXX_Y.tar.zst user@linux-ip:~/
+> ```
+>
+> **Using WSL** (Windows Subsystem for Linux):
+> ```bash
+> # Windows files are accessible under /mnt/c/
+> cp /mnt/c/Users/YourName/Downloads/DirettaHostSDK_*.tar.zst ~/
+> ```
+>
+> Then extract on Linux:
+> ```bash
+> cd ~
+> tar --zstd -xf DirettaHostSDK_*.tar.zst
+> ```
 
 ### 3. Clone and Install
 

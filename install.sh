@@ -956,29 +956,52 @@ configure_network() {
         return 1
     fi
 
-    if confirm "Enable jumbo frames (MTU 16128) for better performance?"; then
-        sudo ip link set "$IFACE" mtu 16128
-        print_success "Jumbo frames enabled (MTU 16128)"
+    if confirm "Enable jumbo frames for better performance?"; then
+        echo ""
+        echo "Select MTU size (must match your Diretta Target setting):"
+        echo ""
+        echo "  1) MTU 9014  - Standard jumbo frames"
+        echo "  2) MTU 16128 - Maximum jumbo frames (recommended)"
+        echo "  3) Skip"
+        echo ""
+        read -rp "Choice [1-3]: " mtu_choice
 
-        if confirm "Make this permanent?"; then
-            case $OS in
-                fedora|rhel|centos)
-                    local conn_name
-                    conn_name=$(nmcli -t -f NAME,DEVICE connection show 2>/dev/null | grep "$IFACE" | cut -d: -f1)
-                    if [ -n "$conn_name" ]; then
-                        sudo nmcli connection modify "$conn_name" 802-3-ethernet.mtu 16128
-                        print_success "MTU configured permanently in NetworkManager"
-                    else
-                        print_warning "Could not find NetworkManager connection for $IFACE"
-                    fi
-                    ;;
-                ubuntu|debian)
-                    print_info "Add 'mtu 16128' to /etc/network/interfaces for $IFACE"
-                    ;;
-                *)
-                    print_info "Manual configuration required for permanent MTU"
-                    ;;
-            esac
+        local MTU_VALUE=""
+        case $mtu_choice in
+            1) MTU_VALUE=9014 ;;
+            2) MTU_VALUE=16128 ;;
+            3|"")
+                print_info "Skipping MTU configuration"
+                ;;
+            *)
+                print_warning "Invalid choice, skipping MTU configuration"
+                ;;
+        esac
+
+        if [ -n "$MTU_VALUE" ]; then
+            sudo ip link set "$IFACE" mtu "$MTU_VALUE"
+            print_success "Jumbo frames enabled (MTU $MTU_VALUE)"
+
+            if confirm "Make this permanent?"; then
+                case $OS in
+                    fedora|rhel|centos)
+                        local conn_name
+                        conn_name=$(nmcli -t -f NAME,DEVICE connection show 2>/dev/null | grep "$IFACE" | cut -d: -f1)
+                        if [ -n "$conn_name" ]; then
+                            sudo nmcli connection modify "$conn_name" 802-3-ethernet.mtu "$MTU_VALUE"
+                            print_success "MTU configured permanently in NetworkManager"
+                        else
+                            print_warning "Could not find NetworkManager connection for $IFACE"
+                        fi
+                        ;;
+                    ubuntu|debian)
+                        print_info "Add 'mtu $MTU_VALUE' to /etc/network/interfaces for $IFACE"
+                        ;;
+                    *)
+                        print_info "Manual configuration required for permanent MTU"
+                        ;;
+                esac
+            fi
         fi
     fi
 
