@@ -171,7 +171,7 @@ bool DirettaSync::openSyncConnection() {
         opened = DIRETTA::Sync::open(
             DIRETTA::Sync::THRED_MODE(m_config.threadMode),
             cycleTime, 0, "DirettaRenderer", 0x44525400,
-            -1, -1, 0, DIRETTA::Sync::MSMODE_MS3);
+            -1, -1, 0, DIRETTA::Sync::MSMODE_AUTO);
     }
 
     if (!opened) {
@@ -181,6 +181,18 @@ bool DirettaSync::openSyncConnection() {
 
     m_sdkOpen = true;
     inquirySupportFormat(m_targetAddress);
+
+    // Log the MS mode actually negotiated
+    const char* msModeStr = "UNKNOWN";
+    switch (MSmodeSet) {
+        case DIRETTA::Sync::MSMODE_NONE: msModeStr = "NONE"; break;
+        case DIRETTA::Sync::MSMODE_MS1:  msModeStr = "MS1"; break;
+        case DIRETTA::Sync::MSMODE_MS2:  msModeStr = "MS2"; break;
+        case DIRETTA::Sync::MSMODE_MS3:  msModeStr = "MS3"; break;
+        case DIRETTA::Sync::MSMODE_AUTO: msModeStr = "AUTO"; break;
+        default: break;
+    }
+    std::cout << "[DirettaSync] MS mode negotiated: " << msModeStr << std::endl;
 
     if (g_verbose) {
         logSinkCapabilities();
@@ -357,17 +369,13 @@ void DirettaSync::logSinkCapabilities() {
     // SDK 148: Log supported multi-stream modes
     // supportMSmode is a bitmask: bit0=MS1, bit1=MS2, bit2=MS3
     uint16_t msmode = info.supportMSmode;
-    std::cout << "[DirettaSync]   MS modes: "
+    std::cout << "[DirettaSync]   MS modes supported: "
               << ((msmode & 0x01) ? "MS1 " : "")
               << ((msmode & 0x02) ? "MS2 " : "")
               << ((msmode & 0x04) ? "MS3 " : "")
-              << (msmode == 0 ? "(none)" : "")
+              << (msmode == 0 ? "(not reported)" : "")
               << std::endl;
-
-    // Warn if MS3 (our default) is not supported
-    if (!(msmode & 0x04) && msmode != 0) {
-        std::cerr << "[DirettaSync] WARNING: Target does not support MS3 mode (using MS3 anyway)" << std::endl;
-    }
+    std::cout << "[DirettaSync]   MS mode configured: AUTO (prefers MS3 > MS1 > NONE)" << std::endl;
 }
 
 //=============================================================================
@@ -513,7 +521,7 @@ bool DirettaSync::open(const AudioFormat& format) {
                 if (!DIRETTA::Sync::open(
                         DIRETTA::Sync::THRED_MODE(m_config.threadMode),
                         cycleTime, 0, "DirettaRenderer", 0x44525400,
-                        -1, -1, 0, DIRETTA::Sync::MSMODE_MS3)) {
+                        -1, -1, 0, DIRETTA::Sync::MSMODE_AUTO)) {
                     std::cerr << "[DirettaSync] Failed to re-open DIRETTA::Sync" << std::endl;
                     return false;
                 }
@@ -561,7 +569,7 @@ bool DirettaSync::open(const AudioFormat& format) {
                 if (!DIRETTA::Sync::open(
                         DIRETTA::Sync::THRED_MODE(m_config.threadMode),
                         cycleTime, 0, "DirettaRenderer", 0x44525400,
-                        -1, -1, 0, DIRETTA::Sync::MSMODE_MS3)) {
+                        -1, -1, 0, DIRETTA::Sync::MSMODE_AUTO)) {
                     std::cerr << "[DirettaSync] Failed to re-open DIRETTA::Sync" << std::endl;
                     return false;
                 }
@@ -824,7 +832,7 @@ bool DirettaSync::reopenForFormatChange() {
     if (!DIRETTA::Sync::open(
             DIRETTA::Sync::THRED_MODE(m_config.threadMode),
             cycleTime, 0, "DirettaRenderer", 0x44525400,
-            -1, -1, 0, DIRETTA::Sync::MSMODE_MS3)) {
+            -1, -1, 0, DIRETTA::Sync::MSMODE_AUTO)) {
         std::cerr << "[DirettaSync] Failed to re-open sync" << std::endl;
         return false;
     }

@@ -113,7 +113,7 @@ bool DirettaSync::openSyncConnection() {
         opened = DIRETTA::Sync::open(
             DIRETTA::Sync::THRED_MODE(m_config.threadMode),
             cycleTime, 0, "DirettaRenderer", 0x44525400,
-            -1, -1, 0, DIRETTA::Sync::MSMODE_MS3);
+            -1, -1, 0, DIRETTA::Sync::MSMODE_AUTO);
     }
 
     if (!opened) {
@@ -522,7 +522,7 @@ bool DirettaSync::reopenForFormatChange() {
     if (!DIRETTA::Sync::open(
             DIRETTA::Sync::THRED_MODE(m_config.threadMode),
             cycleTime, 0, "DirettaRenderer", 0x44525400,
-            -1, -1, 0, DIRETTA::Sync::MSMODE_MS3)) {
+            -1, -1, 0, DIRETTA::Sync::MSMODE_AUTO)) {
         std::cerr << "[DirettaSync] Failed to re-open sync" << std::endl;
         return false;
     }
