@@ -335,36 +335,53 @@ int UPnPDevice::handleSubscriptionRequest(UpnpSubscriptionRequest* request) {
     std::cout << "[UPnPDevice] Subscription request for: " << serviceID
               << " SID: " << (sid ? sid : "null") << std::endl;
 
-    // Build initial LastChange XML with current state
+    // Build initial LastChange XML - different format per service
     std::string lastChange;
     {
         std::lock_guard<std::mutex> lock(m_stateMutex);
+        std::stringstream ss;
 
-        std::string actions;
-        if (m_transportState == "PLAYING") {
-            actions = "Play,Stop,Pause,Seek,Next,Previous";
-        } else if (m_transportState == "PAUSED_PLAYBACK") {
-            actions = "Play,Stop,Seek";
-        } else if (m_transportState == "STOPPED") {
-            actions = "Play,Seek";
-        } else {
-            actions = "Stop";
+        if (serviceID.find("AVTransport") != std::string::npos) {
+            // AVTransport: transport state, URIs, metadata
+            std::string actions;
+            if (m_transportState == "PLAYING") {
+                actions = "Play,Stop,Pause,Seek,Next,Previous";
+            } else if (m_transportState == "PAUSED_PLAYBACK") {
+                actions = "Play,Stop,Seek";
+            } else if (m_transportState == "STOPPED") {
+                actions = "Play,Seek";
+            } else {
+                actions = "Stop";
+            }
+
+            ss << "<Event xmlns=\"urn:schemas-upnp-org:metadata-1-0/AVT/\">"
+               << "<InstanceID val=\"0\">"
+               << "<TransportState val=\"" << m_transportState << "\"/>"
+               << "<AVTransportURI val=\"" << xmlEscape(m_currentURI) << "\"/>"
+               << "<AVTransportURIMetaData val=\"" << xmlEscape(m_currentMetadata) << "\"/>"
+               << "<CurrentTrackURI val=\"" << xmlEscape(m_currentTrackURI) << "\"/>"
+               << "<CurrentTrackDuration val=\"" << formatTime(m_trackDuration) << "\"/>"
+               << "<CurrentTrackMetaData val=\"" << xmlEscape(m_currentTrackMetadata) << "\"/>"
+               << "<NextAVTransportURI val=\"" << xmlEscape(m_nextURI) << "\"/>"
+               << "<NextAVTransportURIMetaData val=\"" << xmlEscape(m_nextMetadata) << "\"/>"
+               << "<CurrentTransportActions val=\"" << actions << "\"/>"
+               << "</InstanceID>"
+               << "</Event>";
+        } else if (serviceID.find("RenderingControl") != std::string::npos) {
+            // RenderingControl: volume and mute state
+            ss << "<Event xmlns=\"urn:schemas-upnp-org:metadata-1-0/RCS/\">"
+               << "<InstanceID val=\"0\">"
+               << "<Volume channel=\"Master\" val=\"" << m_volume << "\"/>"
+               << "<Mute channel=\"Master\" val=\"" << (m_mute ? "1" : "0") << "\"/>"
+               << "</InstanceID>"
+               << "</Event>";
+        } else if (serviceID.find("ConnectionManager") != std::string::npos) {
+            // ConnectionManager: minimal initial event
+            ss << "<Event xmlns=\"urn:schemas-upnp-org:metadata-1-0/CM/\">"
+               << "<InstanceID val=\"0\"/>"
+               << "</Event>";
         }
 
-        std::stringstream ss;
-        ss << "<Event xmlns=\"urn:schemas-upnp-org:metadata-1-0/AVT/\">"
-           << "<InstanceID val=\"0\">"
-           << "<TransportState val=\"" << m_transportState << "\"/>"
-           << "<AVTransportURI val=\"" << xmlEscape(m_currentURI) << "\"/>"
-           << "<AVTransportURIMetaData val=\"" << xmlEscape(m_currentMetadata) << "\"/>"
-           << "<CurrentTrackURI val=\"" << xmlEscape(m_currentTrackURI) << "\"/>"
-           << "<CurrentTrackDuration val=\"" << formatTime(m_trackDuration) << "\"/>"
-           << "<CurrentTrackMetaData val=\"" << xmlEscape(m_currentTrackMetadata) << "\"/>"
-           << "<NextAVTransportURI val=\"" << xmlEscape(m_nextURI) << "\"/>"
-           << "<NextAVTransportURIMetaData val=\"" << xmlEscape(m_nextMetadata) << "\"/>"
-           << "<CurrentTransportActions val=\"" << actions << "\"/>"
-           << "</InstanceID>"
-           << "</Event>";
         lastChange = ss.str();
     }
 
@@ -916,9 +933,37 @@ void UPnPDevice::sendAVTransportEvent() {
     }
 }
 
-// Helper: Send RenderingControl event
+// Helper: Send RenderingControl LastChange event to all subscribers
 void UPnPDevice::sendRenderingControlEvent() {
-    // Event notification would go here
+    if (m_deviceHandle < 0 || !m_running) return;
+
+    std::string lastChange;
+    {
+        std::lock_guard<std::mutex> lock(m_stateMutex);
+        std::stringstream ss;
+        ss << "<Event xmlns=\"urn:schemas-upnp-org:metadata-1-0/RCS/\">"
+           << "<InstanceID val=\"0\">"
+           << "<Volume channel=\"Master\" val=\"" << m_volume << "\"/>"
+           << "<Mute channel=\"Master\" val=\"" << (m_mute ? "1" : "0") << "\"/>"
+           << "</InstanceID>"
+           << "</Event>";
+        lastChange = ss.str();
+    }
+
+    const char* varNames[] = { "LastChange" };
+    const char* varValues[] = { lastChange.c_str() };
+
+    std::string udn = "uuid:" + m_config.uuid;
+    int ret = UpnpNotify(
+        m_deviceHandle,
+        udn.c_str(),
+        "urn:upnp-org:serviceId:RenderingControl",
+        varNames, varValues, 1
+    );
+
+    if (ret != UPNP_E_SUCCESS) {
+        DEBUG_LOG("[UPnPDevice] RenderingControl UpnpNotify failed: " << ret);
+    }
 }
 
 // Generate device description XML
@@ -1580,9 +1625,9 @@ void UPnPDevice::notifyTrackChange(const std::string& uri, const std::string& me
         m_currentMetadata = metadata;
         m_currentTrackURI = uri;
         m_currentTrackMetadata = metadata;
-        // Reset position and duration on track change
+        // Reset position only - duration will be updated by position thread
+        // Don't reset m_trackDuration to avoid returning 00:00:00 on first poll
         m_currentPosition = 0;
-        m_trackDuration = 0;
         // Clear next track (it became current)
         m_nextURI.clear();
         m_nextMetadata.clear();
