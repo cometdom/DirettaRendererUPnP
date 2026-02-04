@@ -334,13 +334,11 @@ bool DirettaRenderer::start() {
                     std::cout << "/" << info.channels << "ch" << std::endl;
                 }
 
-                // Gapless transition: stay in PLAYING state, just update track data
-                // Control points detect track change via CurrentTrackURI change
-                // in GetPositionInfo polling and LastChange events.
-                // IMPORTANT: Do NOT send TRANSITIONING - it breaks gapless detection
-                // in Audirvana, BubbleUPnP, and other control points.
-                m_upnp->notifyTrackChange(uri, metadata);
-                m_upnp->notifyStateChange("PLAYING");
+                // Atomic gapless transition: update all track data + send single event
+                // Uses epoch counter to prevent position thread from overwriting
+                // with stale values (fixes Audirvana UI not updating on track change)
+                int durationSec = (info.sampleRate > 0) ? static_cast<int>(info.duration / info.sampleRate) : 0;
+                m_upnp->notifyGaplessTransition(uri, metadata, durationSec);
             }
         );
 
@@ -670,6 +668,9 @@ void DirettaRenderer::positionThreadFunc() {
         auto state = m_audioEngine->getState();
 
         if (state == AudioEngine::State::PLAYING) {
+            // Read epoch BEFORE reading audio engine state
+            uint32_t epochBefore = m_upnp->getTrackEpoch();
+
             double positionSeconds = m_audioEngine->getPosition();
             int position = static_cast<int>(positionSeconds);
 
@@ -679,9 +680,15 @@ void DirettaRenderer::positionThreadFunc() {
                 duration = trackInfo.duration / trackInfo.sampleRate;
             }
 
-            m_upnp->setCurrentPosition(position);
-            m_upnp->setTrackDuration(duration);
-            m_upnp->notifyPositionChange(position, duration);
+            // Check epoch AFTER reading - if it changed, a gapless transition
+            // happened while we were reading and our values are stale
+            if (m_upnp->getTrackEpoch() == epochBefore) {
+                m_upnp->setCurrentPosition(position);
+                m_upnp->setTrackDuration(duration);
+                m_upnp->notifyPositionChange(position, duration);
+            } else {
+                DEBUG_LOG("[Position Thread] Skipping stale update (track changed)");
+            }
         }
 
         std::this_thread::sleep_for(std::chrono::seconds(1));

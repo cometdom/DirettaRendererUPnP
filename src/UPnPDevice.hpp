@@ -6,6 +6,7 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <atomic>
 #include "ProtocolInfoBuilder.h"
 
 /**
@@ -69,6 +70,13 @@ public:
     void notifyStateChange(const std::string& state);
     void notifyTrackChange(const std::string& uri, const std::string& metadata);
     void notifyPositionChange(int seconds, int duration);
+
+    // Atomic gapless transition: updates all track data + sends single event
+    // Prevents race condition where position thread overwrites track change data
+    void notifyGaplessTransition(const std::string& uri, const std::string& metadata, int durationSeconds);
+
+    // Track epoch counter for race condition prevention
+    uint32_t getTrackEpoch() const { return m_trackEpoch.load(std::memory_order_acquire); }
     
     // Getters
     std::string getDeviceURL() const;
@@ -179,4 +187,8 @@ private:
     
     // Protocol Info (cached at initialization)
     std::string m_protocolInfo;
+
+    // Track epoch counter (incremented on gapless transition)
+    // Used by position thread to detect stale reads
+    std::atomic<uint32_t> m_trackEpoch{0};
 };

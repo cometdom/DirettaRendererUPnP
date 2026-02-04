@@ -1896,21 +1896,40 @@ void UPnPDevice::setCurrentMetadata(const std::string& metadata) {
     m_currentTrackMetadata = metadata;
 }
 
-// Notify track change (sends event to subscribers)
+// Notify track change (updates state only, no event)
 void UPnPDevice::notifyTrackChange(const std::string& uri, const std::string& metadata) {
     std::lock_guard<std::mutex> lock(m_stateMutex);
     m_currentURI = uri;
     m_currentMetadata = metadata;
     m_currentTrackURI = uri;
     m_currentTrackMetadata = metadata;
-    // Reset position only - duration will be updated by position thread
-    // Don't reset m_trackDuration to avoid returning 00:00:00 on first poll
     m_currentPosition = 0;
-    // Clear next track (it became current)
     m_nextURI.clear();
     m_nextMetadata.clear();
-    // No event here - caller sends notifyStateChange("PLAYING") which triggers the event
-    // with both the new track data and the correct transport state
+}
+
+// Atomic gapless transition: update all track data + send single event
+// This prevents the race condition where the position thread (1s polling)
+// reads stale values from AudioEngine and overwrites the fresh track change
+// data between notifyTrackChange() and notifyStateChange() calls.
+// The epoch counter allows the position thread to detect and skip stale writes.
+void UPnPDevice::notifyGaplessTransition(const std::string& uri, const std::string& metadata, int durationSeconds) {
+    {
+        std::lock_guard<std::mutex> lock(m_stateMutex);
+        m_currentURI = uri;
+        m_currentMetadata = metadata;
+        m_currentTrackURI = uri;
+        m_currentTrackMetadata = metadata;
+        m_currentPosition = 0;
+        m_trackDuration = durationSeconds;
+        m_nextURI.clear();
+        m_nextMetadata.clear();
+        // TransportState stays PLAYING - no change needed for gapless
+        // Increment epoch so position thread detects the transition
+        m_trackEpoch.fetch_add(1, std::memory_order_release);
+    }
+    // Send event with all consistent data in one shot
+    sendAVTransportEvent();
 }
 
 // Notify position change (updates internal state for GetPositionInfo polling)
