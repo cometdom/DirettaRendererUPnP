@@ -334,9 +334,15 @@ bool DirettaRenderer::start() {
                     std::cout << "/" << info.channels << "ch" << std::endl;
                 }
 
+                // Signal TRANSITIONING before updating track info
+                // Per UPnP spec: PLAYING → TRANSITIONING → PLAYING signals track change
+                m_upnp->notifyStateChange("TRANSITIONING");
+
                 m_upnp->setCurrentURI(uri);
                 m_upnp->setCurrentMetadata(metadata);
                 m_upnp->notifyTrackChange(uri, metadata);
+
+                // Back to PLAYING with new track info
                 m_upnp->notifyStateChange("PLAYING");
             }
         );
