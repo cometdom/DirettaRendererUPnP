@@ -115,6 +115,7 @@ private:
     int actionGetPositionInfo(UpnpActionRequest* request);
     int actionGetMediaInfo(UpnpActionRequest* request);
     int actionGetTransportSettings(UpnpActionRequest* request);
+    int actionSetPlayMode(UpnpActionRequest* request);
     int actionGetDeviceCapabilities(UpnpActionRequest* request);
     int actionGetCurrentTransportActions(UpnpActionRequest* request);
     

@@ -291,6 +291,8 @@ int UPnPDevice::handleActionRequest(UpnpActionRequest* request) {
             return actionGetDeviceCapabilities(request);
         } else if (actionName == "GetCurrentTransportActions") {
             return actionGetCurrentTransportActions(request);
+        } else if (actionName == "SetPlayMode") {
+            return actionSetPlayMode(request);
         }
     }
     
@@ -695,6 +697,21 @@ int UPnPDevice::actionGetTransportSettings(UpnpActionRequest* request) {
     
     UpnpActionRequest_set_ActionResult(request, response);
     
+    return UPNP_E_SUCCESS;
+}
+
+int UPnPDevice::actionSetPlayMode(UpnpActionRequest* request) {
+    IXML_Document* actionDoc = UpnpActionRequest_get_ActionRequest(request);
+    std::string mode = getArgumentValue(actionDoc, "NewPlayMode");
+
+    // Only NORMAL mode is supported (no shuffle/repeat)
+    if (mode != "NORMAL") {
+        UpnpActionRequest_set_ErrCode(request, 712);  // Play mode not supported
+        return UPNP_E_SUCCESS;
+    }
+
+    IXML_Document* response = createActionResponse("SetPlayMode");
+    UpnpActionRequest_set_ActionResult(request, response);
     return UPNP_E_SUCCESS;
 }
 
@@ -1293,6 +1310,21 @@ std::string UPnPDevice::generateAVTransportSCPD() {
       </argumentList>
     </action>
     <action>
+      <name>SetPlayMode</name>
+      <argumentList>
+        <argument>
+          <name>InstanceID</name>
+          <direction>in</direction>
+          <relatedStateVariable>A_ARG_TYPE_InstanceID</relatedStateVariable>
+        </argument>
+        <argument>
+          <name>NewPlayMode</name>
+          <direction>in</direction>
+          <relatedStateVariable>CurrentPlayMode</relatedStateVariable>
+        </argument>
+      </argumentList>
+    </action>
+    <action>
       <name>GetDeviceCapabilities</name>
       <argumentList>
         <argument>
@@ -1745,21 +1777,19 @@ void UPnPDevice::setCurrentMetadata(const std::string& metadata) {
 
 // Notify track change (sends event to subscribers)
 void UPnPDevice::notifyTrackChange(const std::string& uri, const std::string& metadata) {
-    {
-        std::lock_guard<std::mutex> lock(m_stateMutex);
-        m_currentURI = uri;
-        m_currentMetadata = metadata;
-        m_currentTrackURI = uri;
-        m_currentTrackMetadata = metadata;
-        // Reset position only - duration will be updated by position thread
-        // Don't reset m_trackDuration to avoid returning 00:00:00 on first poll
-        m_currentPosition = 0;
-        // Clear next track (it became current)
-        m_nextURI.clear();
-        m_nextMetadata.clear();
-    }
-    // Send AVTransport event to notify subscribers
-    sendAVTransportEvent();
+    std::lock_guard<std::mutex> lock(m_stateMutex);
+    m_currentURI = uri;
+    m_currentMetadata = metadata;
+    m_currentTrackURI = uri;
+    m_currentTrackMetadata = metadata;
+    // Reset position only - duration will be updated by position thread
+    // Don't reset m_trackDuration to avoid returning 00:00:00 on first poll
+    m_currentPosition = 0;
+    // Clear next track (it became current)
+    m_nextURI.clear();
+    m_nextMetadata.clear();
+    // No event here - caller sends notifyStateChange("PLAYING") which triggers the event
+    // with both the new track data and the correct transport state
 }
 
 // Notify position change (updates internal state for GetPositionInfo polling)
