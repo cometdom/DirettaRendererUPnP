@@ -1859,6 +1859,19 @@ bool AudioEngine::process(size_t samplesNeeded) {
         }
         m_pendingNextTrack.store(false, std::memory_order_release);
         std::cout << "[AudioEngine] Pending next URI applied (gapless)" << std::endl;
+
+        // ANTICIPATED PRELOAD: Start preloading immediately in background thread
+        // This opens the HTTP connection NOW instead of waiting for EOF,
+        // preventing buffer underruns during gapless transitions.
+        if (!m_nextURI.empty() && !m_nextDecoder && !m_preloadRunning.load(std::memory_order_acquire)) {
+            waitForPreloadThread();
+            m_preloadRunning.store(true, std::memory_order_release);
+            m_preloadThread = std::thread([this]() {
+                preloadNextTrack();
+                m_preloadRunning.store(false, std::memory_order_release);
+            });
+            std::cout << "[AudioEngine] Anticipated preload started" << std::endl;
+        }
     }
 
     // Safety net: auto-reopen if decoder null while PLAYING
@@ -1901,9 +1914,18 @@ bool AudioEngine::process(size_t samplesNeeded) {
 
     // CRITICAL: Preload next track as soon as EOF flag is set (for gapless)
     // Check AFTER readSamples() because EOF flag is set during the read
+    // With anticipated preload, this should rarely trigger (preload already running/done)
     if (!m_nextDecoder && !m_nextURI.empty() && m_currentDecoder->isEOF()) {
-        std::cout << "[AudioEngine] EOF flag detected, preloading next track for gapless..." << std::endl;
-        preloadNextTrack();
+        // Check if preload is already running in background
+        if (m_preloadRunning.load(std::memory_order_acquire)) {
+            // Wait for background preload to complete (non-blocking would be better but complex)
+            std::cout << "[AudioEngine] EOF reached, waiting for background preload..." << std::endl;
+            waitForPreloadThread();
+        } else {
+            // Fallback: preload wasn't started, do it now (blocking)
+            std::cout << "[AudioEngine] EOF flag detected, preloading next track for gapless..." << std::endl;
+            preloadNextTrack();
+        }
     }
 
     if (samplesRead > 0) {
