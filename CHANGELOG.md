@@ -1,6 +1,6 @@
 # Changelog
 
-## [2.0.2] - 2026-02-04
+## [2.0.2] - 2026-02-07
 
 ### ✨ New Features
 
@@ -44,6 +44,13 @@
 - Detect local servers (192.168.x, 10.x, 172.x, localhost) and use simplified HTTP options
 - Remote servers (Qobuz, Tidal) keep full reconnection/persistent options
 - Fixes connection issues with local UPnP servers (Audirvana, JRiver) that don't support advanced HTTP features
+
+**Streaming Proxy Detection (Qobuz/Tidal via local UPnP servers):**
+- When a control point (e.g. Audirvana) proxies Qobuz/Tidal streams, the URL has a local IP (192.168.x.x) but the content comes from a remote streaming service
+- The local/remote server detection now checks for streaming service names in the URL (case-insensitive)
+- Proxied streams correctly use robust HTTP options (reconnect, http_persistent, ignore_eof) instead of simple local options
+- Fixes potential connection drops when streaming Qobuz/Tidal through Audirvana or similar proxying control points
+- Contributed by **herisson-88** ([PR #51](https://github.com/cometdom/DirettaRendererUPnP/pull/51))
 
 ---
 
