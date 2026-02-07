@@ -119,7 +119,15 @@ bool AudioDecoder::open(const std::string& url) {
 
     // Detect format from URL extension (helps FFmpeg when Content-Type is missing/wrong)
     const AVInputFormat* inputFormat = nullptr;
-    bool isLocalServer = (url.find("://192.168.") != std::string::npos ||
+    // Detect streaming service URLs proxied through local UPnP servers
+    // (e.g., Audirvana relays Qobuz/Tidal via http://192.168.x.x/...qobuz...)
+    std::string urlLower = url;
+    std::transform(urlLower.begin(), urlLower.end(), urlLower.begin(), ::tolower);
+    bool isStreamingProxy = (urlLower.find("qobuz") != std::string::npos ||
+                             urlLower.find("tidal") != std::string::npos);
+
+    bool isLocalServer = !isStreamingProxy &&
+                         (url.find("://192.168.") != std::string::npos ||
                           url.find("://10.") != std::string::npos ||
                           url.find("://172.") != std::string::npos ||
                           url.find("://localhost") != std::string::npos ||
@@ -143,6 +151,10 @@ bool AudioDecoder::open(const std::string& url) {
 
     // User-Agent (some servers check it)
     av_dict_set(&options, "user_agent", "DirettaRenderer/1.0", 0);
+
+    if (isStreamingProxy) {
+        DEBUG_LOG("[AudioDecoder] Streaming proxy detected (Qobuz/Tidal via local server) - using robust HTTP options");
+    }
 
     if (isLocalServer) {
         // Local servers (Audirvana, JRiver, etc.) - use simple HTTP options
