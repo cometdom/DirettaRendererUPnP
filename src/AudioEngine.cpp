@@ -160,14 +160,14 @@ bool AudioDecoder::open(const std::string& url) {
         // Local servers (Audirvana, JRiver, etc.) - use simple HTTP options
         // These servers often don't support persistent connections or reconnection
         DEBUG_LOG("[AudioDecoder] Local server detected - using simple HTTP options");
-        av_dict_set(&options, "buffer_size", "32768", 0);
+        av_dict_set(&options, "buffer_size", "32768", 0);  // 32KB sufficient for LAN
     } else {
         // Remote servers (Qobuz, Tidal, etc.) - use robust streaming options
         DEBUG_LOG("[AudioDecoder] Remote server - using streaming options (reconnect enabled)");
         av_dict_set(&options, "reconnect", "1", 0);
         av_dict_set(&options, "reconnect_streamed", "1", 0);
         av_dict_set(&options, "reconnect_delay_max", "5", 0);
-        av_dict_set(&options, "buffer_size", "32768", 0);
+        av_dict_set(&options, "buffer_size", "524288", 0);  // 512KB to absorb network jitter
         av_dict_set(&options, "http_persistent", "1", 0);
         av_dict_set(&options, "multiple_requests", "1", 0);
         av_dict_set(&options, "ignore_eof", "1", 0);
