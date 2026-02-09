@@ -504,10 +504,11 @@ int UPnPDevice::actionSetAVTransportURI(UpnpActionRequest* request) {
     if (m_callbacks.onSetURI) {
         m_callbacks.onSetURI(uri, metadata);
     }
-    
-    // Send event notification
-    sendAVTransportEvent();
-    
+
+    // No event here: the control point already knows the URI it just set.
+    // State change events (PLAYING, gapless transition) are sent separately.
+    // Sending redundant events causes some control points (Audirvana) to re-sync audio.
+
     // Response
     IXML_Document* response = createActionResponse("SetAVTransportURI");
     UpnpActionRequest_set_ActionResult(request, response);
@@ -533,10 +534,10 @@ int UPnPDevice::actionSetNextAVTransportURI(UpnpActionRequest* request) {
     if (m_callbacks.onSetNextURI) {
         m_callbacks.onSetNextURI(uri, metadata);
     }
-    
-    // Send event notification
-    sendAVTransportEvent();
-    
+
+    // No event here: the control point already knows the next URI it just set.
+    // The gapless transition event will notify when the track actually changes.
+
     // Response
     IXML_Document* response = createActionResponse("SetNextAVTransportURI");
     UpnpActionRequest_set_ActionResult(request, response);
