@@ -346,9 +346,32 @@ bool DirettaRenderer::start() {
             std::cout << "[DirettaRenderer] Track ended naturally" << std::endl;
 
             if (m_direttaSync) {
-                // Stop playback first to prevent underrun log spam
-                // This sets m_stopRequested which outputs silence instead of logging underruns
-                m_direttaSync->stopPlayback(true);
+                // Wait for ring buffer to drain before stopping.
+                // At EOF, the ring buffer still has ~75-150ms of audio (25-50% fill).
+                // The SDK consumer (getNewStream) pops ~2.4ms per cycle.
+                // Without this wait, stopPlayback() discards the buffered audio tail.
+                if (m_direttaSync->isPlaying()) {
+                    auto drainStart = std::chrono::steady_clock::now();
+                    constexpr int DRAIN_TIMEOUT_MS = 2000;
+                    constexpr float DRAIN_THRESHOLD = 0.01f;
+
+                    while (m_direttaSync->isPlaying()) {
+                        float level = m_direttaSync->getBufferLevel();
+                        if (level < DRAIN_THRESHOLD) break;
+
+                        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                            std::chrono::steady_clock::now() - drainStart);
+                        if (elapsed.count() >= DRAIN_TIMEOUT_MS) {
+                            std::cerr << "[DirettaRenderer] Drain timeout ("
+                                      << DRAIN_TIMEOUT_MS << "ms), level=" << level << std::endl;
+                            break;
+                        }
+                        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+                    }
+                }
+
+                // Stop with silence tail for clean DAC shutdown
+                m_direttaSync->stopPlayback(false);
 
                 // Fully release the Diretta target on playlist end
                 // This closes the SDK connection so the target can accept other sources
@@ -678,6 +701,13 @@ void DirettaRenderer::positionThreadFunc() {
             int duration = 0;
             if (trackInfo.sampleRate > 0) {
                 duration = trackInfo.duration / trackInfo.sampleRate;
+            }
+
+            // Cap reported position to (duration - 1) while PLAYING.
+            // Prevents control points from seeing RelTime >= TrackDuration
+            // due to decoded samples running ahead of DAC output by ~300ms.
+            if (duration > 0 && position >= duration) {
+                position = duration - 1;
             }
 
             // Check epoch AFTER reading - if it changed, a gapless transition
