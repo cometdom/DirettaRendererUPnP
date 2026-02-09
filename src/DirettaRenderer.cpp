@@ -49,7 +49,7 @@ static std::string generateUUID() {
     size_t hash = hasher(std::string(hostname));
 
     std::stringstream ss;
-    ss << "uuid:diretta-renderer-" << std::hex << hash;
+    ss << "diretta-renderer-" << std::hex << hash;
     return ss.str();
 }
 
