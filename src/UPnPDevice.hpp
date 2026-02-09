@@ -148,7 +148,8 @@ private:
     void sendAVTransportEvent();
     void sendRenderingControlEvent();
     
-    IXML_Document* createActionResponse(const std::string& actionName);
+    IXML_Document* createActionResponse(const std::string& actionName,
+        const std::string& serviceType = "urn:schemas-upnp-org:service:AVTransport:1");
     void addResponseArg(IXML_Document* response, 
                        const std::string& name, 
                        const std::string& value);

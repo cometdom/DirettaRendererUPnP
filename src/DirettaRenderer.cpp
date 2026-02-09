@@ -49,7 +49,7 @@ static std::string generateUUID() {
     size_t hash = hasher(std::string(hostname));
 
     std::stringstream ss;
-    ss << "uuid:diretta-renderer-" << std::hex << hash;
+    ss << "diretta-renderer-" << std::hex << hash;
     return ss.str();
 }
 
@@ -473,7 +473,10 @@ bool DirettaRenderer::start() {
                 m_upnp->notifyStateChange("STOPPED");
                 return;
             }
-            m_upnp->notifyStateChange("PLAYING");
+            // No notifyStateChange("PLAYING") here: trackChangeCallback
+            // already sent a complete event via notifyGaplessTransition()
+            // with URI, metadata, and duration. Sending another would be
+            // redundant and can cause audio hiccups on some control points.
         };
 
         callbacks.onPause = [this]() {

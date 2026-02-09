@@ -318,18 +318,21 @@ int UPnPDevice::handleActionRequest(UpnpActionRequest* request) {
     // ConnectionManager actions
     if (serviceID.find("ConnectionManager") != std::string::npos) {
         if (actionName == "GetProtocolInfo") {
-            IXML_Document* response = createActionResponse("GetProtocolInfo");
+            IXML_Document* response = createActionResponse("GetProtocolInfo",
+                "urn:schemas-upnp-org:service:ConnectionManager:1");
             addResponseArg(response, "Source", "");
             addResponseArg(response, "Sink", m_protocolInfo);
             UpnpActionRequest_set_ActionResult(request, response);
             return UPNP_E_SUCCESS;
         } else if (actionName == "GetCurrentConnectionIDs") {
-            IXML_Document* response = createActionResponse("GetCurrentConnectionIDs");
+            IXML_Document* response = createActionResponse("GetCurrentConnectionIDs",
+                "urn:schemas-upnp-org:service:ConnectionManager:1");
             addResponseArg(response, "ConnectionIDs", "0");
             UpnpActionRequest_set_ActionResult(request, response);
             return UPNP_E_SUCCESS;
         } else if (actionName == "GetCurrentConnectionInfo") {
-            IXML_Document* response = createActionResponse("GetCurrentConnectionInfo");
+            IXML_Document* response = createActionResponse("GetCurrentConnectionInfo",
+                "urn:schemas-upnp-org:service:ConnectionManager:1");
             addResponseArg(response, "RcsID", "0");
             addResponseArg(response, "AVTransportID", "0");
             addResponseArg(response, "ProtocolInfo", "");
@@ -419,8 +422,14 @@ int UPnPDevice::handleSubscriptionRequest(UpnpSubscriptionRequest* request) {
         lastChange = ss.str();
     }
 
+    // Pre-escape: libupnp inserts raw XML as child nodes of <LastChange>,
+    // but UPnP spec requires the LastChange value to be XML-escaped text.
+    // Without this, control points (e.g. Audirvana) get empty text content
+    // and report "Invalid AVT/RCS last change value".
+    std::string escapedLastChange = xmlEscape(lastChange);
+
     const char* varNames[] = { "LastChange" };
-    const char* varValues[] = { lastChange.c_str() };
+    const char* varValues[] = { escapedLastChange.c_str() };
 
     int ret = UpnpAcceptSubscription(
         m_deviceHandle,
@@ -495,10 +504,11 @@ int UPnPDevice::actionSetAVTransportURI(UpnpActionRequest* request) {
     if (m_callbacks.onSetURI) {
         m_callbacks.onSetURI(uri, metadata);
     }
-    
-    // Send event notification
-    sendAVTransportEvent();
-    
+
+    // No event here: the control point already knows the URI it just set.
+    // State change events (PLAYING, gapless transition) are sent separately.
+    // Sending redundant events causes some control points (Audirvana) to re-sync audio.
+
     // Response
     IXML_Document* response = createActionResponse("SetAVTransportURI");
     UpnpActionRequest_set_ActionResult(request, response);
@@ -524,10 +534,10 @@ int UPnPDevice::actionSetNextAVTransportURI(UpnpActionRequest* request) {
     if (m_callbacks.onSetNextURI) {
         m_callbacks.onSetNextURI(uri, metadata);
     }
-    
-    // Send event notification
-    sendAVTransportEvent();
-    
+
+    // No event here: the control point already knows the next URI it just set.
+    // The gapless transition event will notify when the track actually changes.
+
     // Response
     IXML_Document* response = createActionResponse("SetNextAVTransportURI");
     UpnpActionRequest_set_ActionResult(request, response);
@@ -544,14 +554,14 @@ int UPnPDevice::actionPlay(UpnpActionRequest* request) {
         m_transportStatus = "OK";
     }
     
-    // Callback
+    // Callback - the onPlay handler opens the track and sends a complete
+    // AVTransport event via trackChangeCallback/notifyGaplessTransition
+    // (or notifyStateChange for resume-from-pause). No need to send
+    // another event here; redundant events cause audio hiccups on Audirvana.
     if (m_callbacks.onPlay) {
         m_callbacks.onPlay();
     }
-    
-    // Send event notification
-    sendAVTransportEvent();
-    
+
     // Response
     IXML_Document* response = createActionResponse("Play");
     UpnpActionRequest_set_ActionResult(request, response);
@@ -783,7 +793,8 @@ int UPnPDevice::actionGetCurrentTransportActions(UpnpActionRequest* request) {
 int UPnPDevice::actionGetVolume(UpnpActionRequest* request) {
     std::lock_guard<std::mutex> lock(m_stateMutex);
     
-    IXML_Document* response = createActionResponse("GetVolume");
+    IXML_Document* response = createActionResponse("GetVolume",
+        "urn:schemas-upnp-org:service:RenderingControl:1");
     addResponseArg(response, "CurrentVolume", std::to_string(m_volume));
     
     UpnpActionRequest_set_ActionResult(request, response);
@@ -808,16 +819,18 @@ int UPnPDevice::actionSetVolume(UpnpActionRequest* request) {
     sendRenderingControlEvent();
     
     // Response
-    IXML_Document* response = createActionResponse("SetVolume");
+    IXML_Document* response = createActionResponse("SetVolume",
+        "urn:schemas-upnp-org:service:RenderingControl:1");
     UpnpActionRequest_set_ActionResult(request, response);
-    
+
     return UPNP_E_SUCCESS;
 }
 
 int UPnPDevice::actionGetMute(UpnpActionRequest* request) {
     std::lock_guard<std::mutex> lock(m_stateMutex);
     
-    IXML_Document* response = createActionResponse("GetMute");
+    IXML_Document* response = createActionResponse("GetMute",
+        "urn:schemas-upnp-org:service:RenderingControl:1");
     addResponseArg(response, "CurrentMute", m_mute ? "1" : "0");
     
     UpnpActionRequest_set_ActionResult(request, response);
@@ -842,9 +855,10 @@ int UPnPDevice::actionSetMute(UpnpActionRequest* request) {
     sendRenderingControlEvent();
     
     // Response
-    IXML_Document* response = createActionResponse("SetMute");
+    IXML_Document* response = createActionResponse("SetMute",
+        "urn:schemas-upnp-org:service:RenderingControl:1");
     UpnpActionRequest_set_ActionResult(request, response);
-    
+
     return UPNP_E_SUCCESS;
 }
 
@@ -855,7 +869,8 @@ int UPnPDevice::actionGetVolumeDB(UpnpActionRequest* request) {
     // volume 100 = 0 dB, volume 0 = -3600 (1/256 dB)
     int volumeDB = (m_volume * 3600 / 100) - 3600;
 
-    IXML_Document* response = createActionResponse("GetVolumeDB");
+    IXML_Document* response = createActionResponse("GetVolumeDB",
+        "urn:schemas-upnp-org:service:RenderingControl:1");
     addResponseArg(response, "CurrentVolume", std::to_string(volumeDB));
 
     UpnpActionRequest_set_ActionResult(request, response);
@@ -864,7 +879,8 @@ int UPnPDevice::actionGetVolumeDB(UpnpActionRequest* request) {
 }
 
 int UPnPDevice::actionGetVolumeDBRange(UpnpActionRequest* request) {
-    IXML_Document* response = createActionResponse("GetVolumeDBRange");
+    IXML_Document* response = createActionResponse("GetVolumeDBRange",
+        "urn:schemas-upnp-org:service:RenderingControl:1");
     addResponseArg(response, "MinValue", "-3600");
     addResponseArg(response, "MaxValue", "0");
 
@@ -904,12 +920,12 @@ std::string UPnPDevice::formatTime(int seconds) const {
 // ============================================================================
 
 // Helper: Create action response
-IXML_Document* UPnPDevice::createActionResponse(const std::string& actionName) {
+IXML_Document* UPnPDevice::createActionResponse(const std::string& actionName,
+                                                  const std::string& serviceType) {
     IXML_Document* response = ixmlDocument_createDocument();
-    IXML_Element* actionResponse = ixmlDocument_createElement(response, 
+    IXML_Element* actionResponse = ixmlDocument_createElement(response,
         (actionName + "Response").c_str());
-    ixmlElement_setAttribute(actionResponse, "xmlns:u", 
-        "urn:schemas-upnp-org:service:AVTransport:1");
+    ixmlElement_setAttribute(actionResponse, "xmlns:u", serviceType.c_str());
     ixmlNode_appendChild(&response->n, &actionResponse->n);
     return response;
 }
@@ -989,8 +1005,12 @@ void UPnPDevice::sendAVTransportEvent() {
         lastChange = ss.str();
     }
 
+    // Pre-escape: libupnp inserts raw XML as child nodes of <LastChange>,
+    // but UPnP spec requires the LastChange value to be XML-escaped text.
+    std::string escapedLastChange = xmlEscape(lastChange);
+
     const char* varNames[] = { "LastChange" };
-    const char* varValues[] = { lastChange.c_str() };
+    const char* varValues[] = { escapedLastChange.c_str() };
 
     std::string udn = "uuid:" + m_config.uuid;
     int ret = UpnpNotify(
@@ -1024,8 +1044,12 @@ void UPnPDevice::sendRenderingControlEvent() {
         lastChange = ss.str();
     }
 
+    // Pre-escape: libupnp inserts raw XML as child nodes of <LastChange>,
+    // but UPnP spec requires the LastChange value to be XML-escaped text.
+    std::string escapedLastChange = xmlEscape(lastChange);
+
     const char* varNames[] = { "LastChange" };
-    const char* varValues[] = { lastChange.c_str() };
+    const char* varValues[] = { escapedLastChange.c_str() };
 
     std::string udn = "uuid:" + m_config.uuid;
     int ret = UpnpNotify(
