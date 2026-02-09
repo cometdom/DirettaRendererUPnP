@@ -473,7 +473,10 @@ bool DirettaRenderer::start() {
                 m_upnp->notifyStateChange("STOPPED");
                 return;
             }
-            m_upnp->notifyStateChange("PLAYING");
+            // No notifyStateChange("PLAYING") here: trackChangeCallback
+            // already sent a complete event via notifyGaplessTransition()
+            // with URI, metadata, and duration. Sending another would be
+            // redundant and can cause audio hiccups on some control points.
         };
 
         callbacks.onPause = [this]() {

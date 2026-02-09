@@ -553,14 +553,14 @@ int UPnPDevice::actionPlay(UpnpActionRequest* request) {
         m_transportStatus = "OK";
     }
     
-    // Callback
+    // Callback - the onPlay handler opens the track and sends a complete
+    // AVTransport event via trackChangeCallback/notifyGaplessTransition
+    // (or notifyStateChange for resume-from-pause). No need to send
+    // another event here; redundant events cause audio hiccups on Audirvana.
     if (m_callbacks.onPlay) {
         m_callbacks.onPlay();
     }
-    
-    // Send event notification
-    sendAVTransportEvent();
-    
+
     // Response
     IXML_Document* response = createActionResponse("Play");
     UpnpActionRequest_set_ActionResult(request, response);
