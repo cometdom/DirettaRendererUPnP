@@ -52,6 +52,24 @@
 - Fixes potential connection drops when streaming Qobuz/Tidal through Audirvana or similar proxying control points
 - Contributed by **herisson-88** ([PR #51](https://github.com/cometdom/DirettaRendererUPnP/pull/51))
 
+**Premature Track Stop During Playlist Transitions:**
+- Position reported to control points was ahead of DAC output by ~300ms (decoded vs played samples)
+- Integer truncation caused `RelTime >= TrackDuration` before the track actually finished
+- Some control points (mConnect) sent STOP prematurely, cutting audio on ~20% of transitions
+- Fix: cap reported position to `duration - 1` while PLAYING; track end is signaled via `TransportState=STOPPED`
+- Contributed by **herisson-88** ([PR #52](https://github.com/cometdom/DirettaRendererUPnP/pull/52))
+
+**Ring Buffer Drain on Natural Track End:**
+- `stopPlayback(true)` discarded ~75-150ms of buffered audio at end of track
+- Now waits for ring buffer to drain below 1% before stopping (poll every 5ms, 2s timeout)
+- Uses `stopPlayback(false)` for clean silence tail to DAC
+- Contributed by **herisson-88** ([PR #52](https://github.com/cometdom/DirettaRendererUPnP/pull/52))
+
+**Streaming Buffer Size for Remote Servers:**
+- Increased FFmpeg HTTP buffer from 32KB to 512KB for remote streams (Qobuz, Tidal)
+- Absorbs network jitter that caused intermittent micro-dropouts during streaming
+- Local server buffer unchanged at 32KB (LAN is reliable)
+
 ---
 
 ## [2.0.1] - 2026-01-28
