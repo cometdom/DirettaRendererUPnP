@@ -2024,7 +2024,7 @@ bool AudioEngine::process(size_t samplesNeeded) {
         // After a short wait to ensure last samples were sent, signal stop
         // Diretta has ~2-4s of buffer, but we don't need to send silence
         // The stop() function will wait for buffer_empty()
-        if (m_silenceCount > 5) {  // 5 * ~92ms = ~500ms safety margin
+        if (m_silenceCount > 5) {  // 5 * ~5ms = ~25ms (audio thread sleeps 5ms when process() returns false)
             std::cout << "[AudioEngine] Last samples sent, signaling stop" << std::endl;
             m_silenceCount = 0;
             m_isDraining = false;
