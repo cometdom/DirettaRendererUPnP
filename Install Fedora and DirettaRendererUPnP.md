@@ -314,24 +314,30 @@ uname -r
 
 ---
 
-## Step 8: Transfer Files
+## Step 8: Transfer the Diretta SDK
 
-You need two files on your main computer:
-1. **DirettaRendererUPnP** — download ZIP from the GitHub repository
-2. **DirettaHostSDK** — download from Diretta (e.g., `DirettaHostSDK_148_5.tar.zst`)
+The Diretta Host SDK is required for compilation. Download it on your main computer:
+
+1. Go to [diretta.link](https://www.diretta.link/hostsdk.html)
+2. Download **DirettaHostSDK_148** (or the latest version)
+3. Expected file: `DirettaHostSDK_148_8.tar.zst` (or similar)
 
 ### 8.1 Transfer via SCP
 
-From your main computer:
+From your main computer (Terminal on Mac/Linux, PowerShell on Windows):
 
 ```bash
-scp DirettaRendererUPnP-X-main.zip audiophile@192.168.1.100:~/
-scp DirettaHostSDK_148_5.tar.zst audiophile@192.168.1.100:~/
+scp DirettaHostSDK_148_8.tar.zst audiophile@192.168.1.100:~/
 ```
+
+> **From Windows (PowerShell):**
+> ```powershell
+> scp C:\Users\YourName\Downloads\DirettaHostSDK_148_8.tar.zst audiophile@192.168.1.100:~/
+> ```
 
 ---
 
-## Step 9: Extract and Install
+## Step 9: Install DirettaRendererUPnP
 
 SSH back into the Fedora machine:
 
@@ -339,40 +345,77 @@ SSH back into the Fedora machine:
 ssh audiophile@192.168.1.100
 ```
 
-### 9.1 Extract the Archives
+### 9.1 Install Build Dependencies
+
+```bash
+sudo dnf install -y git gcc-c++ make ffmpeg-free-devel libupnp-devel
+```
+
+### 9.2 Extract the Diretta SDK
 
 ```bash
 cd ~
-unzip DirettaRendererUPnP-X-main.zip
-tar --zstd -xvf DirettaHostSDK_148_5.tar.zst
+tar --zstd -xf DirettaHostSDK_148_8.tar.zst
 ```
 
-### 9.2 Run the Installation Script
+The SDK will be extracted to `~/DirettaHostSDK_148/` (or similar).
+
+### 9.3 Clone the Repository and Install
 
 ```bash
-cd ~/DirettaRendererUPnP-X-main
+cd ~
+git clone https://github.com/cometdom/DirettaRendererUPnP.git
+cd DirettaRendererUPnP
 chmod +x install.sh
-sudo ./install.sh
+./install.sh
 ```
+
+The installation script provides an interactive menu with options for:
+- Building the application (auto-detects architecture and SDK)
+- Installing as a systemd service
+- Configuring automatic startup
+- Setting up the Diretta target
 
 ---
 
 ## Step 10: Verify and Enjoy
 
-### 10.1 Check Service Status
+### 10.1 List Available Diretta Targets
 
 ```bash
-sudo systemctl status diretta-renderer
+sudo ./bin/DirettaRendererUPnP --list-targets
 ```
 
-### 10.2 Test with Your UPnP Controller
+### 10.2 Run the Renderer
+
+```bash
+# Run with target number 1
+sudo ./bin/DirettaRendererUPnP --target 1
+
+# Run with verbose logging (for troubleshooting)
+sudo ./bin/DirettaRendererUPnP --target 1 --verbose
+```
+
+### 10.3 Test with Your UPnP Controller
 
 On your network, use a UPnP control point:
-- **Windows:** foobar2000 with UPnP plugin
-- **macOS/iOS:** mconnect, JPLAY iOS
-- **Android:** BubbleUPnP, mconnect
+- **Audirvana** (macOS/Windows) — Native DSD, gapless natively supported (disable "Universal Gapless" in Audirvana)
+- **JPlay iOS** (iOS) — Full feature support
+- **BubbleUPnP** (Android) — Highly configurable
+- **mConnect** (iOS/Android) — Clean interface
+- **foobar2000** (Windows) — with UPnP plugin
 
-The renderer should appear in the device list.
+The renderer should appear as "Diretta Renderer" in the device list.
+
+### 10.4 Updating Later
+
+To update to a newer version:
+
+```bash
+cd ~/DirettaRendererUPnP
+git pull
+make clean && make
+```
 
 ---
 
@@ -394,16 +437,24 @@ nano ~/optimize-fedora-audio.sh
 chmod +x ~/optimize-fedora-audio.sh
 sudo ~/optimize-fedora-audio.sh
 
-# Transfer files (from main computer)
-scp DirettaRendererUPnP-X-main.zip audiophile@<IP>:~/
-scp DirettaHostSDK_148_5.tar.zst audiophile@<IP>:~/
+# Transfer the SDK (from main computer)
+scp DirettaHostSDK_148_8.tar.zst audiophile@<IP>:~/
 
-# Extract and install
-unzip DirettaRendererUPnP-X-main.zip
-tar --zstd -xvf DirettaHostSDK_148_5.tar.zst
-cd ~/DirettaRendererUPnP-X-main
+# Install build dependencies
+sudo dnf install -y git gcc-c++ make ffmpeg-free-devel libupnp-devel
+
+# Extract the SDK
+tar --zstd -xf DirettaHostSDK_148_8.tar.zst
+
+# Clone and install DirettaRendererUPnP
+git clone https://github.com/cometdom/DirettaRendererUPnP.git
+cd DirettaRendererUPnP
 chmod +x install.sh
-sudo ./install.sh
+./install.sh
+
+# Run the renderer
+sudo ./bin/DirettaRendererUPnP --list-targets
+sudo ./bin/DirettaRendererUPnP --target 1
 ```
 
 ---
