@@ -548,13 +548,23 @@ int UPnPDevice::actionSetNextAVTransportURI(UpnpActionRequest* request) {
 
 int UPnPDevice::actionPlay(UpnpActionRequest* request) {
     std::cout << "[UPnPDevice] Play" << std::endl;
-    
+
     {
         std::lock_guard<std::mutex> lock(m_stateMutex);
+        // Per UPnP spec: Play while already PLAYING is a no-op.
+        // Audirvana sends duplicate Play commands when it receives a
+        // SetAVTransportURI event with TransportState=STOPPED after
+        // it has already sent Play. Ignore the duplicate.
+        if (m_transportState == "PLAYING") {
+            DEBUG_LOG("[UPnPDevice] Already PLAYING, ignoring duplicate Play");
+            IXML_Document* response = createActionResponse("Play");
+            UpnpActionRequest_set_ActionResult(request, response);
+            return UPNP_E_SUCCESS;
+        }
         m_transportState = "PLAYING";
         m_transportStatus = "OK";
     }
-    
+
     // Callback - the onPlay handler opens the track and sends a complete
     // AVTransport event via trackChangeCallback/notifyGaplessTransition
     // (or notifyStateChange for resume-from-pause). No need to send
