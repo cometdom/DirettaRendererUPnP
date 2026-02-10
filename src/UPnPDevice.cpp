@@ -368,11 +368,30 @@ int UPnPDevice::handleSubscriptionRequest(UpnpSubscriptionRequest* request) {
         std::stringstream ss;
 
         if (serviceID.find("AVTransport") != std::string::npos) {
+            // During PLAYING: accept subscription without sending full state.
+            // Audirvana re-subscribes every ~3 minutes (new SID each time).
+            // Sending TransportState=PLAYING triggers re-sync and audio hiccups.
+            // The control point already knows the state (it sent Play) and
+            // continues polling GetPositionInfo for position/duration.
+            if (m_transportState == "PLAYING") {
+                DEBUG_LOG("[UPnPDevice] Subscription accepted (PLAYING, no initial event): " << serviceID);
+                const char* emptyNames[] = { "LastChange" };
+                const char* emptyValues[] = { "" };
+                int ret = UpnpAcceptSubscription(
+                    m_deviceHandle,
+                    UpnpSubscriptionRequest_get_UDN_cstr(request),
+                    UpnpSubscriptionRequest_get_ServiceId_cstr(request),
+                    emptyNames, emptyValues, 1, sid
+                );
+                if (ret != UPNP_E_SUCCESS) {
+                    std::cerr << "[UPnPDevice] UpnpAcceptSubscription (no-op) failed: " << ret << std::endl;
+                }
+                return ret;
+            }
+
             // AVTransport: transport state, URIs, metadata
             std::string actions;
-            if (m_transportState == "PLAYING") {
-                actions = "Play,Stop,Pause,Seek,Next,Previous";
-            } else if (m_transportState == "PAUSED_PLAYBACK") {
+            if (m_transportState == "PAUSED_PLAYBACK") {
                 actions = "Play,Stop,Seek";
             } else if (m_transportState == "STOPPED") {
                 actions = "Play,Seek";
