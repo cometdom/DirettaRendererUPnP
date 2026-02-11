@@ -21,6 +21,12 @@
 - Added `m_formatChangePending` flag to skip redundant preloads once a format change transition is already scheduled
 - Reduces unnecessary HTTP connections, especially beneficial for squeeze2UPnP/LMS setups that use ephemeral ports per track
 
+**Adaptive Buffer for Remote Streaming (Qobuz/Tidal):**
+- Ring buffer now adapts based on source type: 1.0s for internet streaming vs 0.5s for local playback
+- Prefill increased to 150ms for remote sources (vs 80ms local) to absorb network latency
+- Source type detection (local/remote) propagated from AudioEngine to DirettaSync via `isRemoteStream` flag
+- Reduces underruns caused by CDN reconnections (e.g., Akamai dropping HTTP connections mid-stream)
+
 **libupnp Callback Compatibility:**
 - Fixed compilation error with libupnp <= 1.14.25 where `Upnp_FunPtr` Event parameter is `void*` instead of `const void*` (changed in 1.14.26)
 - Compile-time detection of the callback signature using C++17 template type deduction

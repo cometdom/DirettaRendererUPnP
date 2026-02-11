@@ -312,6 +312,7 @@ bool AudioDecoder::open(const std::string& url) {
     );
 
     m_trackInfo.isCompressed = !isUncompressedPCM;
+    m_trackInfo.isRemoteStream = !isLocalServer;
 
     if (isUncompressedPCM) {
         DEBUG_LOG("[AudioDecoder] Uncompressed PCM (WAV/AIFF) - low latency path");

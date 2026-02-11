@@ -136,6 +136,7 @@ struct AudioFormat {
     uint32_t channels = 2;
     bool isDSD = false;
     bool isCompressed = false;
+    bool isRemoteStream = false;  // Source is internet streaming (larger buffer needed)
 
     enum class DSDFormat { DSF, DFF };
     DSDFormat dsdFormat = DSDFormat::DSF;
@@ -144,7 +145,7 @@ struct AudioFormat {
 
     AudioFormat(uint32_t rate, uint32_t bits, uint32_t ch)
         : sampleRate(rate), bitDepth(bits), channels(ch),
-          isDSD(false), isCompressed(false), dsdFormat(DSDFormat::DSF) {}
+          isDSD(false), isCompressed(false), isRemoteStream(false), dsdFormat(DSDFormat::DSF) {}
 
     bool operator==(const AudioFormat& other) const {
         return sampleRate == other.sampleRate &&
@@ -186,10 +187,12 @@ namespace DirettaRetry {
 
 namespace DirettaBuffer {
     constexpr float DSD_BUFFER_SECONDS = 0.8f;
-    constexpr float PCM_BUFFER_SECONDS = 0.5f;  // Was 0.3f - increased for streaming stability
+    constexpr float PCM_BUFFER_SECONDS = 0.5f;          // Local playback
+    constexpr float PCM_REMOTE_BUFFER_SECONDS = 1.0f;   // Remote streaming (Qobuz/Tidal) - absorbs CDN reconnections
 
     constexpr size_t DSD_PREFILL_MS = 200;
-    constexpr size_t PCM_PREFILL_MS = 80;       // Was 30ms - increased for HTTP streaming
+    constexpr size_t PCM_PREFILL_MS = 80;                // Local
+    constexpr size_t PCM_REMOTE_PREFILL_MS = 150;        // Remote - larger prefill for internet latency
     constexpr size_t PCM_LOWRATE_PREFILL_MS = 100;
 
     constexpr unsigned int DAC_STABILIZATION_MS = 100;
@@ -210,8 +213,10 @@ namespace DirettaBuffer {
         return size;
     }
 
-    inline size_t calculatePrefill(size_t bytesPerSecond, bool isDsd, bool isLowBitrate) {
+    inline size_t calculatePrefill(size_t bytesPerSecond, bool isDsd,
+                                   bool isLowBitrate, bool isRemote = false) {
         size_t prefillMs = isDsd ? DSD_PREFILL_MS :
+                           isRemote ? PCM_REMOTE_PREFILL_MS :
                            isLowBitrate ? PCM_LOWRATE_PREFILL_MS : PCM_PREFILL_MS;
         size_t result = (bytesPerSecond * prefillMs) / 1000;
         return std::max(result, MIN_PREFILL_BYTES);
@@ -556,6 +561,7 @@ private:
     std::atomic<bool> m_needDsdBitReversal{false};
     std::atomic<bool> m_needDsdByteSwap{false};  // For LITTLE endian targets
     std::atomic<bool> m_isLowBitrate{false};
+    std::atomic<bool> m_isRemoteStream{false};  // Remote streaming source (larger buffer)
 
     // Cached DSD conversion mode - set at track open, eliminates per-iteration branch checks
     // G2 fix: Made atomic to ensure proper visibility across threads

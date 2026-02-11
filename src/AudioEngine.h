@@ -30,6 +30,7 @@ struct TrackInfo {
     bool isDSD;        // true if DSD format
     int dsdRate;       // DSD rate (64, 128, 256, 512, 1024)
     bool isCompressed; // true if format requires decoding (FLAC/ALAC), false for WAV/AIFF
+    bool isRemoteStream; // true if streaming from internet (Qobuz/Tidal/remote)
 
     // DSD source format detection (for correct bit ordering)
     enum class DSDSourceFormat { Unknown, DSF, DFF };
@@ -41,7 +42,7 @@ struct TrackInfo {
     S24Alignment s24Alignment;
 
     TrackInfo() : sampleRate(0), bitDepth(0), channels(2), duration(0),
-                  isDSD(false), dsdRate(0), isCompressed(true),
+                  isDSD(false), dsdRate(0), isCompressed(true), isRemoteStream(false),
                   dsdSourceFormat(DSDSourceFormat::Unknown),
                   s24Alignment(S24Alignment::Unknown) {}
 };

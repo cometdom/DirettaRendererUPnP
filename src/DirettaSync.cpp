@@ -582,6 +582,11 @@ bool DirettaSync::open(const AudioFormat& format) {
         fullReset();
     }
     m_isDsdMode.store(newIsDsd, std::memory_order_release);
+    m_isRemoteStream.store(format.isRemoteStream, std::memory_order_release);
+
+    if (format.isRemoteStream) {
+        std::cout << "[DirettaSync] Remote stream detected - using larger buffer" << std::endl;
+    }
 
     uint32_t effectiveSampleRate;
     int effectiveChannels = format.channels;
@@ -860,6 +865,7 @@ void DirettaSync::fullReset() {
         m_needDsdBitReversal.store(false, std::memory_order_release);
         m_needDsdByteSwap.store(false, std::memory_order_release);
         m_isLowBitrate.store(false, std::memory_order_release);
+        m_isRemoteStream.store(false, std::memory_order_release);
         m_need24BitPack.store(false, std::memory_order_release);
         m_need16To32Upsample.store(false, std::memory_order_release);
         m_need16To24Upsample.store(false, std::memory_order_release);
@@ -1064,7 +1070,11 @@ void DirettaSync::configureRingPCM(int rate, int channels, int direttaBps, int i
     m_consumerStateGen.fetch_add(1, std::memory_order_release);
 
     size_t bytesPerSecond = static_cast<size_t>(rate) * channels * direttaBps;
-    size_t ringSize = DirettaBuffer::calculateBufferSize(bytesPerSecond, DirettaBuffer::PCM_BUFFER_SECONDS);
+    bool remoteStream = m_isRemoteStream.load(std::memory_order_acquire);
+    float bufferSeconds = remoteStream
+        ? DirettaBuffer::PCM_REMOTE_BUFFER_SECONDS
+        : DirettaBuffer::PCM_BUFFER_SECONDS;
+    size_t ringSize = DirettaBuffer::calculateBufferSize(bytesPerSecond, bufferSeconds);
 
     m_ringBuffer.resize(ringSize, 0x00);
     ringSize = m_ringBuffer.size();
@@ -1110,7 +1120,7 @@ void DirettaSync::configureRingPCM(int rate, int channels, int direttaBps, int i
     }
 
     m_prefillTarget = DirettaBuffer::calculatePrefill(bytesPerSecond, false,
-        m_isLowBitrate.load(std::memory_order_acquire));
+        m_isLowBitrate.load(std::memory_order_acquire), remoteStream);
     m_prefillTarget = std::min(m_prefillTarget, ringSize / 4);
     m_prefillComplete = false;
 
@@ -1130,6 +1140,8 @@ void DirettaSync::configureRingDSD(uint32_t byteRate, int channels) {
     m_need16To24Upsample.store(false, std::memory_order_release);
     m_channels.store(channels, std::memory_order_release);
     m_isLowBitrate.store(false, std::memory_order_release);
+    // DSD always uses DSD_BUFFER_SECONDS regardless of source type
+    m_isRemoteStream.store(false, std::memory_order_release);
 
     // Increment format generation to invalidate cached values in sendAudio
     m_formatGeneration.fetch_add(1, std::memory_order_release);

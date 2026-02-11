@@ -184,6 +184,7 @@ bool DirettaRenderer::start() {
                 AudioFormat format(sampleRate, bitDepth, channels);
                 format.isDSD = trackInfo.isDSD;
                 format.isCompressed = trackInfo.isCompressed;
+                format.isRemoteStream = trackInfo.isRemoteStream;
 
                 if (trackInfo.isDSD) {
                     format.bitDepth = 1;
