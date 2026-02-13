@@ -94,7 +94,7 @@ m_ringBuffer.push(data, size);
 | Feature | Description |
 |---------|-------------|
 | SDK gapless methods | Uses `writeStreamStart()`/`addStream()` (same result as X) |
-| Buffer seconds config | `--buffer` CLI option (default 2.0s) |
+| Buffer seconds config | `--buffer` CLI option (default 2.0s) — v2.x uses adaptive buffer instead |
 | Advanced SDK settings | `--thread-mode`, `--cycle-time`, `--cycle-min-time`, `--info-cycle` |
 | MTU override | `--mtu` CLI option |
 | Network optimization | `optimizeNetworkConfig()` per format (DSD/Hi-Res/Standard) |
@@ -265,7 +265,7 @@ bool DirettaSync::reopenForFormatChange() {
 **Use Original 1.2.1 if you need:**
 - Advanced SDK tuning options (`--thread-mode`, `--cycle-time`, etc.)
 - Network optimization per format (VarMax/Adaptive/Fixed)
-- Configurable buffer size (`--buffer`)
+- Configurable buffer size (`--buffer`) — v2.x uses automatic adaptive buffer
 
 **Use This Fork (X) if you need:**
 - Independence from `SyncBuffer` class for more fine-tuning freedom

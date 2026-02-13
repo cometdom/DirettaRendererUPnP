@@ -1,16 +1,17 @@
 # DirettaRendererUPnP Roadmap
 
-## Current Version: v2.0.0
+## Current Version: v2.0.3
 
 ### Status: Stable
 
 Core functionality complete with:
-- Low-latency audio path (300ms PCM buffer)
+- Low-latency audio path (adaptive PCM buffer: 0.5s local, 1.0s remote)
 - Lock-free SPSC ring buffer
 - AVX2 SIMD format conversions
 - Full DSD support (DSD64-DSD512)
 - ARM64 support (RPi4, RPi5)
-- CPU tuner scripts with auto-detection
+- Adaptive buffer for remote streaming (Qobuz/Tidal)
+- libupnp cross-version compatibility (1.14.x)
 
 ---
 
@@ -109,4 +110,5 @@ For major changes, please open an issue first to discuss.
 | v1.2.1 | 2025 | Stability fixes |
 | v1.3.3 | 2025 | DSD improvements |
 | v2.0.0 | 2026-01 | Complete rewrite, low-latency |
+| v2.0.3 | 2026-02 | Adaptive buffer, libupnp compat, UPnP fixes |
 | v2.1.0 | TBD | Web interface, advanced tuning |

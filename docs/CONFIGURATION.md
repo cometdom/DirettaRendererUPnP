@@ -1,4 +1,4 @@
-# Configuration Guide - Diretta UPnP Renderer
+# Configuration Guide - Diretta UPnP Renderer v2.0
 
 Detailed configuration options and tuning guide.
 
@@ -6,7 +6,7 @@ Detailed configuration options and tuning guide.
 
 1. [Command-Line Options](#command-line-options)
 2. [Network Configuration](#network-configuration)
-3. [Audio Buffer Settings](#audio-buffer-settings)
+3. [Audio Buffer (Automatic)](#audio-buffer-automatic)
 4. [UPnP Device Settings](#upnp-device-settings)
 5. [Performance Tuning](#performance-tuning)
 6. [Advanced Settings](#advanced-settings)
@@ -23,73 +23,78 @@ sudo ./DirettaRendererUPnP [OPTIONS]
 
 ### Available Options
 
-#### `--port <number>`
-**Default**: 4005  
-**Description**: UPnP control port  
+#### `--target, -t <index>`
+**Required**: Yes (or use `--list-targets` first)
+**Description**: Select which Diretta target to use (1-based index)
+**Example**:
+```bash
+sudo ./DirettaRendererUPnP --target 1
+```
+
+#### `--list-targets, -l`
+**Description**: List all available Diretta targets and exit
+**Example**:
+```bash
+sudo ./DirettaRendererUPnP --list-targets
+```
+
+#### `--port, -p <number>`
+**Default**: Auto
+**Description**: UPnP control port. Port+1 is automatically used for HTTP server.
 **Example**:
 ```bash
 sudo ./DirettaRendererUPnP --port 4005
 ```
 
-**Note**: Port 4006 (port+1) is automatically used for HTTP server.
-
-#### `--buffer <seconds>`
-**Default**: 2.0  
-**Range**: 1.0 - 10.0  
-**Description**: Audio buffer size in seconds  
-**Example**:
-```bash
-sudo ./DirettaRendererUPnP --buffer 2.0
-```
-
-**Recommendations**:
-- **2.0s**: Default, good balance (recommended)
-- **1.5s**: Lower latency, requires good network
-- **3.0s**: Maximum stability for problematic networks
-- **<1.0s**: Not recommended, may cause dropouts
-
-#### `--name <string>>`
-**Default**: "Diretta Renderer"  
-**Description**: Friendly name shown in UPnP control points  
+#### `--name, -n <string>`
+**Default**: "Diretta Renderer"
+**Description**: Friendly name shown in UPnP control points
 **Example**:
 ```bash
 sudo ./DirettaRendererUPnP --name "Living Room Audio"
 ```
 
 #### `--uuid <string>`
-**Default**: Auto-generated  
-**Description**: Unique device identifier  
+**Default**: Auto-generated
+**Description**: Unique device identifier. Keep the same UUID to maintain device identity across restarts.
 **Example**:
 ```bash
 sudo ./DirettaRendererUPnP --uuid "uuid:my-custom-id-123"
 ```
 
-**Note**: Keep the same UUID to maintain device identity across restarts.
+#### `--interface <name>`
+**Default**: Auto-detect
+**Description**: Network interface to bind for UPnP discovery. Essential for multi-NIC setups (e.g., 3-tier architecture with separate control and audio networks).
+**Example**:
+```bash
+sudo ./DirettaRendererUPnP --interface eth0
+```
 
 #### `--no-gapless`
-**Default**: Gapless enabled  
-**Description**: Disable gapless playback  
+**Default**: Gapless enabled
+**Description**: Disable gapless playback
 **Example**:
 ```bash
 sudo ./DirettaRendererUPnP --no-gapless
 ```
-**Use case**: For compatibility with certain control points.
 
-#### `--verbose`
-**Default**: no verbose By default, the renderer now displays only essential user-facing messages
-**Description** Technical debug information can be enabled using the --verbose flag for debug operations.
+#### `--verbose, -v`
+**Default**: Disabled
+**Description**: Enable detailed debug logging. Only use for troubleshooting.
 **Example**:
 ```bash
- sudo ./DirettaRendererUPnP --port 4005 --target 1 --buffer 0.9 --verbose
+sudo ./DirettaRendererUPnP --target 1 --verbose
 ```
-**Use case**: Debugging
+
+#### `--version, -V`
+**Description**: Show version information and exit
 
 ### Combined Example
 
 ```bash
 sudo ./DirettaRendererUPnP \
   --port 4005 \
-  --buffer 2.0 \
+  --target 1 \
   --name "Bedroom Diretta" \
   --uuid "uuid:bedroom-audio-001"
 ```
@@ -126,15 +131,15 @@ ping -M do -s 8972 <DAC_IP>
 
 #### MTU Troubleshooting
 
-**Symptom**: Audio dropouts with Hi-Res files  
-**Solution**: 
+**Symptom**: Audio dropouts with Hi-Res files
+**Solution**:
 ```bash
 # Try different MTU values
 sudo ip link set enp4s0 mtu 4096  # Conservative
 sudo ip link set enp4s0 mtu 9000  # Standard jumbo
 ```
 
-**Symptom**: No connectivity after setting MTU  
+**Symptom**: No connectivity after setting MTU
 **Solution**: Your switch may not support jumbo frames
 ```bash
 # Reset to standard
@@ -175,35 +180,33 @@ sudo iptables -t mangle -A OUTPUT -p udp --dport 50000:50100 -j DSCP --set-dscp 
 
 ---
 
-## Audio Buffer Settings
+## Audio Buffer (Automatic)
 
-### Buffer Size Impact
+Since v2.0, the Diretta ring buffer is **fully automatic** and adaptive. There is no `--buffer` command-line option.
 
-| Buffer | Latency | Stability | Use Case |
-|--------|---------|-----------|----------|
-| 1.0s | Low | Risky | Local playback, perfect network |
-| 1.5s | Medium | Good | Home network, most scenarios |
-| 2.0s | Medium-High | Excellent | Recommended default |
-| 3.0s+ | High | Maximum | Problematic networks, Wi-Fi |
+### Adaptive Buffer Sizing
 
-### Calculating Buffer Requirements
+The renderer detects the audio source type and adjusts the buffer accordingly:
 
-**Formula**: `Buffer = Network Latency × 10`
+| Source | Ring Buffer | Prefill | Detection |
+|--------|-----------|---------|-----------|
+| **Local** (LAN server: Asset, JRiver, Audirvana) | 0.5s | 80ms | IP address (192.168.x, 10.x, 172.x) |
+| **Remote** (Qobuz, Tidal, internet streams) | 1.0s | 150ms | Non-local IP or streaming service in URL |
+| **DSD** (all sources) | 0.8s | 200ms | DSD format detected |
 
-Example:
-- Network ping: 5ms → Buffer: 50ms minimum
-- Network jitter: 20ms → Buffer: 200ms minimum
-- **Add safety margin**: Multiply by 10
+- **Local sources** get a smaller buffer for lower latency
+- **Remote sources** get a larger buffer to absorb internet jitter and CDN reconnections
+- **DSD** always uses 0.8s regardless of source type
 
-### Dynamic Buffer Adjustment
+### Packet Sizing
 
-The renderer adapts packet sizes automatically:
+Packet sizes are also automatic based on format and MTU:
 
 - **16bit/44.1kHz**: Small packets (~1-3k) regardless of MTU
 - **24bit+/Hi-Res**: Large packets (~16k) when MTU allows
 - **DSD**: Maximum packet size for efficiency
 
-**No manual adjustment needed!**
+**No manual adjustment needed.**
 
 ---
 
@@ -296,9 +299,6 @@ CPUSchedulingPriority=80
 AudioLinux is pre-optimized. Additional tuning:
 
 ```bash
-# Set to power mode
-echo "power" | sudo tee /sys/module/snd_usb_audio/parameters/power_save
-
 # Disable CPU frequency scaling
 sudo cpupower frequency-set -g performance
 ```
@@ -346,64 +346,19 @@ ethtool enp4s0 | grep Wake
 
 ### Custom Makefile Options
 
-Edit `Makefile` for compilation options:
-
-#### Debug Build
-
-```makefile
-CXXFLAGS = -std=c++17 -Wall -Wextra -g -DDEBUG -pthread
-```
-
-#### Optimized Build
-
-```makefile
-CXXFLAGS = -std=c++17 -Wall -Wextra -O3 -march=native -pthread
-```
-
-#### Logging Levels
-
-Add to compile flags:
-```makefile
-CXXFLAGS += -DVERBOSE_LOGGING    # More logs
-CXXFLAGS += -DQUIET_MODE         # Minimal logs
-```
-
-### Source Code Modifications
-
-Common customizations:
-
-#### Change Default Buffer
-
-Edit `main.cpp`:
-```cpp
-config.bufferSeconds = 3.0;  // Change from 2.0 to 3.0
-```
-
-#### Change Device Name
-
-Edit `DirettaRenderer.cpp`:
-```cpp
-m_config.name = "My Custom Renderer";
-```
-
-#### Adjust Network MTU
-
-Edit `DirettaRenderer.cpp`:
-```cpp
-m_networkMTU = 9000;  // Change from 16128
-```
-
-### Environment Variables
+#### Production Build (no SDK logging)
 
 ```bash
-# Set Diretta SDK path
-export DIRETTA_SDK_PATH=/path/to/sdk
+make NOLOG=1
+```
 
-# Enable debug mode
-export DIRETTA_DEBUG=1
+#### Architecture-Specific Build
 
-# Custom log file
-export DIRETTA_LOG_FILE=/var/log/diretta-renderer.log
+```bash
+make ARCH_NAME=x64-linux-15v3      # x86-64 with AVX2 (most common)
+make ARCH_NAME=x64-linux-15zen4    # AMD Zen 4
+make ARCH_NAME=aarch64-linux-15    # Raspberry Pi 4 (4KB pages)
+make ARCH_NAME=aarch64-linux-15k16 # Raspberry Pi 5 (16KB pages)
 ```
 
 ---
@@ -418,7 +373,7 @@ sudo ip link set enp4s0 mtu 9000
 echo performance | sudo tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor
 
 # Renderer
-sudo ./DirettaRendererUPnP --buffer 2.0
+sudo ./DirettaRendererUPnP --target 1
 ```
 
 **Best for**: DSD, 24bit/192k+, audiophile setups
@@ -430,22 +385,22 @@ sudo ./DirettaRendererUPnP --buffer 2.0
 sudo ip link set enp4s0 mtu 1500
 
 # Renderer
-sudo ./DirettaRendererUPnP --buffer 3.0
+sudo ./DirettaRendererUPnP --target 1
 ```
 
 **Best for**: Standard networks, CD-quality playback
 
-### Profile 3: Low Latency
+### Profile 3: 3-Tier Architecture
 
 ```bash
-# Network
+# Network (jumbo frames on Diretta link)
 sudo ip link set enp4s0 mtu 9000
 
-# Renderer
-sudo ./DirettaRendererUPnP --buffer 1.5
+# Renderer (bind to control network interface)
+sudo ./DirettaRendererUPnP --target 1 --interface eth1
 ```
 
-**Best for**: Local playback, minimal latency requirements
+**Best for**: Separate control and audio networks
 
 ---
 
@@ -481,14 +436,6 @@ iftop -i enp4s0
 
 ---
 
-## Configuration Files
-
-Currently, all configuration is via command-line.
-
-**Future enhancement**: Config file support (`/etc/diretta-renderer.conf`)
-
----
-
 ## Troubleshooting Configuration
 
 ### "Cannot set MTU to 9000"
@@ -505,8 +452,8 @@ Currently, all configuration is via command-line.
 ### "Dropouts with specific formats"
 
 - Check logs for which format
-- Adjust buffer size accordingly
 - Verify network stability
+- For internet streaming (Qobuz/Tidal), ensure stable internet connection
 
 ---
 
@@ -515,7 +462,3 @@ Currently, all configuration is via command-line.
 - Check logs: `sudo journalctl -u diretta-renderer -f`
 - GitHub Issues: Report problems with full logs
 - Diretta community: For DAC-specific questions
-
----
-
-**Your renderer is now optimally configured!** 🎵

@@ -54,11 +54,16 @@ sudo nano /opt/diretta-renderer-upnp/diretta-renderer.conf
 # Target Diretta device (1 = first found)
 TARGET=1
 
-# UPnP port (must be unique)
+# UPnP port (default: 4005)
 PORT=4005
 
-# Buffer size in seconds (1.0 - 5.0)
-BUFFER=2.0
+# Gapless playback
+# Add "--no-gapless" to disable, leave empty to enable
+GAPLESS=""
+
+# Verbose logging
+# Add "--verbose" to enable debug logs, leave empty for normal output
+VERBOSE=""
 ```
 
 ### Apply Changes
@@ -165,7 +170,7 @@ Type=simple
 User=root                          # Run as root (for network capabilities)
 WorkingDirectory=/opt/diretta-renderer-upnp
 EnvironmentFile=-/opt/diretta-renderer-upnp/diretta-renderer.conf
-ExecStart=/opt/diretta-renderer-upnp/DirettaRendererUPnP --target ${TARGET} --port ${PORT} --buffer ${BUFFER}
+ExecStart=/opt/diretta-renderer-upnp/start-renderer.sh
 
 # Restart on failure
 Restart=on-failure
@@ -193,17 +198,6 @@ WantedBy=multi-user.target
 # Edit config
 sudo nano /opt/diretta-renderer-upnp/diretta-renderer.conf
 # Change: PORT=4006
-
-# Restart service
-sudo systemctl restart diretta-renderer
-```
-
-### Change Buffer Size
-
-```bash
-# Edit config
-sudo nano /opt/diretta-renderer-upnp/diretta-renderer.conf
-# Change: BUFFER=3.0
 
 # Restart service
 sudo systemctl restart diretta-renderer

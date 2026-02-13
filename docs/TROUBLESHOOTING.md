@@ -73,7 +73,7 @@ sudo systemctl restart diretta-renderer
 
 # Or manually kill and restart
 sudo pkill DirettaRenderer
-sudo ./bin/DirettaRendererUPnP --port 4005 --buffer 2.0
+sudo ./bin/DirettaRendererUPnP --port 4005
 ```
 
 #### Solution 5: Check UPnP Description URL
@@ -161,22 +161,19 @@ ip -s link show enp4s0
 # Verify switch supports jumbo frames (if using MTU > 1500)
 ```
 
-#### Solution 2: Increase Buffer
+#### Solution 2: Check Buffer Status
 
+Since v2.0, the ring buffer is **fully automatic** and adaptive:
+- **Local sources** (LAN servers): 0.5s buffer for low latency
+- **Remote sources** (Qobuz, Tidal): 1.0s buffer to absorb internet jitter
+- **DSD**: 0.8s buffer regardless of source
+
+Check logs for buffer configuration:
 ```bash
-# Stop renderer
-sudo systemctl stop diretta-renderer
-
-# Edit service file
-sudo nano /etc/systemd/system/diretta-renderer.service
-
-# Change --buffer value
-ExecStart=... --buffer 3.0  # Increase from 2.0 to 3.0
-
-# Reload and restart
-sudo systemctl daemon-reload
-sudo systemctl start diretta-renderer
+sudo journalctl -u diretta-renderer | grep -i "ring\|buffer"
 ```
+
+If dropouts persist, the issue is likely network-related (see below).
 
 #### Solution 3: Check MTU Configuration
 
@@ -402,12 +399,14 @@ sudo journalctl -u diretta-renderer | grep -i gapless
 # Gapless: enabled
 ```
 
-#### Solution 2: Increase Buffer
+#### Solution 2: Check Transition Logs
 
+The renderer handles format transitions automatically. Check logs for details:
 ```bash
-# More buffer helps with transitions
-# Use --buffer 2.5 or 3.0
+sudo journalctl -u diretta-renderer | grep -i "transition\|reopen\|format"
 ```
+
+Clicks between tracks with different sample rates are expected (DAC needs to re-lock).
 
 #### Solution 3: Check Control Point
 
@@ -679,7 +678,7 @@ sudo journalctl -u diretta-renderer -n 200 > logs.txt
 | `No Diretta target found` | DAC not discovered | Check DAC power, network, Diretta enabled |
 | `Cannot open track` | File access issue | Check file exists and is readable |
 | `Seek failed` | Format doesn't support seeking | Normal for some streaming URLs |
-| `Buffer underrun` | Network too slow | Increase buffer, check network |
+| `Buffer underrun` | Network too slow | Check network stability, MTU settings |
 | `Permission denied` | Need root access | Run with `sudo` |
 | `Address already in use` | Port conflict | Check if another instance running |
 

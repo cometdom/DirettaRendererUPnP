@@ -150,7 +150,7 @@ make clean
 make
 
 # Test manually
-sudo ./bin/DirettaRendererUPnP --port 4005 --buffer 2.0
+sudo ./bin/DirettaRendererUPnP --target 1 --port 4005
 ```
 
 ### Keep Your Fork Updated

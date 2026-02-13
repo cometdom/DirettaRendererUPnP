@@ -336,7 +336,7 @@ sudo -v
 
 ```bash
 cd ~/audio-projects/DirettaUPnPRenderer/bin
-sudo ./DirettaRendererUPnP --port 4005 --buffer 2.0
+sudo ./DirettaRendererUPnP --target 1 --port 4005
 ```
 
 ### 3. Expected Output
@@ -344,22 +344,19 @@ sudo ./DirettaRendererUPnP --port 4005 --buffer 2.0
 You should see:
 ```
 ═══════════════════════════════════════════════════════
-  🎵 Diretta UPnP Renderer - Complete Edition
+  Diretta UPnP Renderer v2.0.3
 ═══════════════════════════════════════════════════════
 
 Configuration:
-  Name:        Diretta Renderer
-  Port:        4005
-  Gapless:     enabled
-  Buffer:      2 seconds
+  Name:     Diretta Renderer
+  Port:     4005
+  Gapless:  enabled
 
-[DirettaRenderer] Created
-🚀 Starting renderer...
-[UPnP Thread] Started
-[Audio Thread] Started
-✓ Renderer started successfully!
+Starting renderer...
+Renderer started!
 
-📡 Waiting for UPnP control points...
+Waiting for UPnP control points...
+(Press Ctrl+C to stop)
 ```
 
 ### 4. Test Discovery
@@ -420,7 +417,7 @@ Once you know which target you want to use, you can pass its index to the render
 
 ```bash
 # Run directly in foreground
-sudo ./bin/DirettaRendererUPnP --target 1 --port 4005 --buffer 2.0
+sudo ./bin/DirettaRendererUPnP --target 1 --port 4005
 ```
 
 When using the systemd service, the same index is passed via `generate_service.sh`:
