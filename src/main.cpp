@@ -19,6 +19,12 @@
 
 std::unique_ptr<DirettaRenderer> g_renderer;
 
+// Async logging infrastructure (A3 optimization)
+// Declared here (before shutdownAsyncLogging) to avoid forward reference
+LogRing* g_logRing = nullptr;
+std::atomic<bool> g_logDrainStop{false};
+std::thread g_logDrainThread;
+
 // Cleanup async logging thread (must be called before exit)
 void shutdownAsyncLogging() {
     if (g_logRing) {
@@ -41,11 +47,6 @@ void signalHandler(int signal) {
 }
 
 bool g_verbose = false;
-
-// Async logging infrastructure (A3 optimization)
-LogRing* g_logRing = nullptr;
-std::atomic<bool> g_logDrainStop{false};
-std::thread g_logDrainThread;
 
 void logDrainThreadFunc() {
     LogEntry entry;
