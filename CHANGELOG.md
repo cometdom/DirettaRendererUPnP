@@ -32,6 +32,12 @@
 - Compile-time detection of the callback signature using C++17 template type deduction
 - Builds correctly with all libupnp 1.14.x versions without manual configuration
 
+**Crash on Startup Failure (verbose mode):**
+- Fixed `std::terminate()` crash when renderer fails to start with `--verbose` enabled
+- Root cause: async log drain thread was not joined before `return 1`, causing `std::thread::~thread()` to call `std::terminate()` on a joinable thread
+- Extracted cleanup into `shutdownAsyncLogging()` called at all exit paths (start failure, exception, signal handler, normal exit)
+- Observed in the wild: `UpnpInit2 failed: -203` at boot → crash → systemd auto-restart
+
 ### ✅ Compatibility
 
 **Audirvana (macOS/Windows):**

@@ -19,11 +19,24 @@
 
 std::unique_ptr<DirettaRenderer> g_renderer;
 
+// Cleanup async logging thread (must be called before exit)
+void shutdownAsyncLogging() {
+    if (g_logRing) {
+        g_logDrainStop.store(true, std::memory_order_release);
+        if (g_logDrainThread.joinable()) {
+            g_logDrainThread.join();
+        }
+        delete g_logRing;
+        g_logRing = nullptr;
+    }
+}
+
 void signalHandler(int signal) {
     std::cout << "\nSignal " << signal << " received, shutting down..." << std::endl;
     if (g_renderer) {
         g_renderer->stop();
     }
+    shutdownAsyncLogging();
     exit(0);
 }
 
@@ -181,6 +194,7 @@ int main(int argc, char* argv[]) {
 
         if (!g_renderer->start()) {
             std::cerr << "Failed to start renderer" << std::endl;
+            shutdownAsyncLogging();
             return 1;
         }
 
@@ -196,20 +210,12 @@ int main(int argc, char* argv[]) {
 
     } catch (const std::exception& e) {
         std::cerr << "Exception: " << e.what() << std::endl;
+        shutdownAsyncLogging();
         return 1;
     }
 
     std::cout << "\nRenderer stopped" << std::endl;
-
-    // Shutdown async logging (A3 optimization cleanup)
-    if (g_logRing) {
-        g_logDrainStop.store(true, std::memory_order_release);
-        if (g_logDrainThread.joinable()) {
-            g_logDrainThread.join();
-        }
-        delete g_logRing;
-        g_logRing = nullptr;
-    }
+    shutdownAsyncLogging();
 
     return 0;
 }
