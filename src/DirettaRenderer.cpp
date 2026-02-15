@@ -499,11 +499,12 @@ bool DirettaRenderer::start() {
             // Guard against redundant stop calls from control point
             // Control points often send multiple rapid Stop commands
             if (m_direttaSync && !m_direttaSync->isOpen() && !m_direttaSync->isPlaying()) {
-                std::cout << "[DirettaRenderer] Stop ignored - already stopped" << std::endl;
+                DEBUG_LOG("[DirettaRenderer] Stop ignored - already stopped");
                 return;
             }
 
             std::cout << "[DirettaRenderer] Stop" << std::endl;
+            std::cout << "════════════════════════════════════════" << std::endl;
 
             m_lastStopTime = std::chrono::steady_clock::now();
 

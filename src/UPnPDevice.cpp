@@ -595,9 +595,7 @@ int UPnPDevice::actionPause(UpnpActionRequest* request) {
 }
 
 int UPnPDevice::actionStop(UpnpActionRequest* request) {
-    std::cout << "════════════════════════════════════════" << std::endl;
-    std::cout << "[UPnPDevice] ⛔ STOP ACTION RECEIVED" << std::endl;
-    std::cout << "════════════════════════════════════════" << std::endl;
+    DEBUG_LOG("[UPnPDevice] Stop action received");
     
     {
         std::lock_guard<std::mutex> lock(m_stateMutex);
