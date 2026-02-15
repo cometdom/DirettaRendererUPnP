@@ -173,9 +173,9 @@ class RingAccessGuard {
     RingAccessGuard(std::atomic<int>& users, const std::atomic<bool>& reconfiguring)
         : users_(users), active_(false) {
         if (reconfiguring.load(std::memory_order_acquire)) return;
-        users_.fetch_add(1, std::memory_order_acq_rel);
+        users_.fetch_add(1, std::memory_order_acq_rel);  // acq_rel: visible to beginReconfigure + see reconfiguring
         if (reconfiguring.load(std::memory_order_acquire)) {
-            users_.fetch_sub(1, std::memory_order_acq_rel);
+            users_.fetch_sub(1, std::memory_order_relaxed);  // bail-out: never entered guarded section
             return;
         }
         active_ = true;

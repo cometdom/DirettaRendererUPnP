@@ -1000,6 +1000,21 @@ size_t AudioDecoder::readSamples(AudioBuffer& buffer, size_t numSamples,
                 if (ret < 0) {
                     if (ret == AVERROR_EOF) {
                         m_eof = true;
+                        DEBUG_LOG("[AudioDecoder] DSD: EOF reached");
+                    } else if (ret == AVERROR(ETIMEDOUT)) {
+                        std::cerr << "[AudioDecoder] DSD: Timeout - connection too slow or lost" << std::endl;
+                        m_eof = true;
+                    } else if (ret == AVERROR(ECONNRESET)) {
+                        std::cerr << "[AudioDecoder] DSD: Connection reset by server" << std::endl;
+                        m_eof = true;
+                    } else if (ret == AVERROR_EXIT) {
+                        std::cerr << "[AudioDecoder] DSD: Exit requested" << std::endl;
+                        m_eof = true;
+                    } else {
+                        char errbuf[AV_ERROR_MAX_STRING_SIZE];
+                        av_strerror(ret, errbuf, sizeof(errbuf));
+                        std::cerr << "[AudioDecoder] DSD: Read error (" << ret << "): " << errbuf << std::endl;
+                        m_eof = true;
                     }
                     break;
                 }

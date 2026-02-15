@@ -58,8 +58,9 @@ public:
         if (reconfiguring.load(std::memory_order_acquire)) {
             return;
         }
-        // C2: acquire ensures increment visible to beginReconfigure() before ring ops
-        users_.fetch_add(1, std::memory_order_acquire);
+        // C2: acq_rel ensures increment is visible to beginReconfigure() (release)
+        // and that we see m_reconfiguring changes (acquire)
+        users_.fetch_add(1, std::memory_order_acq_rel);
         if (reconfiguring.load(std::memory_order_acquire)) {
             // C2: bail-out - never entered guarded section, relaxed is safe
             users_.fetch_sub(1, std::memory_order_relaxed);
