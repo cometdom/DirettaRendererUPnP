@@ -917,12 +917,13 @@ build_renderer() {
     # Set SDK path via environment variable
     export DIRETTA_SDK_PATH="$SDK_PATH"
 
+    # Production build: NOLOG=1 disables SDK internal logging
     # Use local FFmpeg headers if available (for ABI compatibility)
     if [ -d "$FFMPEG_HEADERS_DIR" ] && [ -f "$FFMPEG_HEADERS_DIR/.version" ]; then
         print_info "Building with FFmpeg headers from $FFMPEG_HEADERS_DIR"
-        make FFMPEG_PATH="$FFMPEG_HEADERS_DIR"
+        make NOLOG=1 FFMPEG_PATH="$FFMPEG_HEADERS_DIR"
     else
-        make
+        make NOLOG=1
     fi
 
     if [ ! -f "bin/DirettaRendererUPnP" ]; then
@@ -1158,7 +1159,7 @@ if [ -n "$GAPLESS" ]; then
     CMD="$CMD $GAPLESS"
 fi
 
-# Verbose
+# Log verbosity (--verbose or --quiet)
 if [ -n "$VERBOSE" ]; then
     CMD="$CMD $VERBOSE"
 fi
@@ -1236,8 +1237,11 @@ PORT=4005
 # Add "--no-gapless" to disable, leave empty to enable
 GAPLESS=""
 
-# Verbose logging
-# Add "--verbose" to enable debug logs, leave empty for normal output
+# Log verbosity
+# Options:
+#   ""          - Normal output (INFO level, default)
+#   "--verbose" - Debug logs (all messages)
+#   "--quiet"   - Warnings and errors only
 VERBOSE=""
 
 # ============================================================================

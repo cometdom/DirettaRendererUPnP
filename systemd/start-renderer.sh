@@ -46,7 +46,7 @@ if [ -n "$GAPLESS" ]; then
     CMD="$CMD $GAPLESS"
 fi
 
-# Verbose
+# Log verbosity (--verbose or --quiet)
 if [ -n "$VERBOSE" ]; then
     CMD="$CMD $VERBOSE"
 fi

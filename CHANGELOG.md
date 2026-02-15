@@ -1,5 +1,56 @@
 # Changelog
 
+## [2.0.4] - Unreleased
+
+### ✨ New Features
+
+**Centralized Log Level System:**
+- New `LogLevel.h` header with 4 levels: ERROR, WARN, INFO, DEBUG
+- `--quiet` (`-q`) option: show only warnings and errors (WARN level)
+- `--verbose` continues to work as before (DEBUG level)
+- Default level (INFO) produces the same output as v2.0.3
+- All source files migrated from per-file `DEBUG_LOG` macros to unified `LOG_DEBUG`/`LOG_INFO`/`LOG_WARN`/`LOG_ERROR`
+- In `NOLOG` builds, all logging macros compile to no-ops
+
+**Runtime Statistics via SIGUSR1:**
+- Send `kill -USR1 <pid>` to dump live statistics to stdout
+- Shows: playback state, current format, buffer fill level, MTU, stream/push/underrun counters
+- Useful for monitoring production systems via systemd journal
+
+### ⚡ Performance
+
+**Zero-Allocation Streaming Detection:**
+- Replaced `std::string` + `std::transform` with POSIX `strcasestr()` for Qobuz/Tidal URL detection
+- Eliminates heap allocation on every `openSource()` call
+
+### 🐛 Bug Fixes
+
+**FFmpeg DSD Streaming Error Handling:**
+- Added handling for `AVERROR(ETIMEDOUT)`, `AVERROR(ECONNRESET)`, and `AVERROR_EXIT` in DSD read loop
+- Generic fallback with `av_strerror()` for unexpected error codes
+- Prevents silent hangs on network interruptions during DSD streaming
+
+**Atomic Ordering Fix in RingAccessGuard:**
+- Changed `fetch_add` from `memory_order_acquire` to `memory_order_acq_rel`
+- Ensures the increment is visible to the reconfiguration thread on all architectures (ARM64)
+
+**Stop Action Log Noise Reduction:**
+- Redundant stop requests from control points now log at DEBUG level instead of INFO
+- Actual stop actions still show a clear banner at INFO level
+- Reduces log clutter when control points send multiple Stop actions (normal UPnP behavior)
+
+### 🔧 Build & Configuration
+
+**Production Build in install.sh:**
+- `install.sh` now builds with `NOLOG=1` by default (disables SDK internal logging)
+- Application-level logging (`--verbose`/`--quiet`) remains fully functional
+
+**Updated systemd Configuration:**
+- `diretta-renderer.conf`: documented `--quiet` option alongside `--verbose`
+- `start-renderer.sh`: updated comments for log verbosity options
+
+---
+
 ## [2.0.3] - 2026-02-15
 
 ### 🐛 Bug Fixes

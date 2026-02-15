@@ -44,6 +44,9 @@ public:
 
     bool isRunning() const { return m_running; }
 
+    /** @brief Dump runtime statistics (called by SIGUSR1 handler) */
+    void dumpStats() const;
+
 private:
     // Thread functions
     void audioThreadFunc();

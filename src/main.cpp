@@ -5,6 +5,7 @@
 
 #include "DirettaRenderer.h"
 #include "DirettaSync.h"
+#include "LogLevel.h"
 #include "TimestampedLogger.h"
 #include <iostream>
 #include <csignal>
@@ -46,7 +47,14 @@ void signalHandler(int signal) {
     exit(0);
 }
 
+void statsSignalHandler(int /*signal*/) {
+    if (g_renderer) {
+        g_renderer->dumpStats();
+    }
+}
+
 bool g_verbose = false;
+LogLevel g_logLevel = LogLevel::INFO;
 
 void logDrainThreadFunc() {
     LogEntry entry;
@@ -126,7 +134,12 @@ DirettaRenderer::Config parseArguments(int argc, char* argv[]) {
         }
         else if (arg == "--verbose" || arg == "-v") {
             g_verbose = true;
-            std::cout << "Verbose mode enabled" << std::endl;
+            g_logLevel = LogLevel::DEBUG;
+            std::cout << "Verbose mode enabled (log level: DEBUG)" << std::endl;
+        }
+        else if (arg == "--quiet" || arg == "-q") {
+            g_logLevel = LogLevel::WARN;
+            std::cout << "Quiet mode enabled (log level: WARN)" << std::endl;
         }
         else if (arg == "--help" || arg == "-h") {
             std::cout << "Diretta UPnP Renderer (Simplified Architecture)\n\n"
@@ -139,7 +152,8 @@ DirettaRenderer::Config parseArguments(int argc, char* argv[]) {
                       << "  --target, -t <index>  Select Diretta target by index (1, 2, 3...)\n"
                       << "  --interface <name>    Network interface to bind (e.g., eth0)\n"
                       << "  --list-targets, -l    List available Diretta targets and exit\n"
-                      << "  --verbose, -v         Enable verbose debug output\n"
+                      << "  --verbose, -v         Enable verbose debug output (log level: DEBUG)\n"
+                      << "  --quiet, -q           Quiet mode - only errors and warnings (log level: WARN)\n"
                       << "  --version, -V         Show version information\n"
                       << "  --help, -h            Show this help\n"
                       << std::endl;
@@ -163,6 +177,7 @@ int main(int argc, char* argv[]) {
 
     signal(SIGINT, signalHandler);
     signal(SIGTERM, signalHandler);
+    signal(SIGUSR1, statsSignalHandler);
 
     std::cout << "═══════════════════════════════════════════════════════\n"
               << "  Diretta UPnP Renderer v" << RENDERER_VERSION << "\n"

@@ -17,12 +17,9 @@
 #include <unistd.h>
 #include <cstring>
 
-extern bool g_verbose;
-#ifdef NOLOG
-#define DEBUG_LOG(x) do {} while(0)
-#else
-#define DEBUG_LOG(x) if (g_verbose) { std::cout << x << std::endl; }
-#endif
+// Logging: uses centralized LogLevel system from LogLevel.h (included via DirettaSync.h)
+// DEBUG_LOG kept as alias for backward compatibility within this file
+#define DEBUG_LOG(x) LOG_DEBUG(x)
 
 //=============================================================================
 // Hybrid Flow Control Constants
@@ -565,6 +562,12 @@ bool DirettaRenderer::start() {
 //=============================================================================
 // Stop
 //=============================================================================
+
+void DirettaRenderer::dumpStats() const {
+    if (m_direttaSync) {
+        m_direttaSync->dumpStats();
+    }
+}
 
 void DirettaRenderer::stop() {
     if (!m_running) return;

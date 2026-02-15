@@ -102,6 +102,8 @@ extern LogRing* g_logRing;
 // Debug Logging
 //=============================================================================
 
+#include "LogLevel.h"
+
 extern bool g_verbose;
 
 #ifdef NOLOG
@@ -109,16 +111,16 @@ extern bool g_verbose;
 #define DIRETTA_LOG(msg) do {} while(0)
 #define DIRETTA_LOG_ASYNC(msg) do {} while(0)
 #else
-// Debug build: check g_verbose at runtime
+// DIRETTA_LOG: uses centralized LogLevel system (DEBUG level)
 #define DIRETTA_LOG(msg) do { \
-    if (g_verbose) { \
+    if (g_logLevel >= LogLevel::DEBUG) { \
         std::cout << "[DirettaSync] " << msg << std::endl; \
     } \
 } while(0)
 
-// Async logging macro for hot paths (non-blocking)
+// Async logging macro for hot paths (non-blocking, uses ring buffer)
 #define DIRETTA_LOG_ASYNC(msg) do { \
-    if (g_logRing && g_verbose) { \
+    if (g_logRing && g_logLevel >= LogLevel::DEBUG) { \
         std::ostringstream _oss; \
         _oss << msg; \
         g_logRing->push(_oss.str().c_str()); \
@@ -386,6 +388,14 @@ public:
 
     float getBufferLevel() const;
     const AudioFormat& getFormat() const { return m_currentFormat; }
+
+    /**
+     * @brief Dump runtime statistics to stdout
+     *
+     * Shows buffer level, underrun count, stream/push counts, and format info.
+     * Called by SIGUSR1 handler for runtime diagnostics.
+     */
+    void dumpStats() const;
 
     /**
      * @brief Set S24 pack mode hint for 24-bit audio
