@@ -188,9 +188,9 @@ StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=diretta-renderer
 
-# Capabilities: only NET_RAW, NET_ADMIN, SYS_NICE allowed
-AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN CAP_SYS_NICE
-CapabilityBoundingSet=CAP_NET_RAW CAP_NET_ADMIN CAP_SYS_NICE
+# Capabilities: SETUID/SETGID for privilege drop, then NET_RAW/ADMIN/SYS_NICE
+AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN CAP_SYS_NICE CAP_SETUID CAP_SETGID
+CapabilityBoundingSet=CAP_NET_RAW CAP_NET_ADMIN CAP_SYS_NICE CAP_SETUID CAP_SETGID
 
 # Filesystem: read-only except private /tmp
 ProtectSystem=strict
@@ -228,7 +228,7 @@ IOSchedulingPriority=0
 WantedBy=multi-user.target
 ```
 
-The service starts as root for network initialization (raw sockets, multicast), then drops privileges to the `diretta` user via the `--user` option (configured by `DROP_USER` in the config file). The `CapabilityBoundingSet` ensures the process can never acquire capabilities beyond the three listed.
+The service starts as root for network initialization (raw sockets, multicast), then drops privileges to the `diretta` user via the `--user` option (configured by `DROP_USER` in the config file). `CAP_SETUID`/`CAP_SETGID` are needed for the `setuid()`/`setgid()` syscalls during the privilege drop. After the drop, only `CAP_NET_RAW`, `CAP_NET_ADMIN`, and `CAP_SYS_NICE` are retained via `capset()`. The `CapabilityBoundingSet` ensures the process can never acquire capabilities beyond those listed.
 
 ---
 

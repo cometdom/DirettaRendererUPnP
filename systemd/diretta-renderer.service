@@ -22,9 +22,11 @@ SyslogIdentifier=diretta-renderer
 
 # --- Capabilities ---
 # Start as root for network init, drop to DROP_USER via --user option
-# CapabilityBoundingSet limits what the process can ever acquire
-AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN CAP_SYS_NICE
-CapabilityBoundingSet=CAP_NET_RAW CAP_NET_ADMIN CAP_SYS_NICE
+# CAP_SETUID/CAP_SETGID: needed for setuid()/setgid() during privilege drop
+# CAP_NET_RAW/CAP_NET_ADMIN: needed for Diretta raw sockets
+# CAP_SYS_NICE: needed for real-time thread priority
+AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN CAP_SYS_NICE CAP_SETUID CAP_SETGID
+CapabilityBoundingSet=CAP_NET_RAW CAP_NET_ADMIN CAP_SYS_NICE CAP_SETUID CAP_SETGID
 
 # --- Filesystem isolation ---
 ProtectSystem=strict

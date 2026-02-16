@@ -1365,7 +1365,7 @@ CONFIG_EOF
     if [ -f "$SYSTEMD_DIR/diretta-renderer.service" ]; then
         sudo cp "$SYSTEMD_DIR/diretta-renderer.service" "$SERVICE_FILE"
     else
-        # Create service file if not found
+        # Create service file if not found (fallback, matches systemd/diretta-renderer.service)
         sudo tee "$SERVICE_FILE" > /dev/null <<'SERVICE_EOF'
 [Unit]
 Description=Diretta UPnP Renderer
@@ -1378,18 +1378,54 @@ Type=simple
 User=root
 WorkingDirectory=/opt/diretta-renderer-upnp
 EnvironmentFile=-/opt/diretta-renderer-upnp/diretta-renderer.conf
-
-# Use wrapper script to handle complex command building
 ExecStart=/opt/diretta-renderer-upnp/start-renderer.sh
 
+# Restart policy
 Restart=on-failure
 RestartSec=5
+
+# Logging
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=diretta-renderer
-AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN
 
-# Performance optimizations
+# --- Capabilities ---
+# CAP_SETUID/CAP_SETGID: needed for privilege drop (setuid/setgid)
+# CAP_NET_RAW/CAP_NET_ADMIN: needed for Diretta raw sockets
+# CAP_SYS_NICE: needed for real-time thread priority
+AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN CAP_SYS_NICE CAP_SETUID CAP_SETGID
+CapabilityBoundingSet=CAP_NET_RAW CAP_NET_ADMIN CAP_SYS_NICE CAP_SETUID CAP_SETGID
+
+# --- Filesystem isolation ---
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadOnlyPaths=/opt/diretta-renderer-upnp
+ReadWritePaths=/var/log
+
+# --- Device and kernel isolation ---
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+
+# --- Misc hardening ---
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictRealtime=false
+RestrictSUIDSGID=true
+RemoveIPC=true
+RestrictNamespaces=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_NETLINK AF_UNIX AF_PACKET
+
+# --- System call filtering ---
+SystemCallArchitectures=native
+SystemCallFilter=~@mount @keyring @debug @module @swap @reboot @obsolete
+
+# --- Performance ---
 Nice=-10
 IOSchedulingClass=realtime
 IOSchedulingPriority=0
