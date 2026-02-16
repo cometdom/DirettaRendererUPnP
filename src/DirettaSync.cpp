@@ -362,9 +362,22 @@ void DirettaSync::logSinkCapabilities() {
               << ((msmode & 0x01) ? "MS1 " : "")
               << ((msmode & 0x02) ? "MS2 " : "")
               << ((msmode & 0x04) ? "MS3 " : "")
-              << (msmode == 0 ? "(not reported)" : "")
+              << (msmode == 0 ? "(not reported by target)" : "")
               << std::endl;
-    std::cout << "[DirettaSync]   MS mode configured: AUTO (prefers MS3 > MS1 > NONE)" << std::endl;
+    std::cout << "[DirettaSync]   MS mode requested: AUTO (prefers MS3 > MS1 > NONE)" << std::endl;
+
+    // Deduce active mode from AUTO negotiation logic:
+    // AUTO = MS3|MS1, SDK tries MS3 first, then MS1, then NONE
+    // When supportMSmode==0, the target didn't advertise but SDK still negotiates
+    const char* activeMode = "NONE";
+    if (msmode & 0x04) {
+        activeMode = "MS3";
+    } else if (msmode & 0x01) {
+        activeMode = "MS1";
+    } else if (msmode == 0) {
+        activeMode = "NONE (target did not report supported modes)";
+    }
+    std::cout << "[DirettaSync]   MS mode active: " << activeMode << std::endl;
 }
 
 //=============================================================================

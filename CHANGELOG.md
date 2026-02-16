@@ -17,6 +17,11 @@
 - Shows: playback state, current format, buffer fill level, MTU, stream/push/underrun counters
 - Useful for monitoring production systems via systemd journal
 
+**MS Mode Active Logging (feature request by Alfred):**
+- Verbose log now shows the actual MS mode negotiated with the Diretta Target
+- Three lines: supported modes, requested mode, and active mode
+- Resolves uncertainty when target doesn't report supported MS modes
+
 ### ⚡ Performance
 
 **Zero-Allocation Streaming Detection:**
