@@ -366,18 +366,18 @@ void DirettaSync::logSinkCapabilities() {
               << std::endl;
     std::cout << "[DirettaSync]   MS mode requested: AUTO (prefers MS3 > MS1 > NONE)" << std::endl;
 
-    // Deduce active mode from AUTO negotiation logic:
-    // AUTO = MS3|MS1, SDK tries MS3 first, then MS1, then NONE
-    // When supportMSmode==0, the target didn't advertise but SDK still negotiates
-    const char* activeMode = "NONE";
-    if (msmode & 0x04) {
-        activeMode = "MS3";
-    } else if (msmode & 0x01) {
-        activeMode = "MS1";
-    } else if (msmode == 0) {
-        activeMode = "NONE (target did not report supported modes)";
+    // Note: the actual negotiated MS mode (MSmodeSet) is private in the SDK
+    // and cannot be read from the Host side. Check the Diretta Target log
+    // for the actual active mode.
+    if (msmode != 0) {
+        const char* expectedMode = "NONE";
+        if (msmode & 0x04) expectedMode = "MS3";
+        else if (msmode & 0x01) expectedMode = "MS1";
+        std::cout << "[DirettaSync]   MS mode active: " << expectedMode
+                  << " (expected from target capabilities)" << std::endl;
+    } else {
+        std::cout << "[DirettaSync]   MS mode active: check Diretta Target log" << std::endl;
     }
-    std::cout << "[DirettaSync]   MS mode active: " << activeMode << std::endl;
 }
 
 //=============================================================================
@@ -594,6 +594,19 @@ bool DirettaSync::open(const AudioFormat& format) {
     // Full reset for first open or after format change reopen
     if (needFullConnect) {
         fullReset();
+
+        // Log MS mode after reopen — supportMSmode may now be populated
+        // (not available at first open, becomes available after first connection)
+        if (g_logLevel >= LogLevel::DEBUG && m_hasPreviousFormat) {
+            const auto& info = getSinkInfo();
+            uint16_t msmode = info.supportMSmode;
+            if (msmode != 0) {
+                const char* activeMode = "NONE";
+                if (msmode & 0x04) activeMode = "MS3";
+                else if (msmode & 0x01) activeMode = "MS1";
+                DIRETTA_LOG("MS mode active: " << activeMode);
+            }
+        }
     }
     m_isDsdMode.store(newIsDsd, std::memory_order_release);
     m_isRemoteStream.store(format.isRemoteStream, std::memory_order_release);
