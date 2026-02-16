@@ -61,9 +61,18 @@ PORT=4005
 # Add "--no-gapless" to disable, leave empty to enable
 GAPLESS=""
 
-# Verbose logging
-# Add "--verbose" to enable debug logs, leave empty for normal output
+# Log verbosity
+# Options: "" (normal), "--verbose" (debug), "--quiet" (warnings only)
 VERBOSE=""
+
+# Drop privileges to this user after initialization
+# The 'diretta' user is created by install.sh
+# Set to "" to stay as root (not recommended for production)
+DROP_USER="diretta"
+
+# Network interface for multi-homed systems (default: auto-detect)
+# Use interface name ("eth0") or IP address ("192.168.1.10")
+NETWORK_INTERFACE=""
 ```
 
 ### Apply Changes
@@ -188,6 +197,7 @@ ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
 ReadOnlyPaths=/opt/diretta-renderer-upnp
+ReadWritePaths=/var/log
 
 # Kernel/device isolation (no /dev access, no kernel tuning)
 PrivateDevices=true

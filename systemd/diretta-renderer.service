@@ -31,6 +31,7 @@ ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
 ReadOnlyPaths=/opt/diretta-renderer-upnp
+ReadWritePaths=/var/log
 
 # --- Device and kernel isolation ---
 PrivateDevices=true
