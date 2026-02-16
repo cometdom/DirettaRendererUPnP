@@ -7,6 +7,7 @@
 #include "DirettaSync.h"
 #include "LogLevel.h"
 #include "TimestampedLogger.h"
+#include "PrivilegeDrop.h"
 #include <iostream>
 #include <csignal>
 #include <memory>
@@ -119,6 +120,9 @@ DirettaRenderer::Config parseArguments(int argc, char* argv[]) {
         else if (arg == "--interface" && i + 1 < argc) {
             config.networkInterface = argv[++i];
         }
+        else if ((arg == "--user" || arg == "-u") && i + 1 < argc) {
+            config.dropUser = argv[++i];
+        }
         else if (arg == "--list-targets" || arg == "-l") {
             listTargets();
             exit(0);
@@ -151,6 +155,7 @@ DirettaRenderer::Config parseArguments(int argc, char* argv[]) {
                       << "  --no-gapless          Disable gapless playback\n"
                       << "  --target, -t <index>  Select Diretta target by index (1, 2, 3...)\n"
                       << "  --interface <name>    Network interface to bind (e.g., eth0)\n"
+                      << "  --user, -u <name>     Drop privileges to user after init\n"
                       << "  --list-targets, -l    List available Diretta targets and exit\n"
                       << "  --verbose, -v         Enable verbose debug output (log level: DEBUG)\n"
                       << "  --quiet, -q           Quiet mode - only errors and warnings (log level: WARN)\n"
@@ -215,6 +220,17 @@ int main(int argc, char* argv[]) {
         }
 
         std::cout << "Renderer started!" << std::endl;
+
+        // Drop privileges after all network init is complete
+        if (!config.dropUser.empty()) {
+            if (!dropPrivileges(config.dropUser)) {
+                std::cerr << "Failed to drop privileges to user '"
+                          << config.dropUser << "'" << std::endl;
+                shutdownAsyncLogging();
+                return 1;
+            }
+        }
+
         std::cout << std::endl;
         std::cout << "Waiting for UPnP control points..." << std::endl;
         std::cout << "(Press Ctrl+C to stop)" << std::endl;

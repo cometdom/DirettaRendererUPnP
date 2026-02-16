@@ -73,6 +73,9 @@ DirettaRendererUPnP-L is the **low-latency optimized** fork of DirettaRendererUP
 | `src/main.cpp` | CLI parsing, initialization, signal handling | No |
 | `src/memcpyfast_audio.h` | AVX2/AVX-512 optimized memcpy dispatcher | **Critical** |
 | `src/fastmemcpy-avx.c` | C AVX implementation (x86 only) | **Critical** |
+| `src/PrivilegeDrop.h` | Linux privilege drop with capability retention | No |
+| `src/LogLevel.h` | Centralized log level system (ERROR/WARN/INFO/DEBUG) | No |
+| `src/test_audio_memory.cpp` | 20 unit tests for DirettaRingBuffer | No |
 
 ## Diretta SDK Reference
 
@@ -214,17 +217,17 @@ The ring buffer auto-detects 24-bit sample alignment on first push:
 
 ### SIMD Format Conversions
 
-All format conversions use 64-byte aligned staging buffers before writing to the ring:
+All format conversions use 64-byte aligned staging buffers before writing to the ring. Both AVX2 (x86-64) and NEON (ARM64) are supported with automatic detection via `DIRETTA_HAS_AVX2` / `DIRETTA_HAS_NEON` macros:
 
-| Conversion | Function | Throughput |
-|------------|----------|------------|
-| 24-bit pack (LSB) | `convert24BitPacked_AVX2()` | 8 samples/instruction |
-| 24-bit pack (MSB) | `convert24BitPackedShifted_AVX2()` | 8 samples/instruction |
-| 16→32 upsample | `convert16To32_AVX2()` | 16 samples/instruction |
-| DSD planar→interleaved | `convertDSD_Passthrough()` | 32 bytes/instruction |
-| DSD bit reversal | `convertDSD_BitReverse()` | 32 bytes/instruction |
-| DSD byte swap | `convertDSD_ByteSwap()` | 32 bytes/instruction |
-| DSD bit reverse + swap | `convertDSD_BitReverseSwap()` | 32 bytes/instruction |
+| Conversion | Function | AVX2 Throughput | NEON Throughput |
+|------------|----------|----------------|-----------------|
+| 24-bit pack (LSB) | `convert24BitPacked_AVX2()` | 8 samples/iter | 4 samples/iter |
+| 24-bit pack (MSB) | `convert24BitPackedShifted_AVX2()` | 8 samples/iter | 4 samples/iter |
+| 16→32 upsample | `convert16To32_AVX2()` | 16 samples/iter | 8 samples/iter |
+| DSD planar→interleaved | `convertDSD_Passthrough()` | 32 bytes/iter | 16 bytes/iter |
+| DSD bit reversal | `convertDSD_BitReverse()` | 32 bytes/iter | 16 bytes/iter |
+| DSD byte swap | `convertDSD_ByteSwap()` | 32 bytes/iter | 16 bytes/iter |
+| DSD bit reverse + swap | `convertDSD_BitReverseSwap()` | 32 bytes/iter | 16 bytes/iter |
 
 ## Buffer Configuration
 
@@ -383,10 +386,13 @@ sudo apt install build-essential libavformat-dev libavcodec-dev libavutil-dev li
 - [x] DSD conversion function specialization (4 modes, no per-iteration branches)
 - [x] Pre-transition silence for DSD format changes
 - [x] DSD512 Zen3 warmup fix (MTU-aware buffer scaling)
+- [x] ARM NEON hand-optimized format conversions (PCM + DSD 4 modes)
+- [x] Privilege drop with Linux capabilities (`--user` option)
+- [x] Systemd hardening (20+ security directives, dedicated `diretta` user)
+- [x] Unit tests (20 tests covering PCM, DSD, ring buffer, integration)
 
 ### Potential Future Work
 - [ ] AVX-512 format conversions (currently only memcpy uses AVX-512)
-- [ ] ARM NEON hand-optimized format conversions
 - [ ] Multi-producer ring buffer for multiple audio sources
 - [ ] Adaptive prefetch tuning based on cache behavior
 

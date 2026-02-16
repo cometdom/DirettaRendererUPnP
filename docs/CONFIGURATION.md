@@ -1,4 +1,4 @@
-# Configuration Guide - Diretta UPnP Renderer v2.0
+# Configuration Guide - Diretta UPnP Renderer v2.0.4
 
 Detailed configuration options and tuning guide.
 
@@ -80,10 +80,26 @@ sudo ./DirettaRendererUPnP --no-gapless
 
 #### `--verbose, -v`
 **Default**: Disabled
-**Description**: Enable detailed debug logging. Only use for troubleshooting.
+**Description**: Enable detailed debug logging (log level: DEBUG). Only use for troubleshooting.
 **Example**:
 ```bash
 sudo ./DirettaRendererUPnP --target 1 --verbose
+```
+
+#### `--quiet, -q`
+**Default**: Disabled
+**Description**: Quiet mode — only show warnings and errors (log level: WARN). Ideal for production use.
+**Example**:
+```bash
+sudo ./DirettaRendererUPnP --target 1 --quiet
+```
+
+#### `--user, -u <name>`
+**Default**: No privilege drop (stays as root)
+**Description**: Drop root privileges to the specified user after network initialization. The process retains `CAP_NET_RAW`, `CAP_NET_ADMIN`, and `CAP_SYS_NICE` capabilities via Linux `capset()` syscall. Requires starting as root.
+**Example**:
+```bash
+sudo ./DirettaRendererUPnP --target 1 --user diretta
 ```
 
 #### `--version, -V`
@@ -406,6 +422,23 @@ sudo ./DirettaRendererUPnP --target 1 --interface eth1
 
 ## Monitoring & Verification
 
+### Runtime Statistics (SIGUSR1)
+
+Send `SIGUSR1` to the renderer process to dump live statistics to stdout (or journal if running as systemd service):
+
+```bash
+# Find the PID
+pgrep DirettaRendererUPnP
+
+# Dump statistics
+kill -USR1 $(pgrep DirettaRendererUPnP)
+
+# View in journal (systemd)
+sudo journalctl -u diretta-renderer -n 20
+```
+
+Output includes: playback state, current format, buffer fill level, MTU, stream/push/underrun counters.
+
 ### Check Active Configuration
 
 ```bash
@@ -454,6 +487,25 @@ iftop -i enp4s0
 - Check logs for which format
 - Verify network stability
 - For internet streaming (Qobuz/Tidal), ensure stable internet connection
+
+---
+
+## Testing
+
+Run the built-in test suite to verify format conversions on your platform:
+
+```bash
+make test
+```
+
+This runs 20 unit tests covering:
+- Memory infrastructure (AVX2/NEON memcpy, buffer alignment)
+- PCM format conversions (24-bit pack LSB/MSB, 16→32, 16→24)
+- DSD conversions (all 4 modes: Passthrough, BitReverse, ByteSwap, BitReverseSwap)
+- Ring buffer mechanics (wraparound, power-of-2 sizing, full/empty edge cases)
+- Integration tests (push→pop round-trip)
+
+Expected output: `=== Results: 20 passed, 0 failed ===`
 
 ---
 

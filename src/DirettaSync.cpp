@@ -451,6 +451,19 @@ bool DirettaSync::open(const AudioFormat& format) {
             play();
             m_playing = true;
             m_paused = false;
+
+            // Log MS mode on quick resume — supportMSmode is populated after first session
+            if (g_logLevel >= LogLevel::DEBUG) {
+                const auto& info = getSinkInfo();
+                uint16_t msmode = info.supportMSmode;
+                if (msmode != 0) {
+                    const char* activeMode = "NONE";
+                    if (msmode & 0x04) activeMode = "MS3";
+                    else if (msmode & 0x01) activeMode = "MS1";
+                    DIRETTA_LOG("MS mode active: " << activeMode);
+                }
+            }
+
             std::cout << "[DirettaSync] ========== OPEN COMPLETE (quick) ==========" << std::endl;
             return true;
         } else {

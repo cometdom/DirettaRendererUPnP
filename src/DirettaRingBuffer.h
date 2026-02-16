@@ -20,13 +20,19 @@
 #include <type_traits>
 
 // Architecture detection for SIMD support
-// Use compiler-defined __AVX2__ to detect actual AVX2 availability
-// This respects -march= flags and works correctly on older CPUs (Sandy Bridge, Ivy Bridge)
+// Use compiler-defined macros to detect actual SIMD availability
+// This respects -march= flags and works correctly on all platforms
 #if defined(__AVX2__)
     #define DIRETTA_HAS_AVX2 1
+    #define DIRETTA_HAS_NEON 0
     #include <immintrin.h>
+#elif defined(__ARM_NEON) || defined(__ARM_NEON__)
+    #define DIRETTA_HAS_AVX2 0
+    #define DIRETTA_HAS_NEON 1
+    #include <arm_neon.h>
 #else
     #define DIRETTA_HAS_AVX2 0
+    #define DIRETTA_HAS_NEON 0
 #endif
 
 #include "memcpyfast_audio.h"
@@ -658,7 +664,118 @@ public:
         return outputBytes;
     }
 
-#else // !DIRETTA_HAS_AVX2 - Scalar implementations for ARM64 and other architectures
+#elif DIRETTA_HAS_NEON // ARM64 NEON implementations
+
+    /**
+     * Convert S24_P32 to packed 24-bit using NEON
+     * vld4q deinterleaves 4-byte samples into 4 lane vectors,
+     * vst3q re-interleaves 3 lanes (discarding padding byte)
+     * Processes 16 samples per iteration (64 bytes in → 48 bytes out)
+     */
+    size_t convert24BitPacked_AVX2(uint8_t* dst, const uint8_t* src, size_t numSamples) {
+        size_t outputBytes = 0;
+        size_t i = 0;
+
+        for (; i + 16 <= numSamples; i += 16) {
+            uint8x16x4_t in = vld4q_u8(src + i * 4);
+            // val[0..2] = data bytes, val[3] = padding (LSB-aligned)
+            uint8x16x3_t out = {{ in.val[0], in.val[1], in.val[2] }};
+            vst3q_u8(dst + outputBytes, out);
+            outputBytes += 48;
+        }
+
+        for (; i < numSamples; i++) {
+            dst[outputBytes + 0] = src[i * 4 + 0];
+            dst[outputBytes + 1] = src[i * 4 + 1];
+            dst[outputBytes + 2] = src[i * 4 + 2];
+            outputBytes += 3;
+        }
+        return outputBytes;
+    }
+
+    /**
+     * Convert S24_P32 (MSB-aligned) to packed 24-bit using NEON
+     * Same as above but discards byte 0 (padding) instead of byte 3
+     */
+    size_t convert24BitPackedShifted_AVX2(uint8_t* dst, const uint8_t* src, size_t numSamples) {
+        size_t outputBytes = 0;
+        size_t i = 0;
+
+        for (; i + 16 <= numSamples; i += 16) {
+            uint8x16x4_t in = vld4q_u8(src + i * 4);
+            // val[0] = padding (MSB-aligned), val[1..3] = data bytes
+            uint8x16x3_t out = {{ in.val[1], in.val[2], in.val[3] }};
+            vst3q_u8(dst + outputBytes, out);
+            outputBytes += 48;
+        }
+
+        for (; i < numSamples; i++) {
+            dst[outputBytes + 0] = src[i * 4 + 1];
+            dst[outputBytes + 1] = src[i * 4 + 2];
+            dst[outputBytes + 2] = src[i * 4 + 3];
+            outputBytes += 3;
+        }
+        return outputBytes;
+    }
+
+    /**
+     * Convert 16-bit to 32-bit using NEON
+     * vzipq_u16 interleaves zeros (low) with data (high) into 32-bit words
+     * Processes 8 samples per iteration (16 bytes in → 32 bytes out)
+     */
+    size_t convert16To32_AVX2(uint8_t* dst, const uint8_t* src, size_t numSamples) {
+        size_t outputBytes = 0;
+        size_t i = 0;
+
+        uint16x8_t zero = vdupq_n_u16(0);
+        for (; i + 8 <= numSamples; i += 8) {
+            uint16x8_t in = vld1q_u16(reinterpret_cast<const uint16_t*>(src + i * 2));
+            // Zip zero (low 16) with data (high 16) → 32-bit words
+            uint16x8x2_t zipped = vzipq_u16(zero, in);
+            vst1q_u8(dst + outputBytes, vreinterpretq_u8_u16(zipped.val[0]));
+            outputBytes += 16;
+            vst1q_u8(dst + outputBytes, vreinterpretq_u8_u16(zipped.val[1]));
+            outputBytes += 16;
+        }
+
+        for (; i < numSamples; i++) {
+            dst[outputBytes + 0] = 0x00;
+            dst[outputBytes + 1] = 0x00;
+            dst[outputBytes + 2] = src[i * 2 + 0];
+            dst[outputBytes + 3] = src[i * 2 + 1];
+            outputBytes += 4;
+        }
+        return outputBytes;
+    }
+
+    /**
+     * Convert 16-bit to packed 24-bit using NEON
+     * vld2q deinterleaves lo/hi bytes, vst3q re-interleaves with zero padding
+     * Processes 16 samples per iteration (32 bytes in → 48 bytes out)
+     */
+    size_t convert16To24(uint8_t* dst, const uint8_t* src, size_t numSamples) {
+        size_t outputBytes = 0;
+        size_t i = 0;
+
+        uint8x16_t zero = vdupq_n_u8(0x00);
+        for (; i + 16 <= numSamples; i += 16) {
+            uint8x16x2_t in = vld2q_u8(src + i * 2);
+            // in.val[0] = lo bytes, in.val[1] = hi bytes
+            uint8x16x3_t out = {{ zero, in.val[0], in.val[1] }};
+            vst3q_u8(dst + outputBytes, out);
+            outputBytes += 48;
+        }
+
+        for (; i < numSamples; i++) {
+            dst[outputBytes + 0] = 0x00;
+            dst[outputBytes + 1] = src[i * 2 + 0];
+            dst[outputBytes + 2] = src[i * 2 + 1];
+            outputBytes += 3;
+        }
+        return outputBytes;
+    }
+
+#else // Scalar implementations for other architectures (RISC-V, etc.)
 
     /**
      * Convert S24_P32 to packed 24-bit (scalar version)
@@ -714,7 +831,7 @@ public:
         return outputBytes;
     }
 
-#endif // DIRETTA_HAS_AVX2
+#endif // DIRETTA_HAS_AVX2 / DIRETTA_HAS_NEON
 
     //=========================================================================
     // Specialized DSD conversion functions - no per-iteration branch checks
@@ -771,8 +888,42 @@ public:
             _mm256_zeroupper();
             return outputBytes;
         }
+#elif DIRETTA_HAS_NEON
+        if (numChannels == 2) {
+            const uint8_t* srcL = src;
+            const uint8_t* srcR = src + bytesPerChannel;
+
+            size_t i = 0;
+            for (; i + 16 <= bytesPerChannel; i += 16) {
+                uint8x16_t left = vld1q_u8(srcL + i);
+                uint8x16_t right = vld1q_u8(srcR + i);
+
+                // Interleave as 32-bit elements: L0,R0,L1,R1 | L2,R2,L3,R3
+                uint32x4_t leftU32 = vreinterpretq_u32_u8(left);
+                uint32x4_t rightU32 = vreinterpretq_u32_u8(right);
+                uint32x4_t out0 = vzip1q_u32(leftU32, rightU32);
+                uint32x4_t out1 = vzip2q_u32(leftU32, rightU32);
+
+                vst1q_u8(dst + outputBytes, vreinterpretq_u8_u32(out0));
+                outputBytes += 16;
+                vst1q_u8(dst + outputBytes, vreinterpretq_u8_u32(out1));
+                outputBytes += 16;
+            }
+
+            for (; i + 4 <= bytesPerChannel; i += 4) {
+                dst[outputBytes++] = srcL[i + 0];
+                dst[outputBytes++] = srcL[i + 1];
+                dst[outputBytes++] = srcL[i + 2];
+                dst[outputBytes++] = srcL[i + 3];
+                dst[outputBytes++] = srcR[i + 0];
+                dst[outputBytes++] = srcR[i + 1];
+                dst[outputBytes++] = srcR[i + 2];
+                dst[outputBytes++] = srcR[i + 3];
+            }
+            return outputBytes;
+        }
 #endif
-        // Scalar fallback for non-AVX2 or non-stereo
+        // Scalar fallback for non-SIMD or non-stereo
         for (size_t i = 0; i < bytesPerChannel; i += 4) {
             for (int ch = 0; ch < numChannels; ch++) {
                 size_t chOffset = static_cast<size_t>(ch) * bytesPerChannel;
@@ -835,6 +986,44 @@ public:
             }
 
             _mm256_zeroupper();
+            return outputBytes;
+        }
+#elif DIRETTA_HAS_NEON
+        if (numChannels == 2) {
+            const uint8_t* srcL = src;
+            const uint8_t* srcR = src + bytesPerChannel;
+
+            size_t i = 0;
+            for (; i + 16 <= bytesPerChannel; i += 16) {
+                uint8x16_t left = vld1q_u8(srcL + i);
+                uint8x16_t right = vld1q_u8(srcR + i);
+
+                // Apply bit reversal
+                left = neon_bit_reverse(left);
+                right = neon_bit_reverse(right);
+
+                // Interleave as 32-bit elements
+                uint32x4_t leftU32 = vreinterpretq_u32_u8(left);
+                uint32x4_t rightU32 = vreinterpretq_u32_u8(right);
+                uint32x4_t out0 = vzip1q_u32(leftU32, rightU32);
+                uint32x4_t out1 = vzip2q_u32(leftU32, rightU32);
+
+                vst1q_u8(dst + outputBytes, vreinterpretq_u8_u32(out0));
+                outputBytes += 16;
+                vst1q_u8(dst + outputBytes, vreinterpretq_u8_u32(out1));
+                outputBytes += 16;
+            }
+
+            for (; i + 4 <= bytesPerChannel; i += 4) {
+                dst[outputBytes++] = kBitReverseLUT[srcL[i + 0]];
+                dst[outputBytes++] = kBitReverseLUT[srcL[i + 1]];
+                dst[outputBytes++] = kBitReverseLUT[srcL[i + 2]];
+                dst[outputBytes++] = kBitReverseLUT[srcL[i + 3]];
+                dst[outputBytes++] = kBitReverseLUT[srcR[i + 0]];
+                dst[outputBytes++] = kBitReverseLUT[srcR[i + 1]];
+                dst[outputBytes++] = kBitReverseLUT[srcR[i + 2]];
+                dst[outputBytes++] = kBitReverseLUT[srcR[i + 3]];
+            }
             return outputBytes;
         }
 #endif
@@ -908,6 +1097,44 @@ public:
             _mm256_zeroupper();
             return outputBytes;
         }
+#elif DIRETTA_HAS_NEON
+        if (numChannels == 2) {
+            const uint8_t* srcL = src;
+            const uint8_t* srcR = src + bytesPerChannel;
+
+            size_t i = 0;
+            for (; i + 16 <= bytesPerChannel; i += 16) {
+                uint8x16_t left = vld1q_u8(srcL + i);
+                uint8x16_t right = vld1q_u8(srcR + i);
+
+                // Interleave as 32-bit elements
+                uint32x4_t leftU32 = vreinterpretq_u32_u8(left);
+                uint32x4_t rightU32 = vreinterpretq_u32_u8(right);
+                uint32x4_t interleaved0 = vzip1q_u32(leftU32, rightU32);
+                uint32x4_t interleaved1 = vzip2q_u32(leftU32, rightU32);
+
+                // Byte swap within each 32-bit element (native NEON instruction)
+                uint8x16_t swapped0 = vrev32q_u8(vreinterpretq_u8_u32(interleaved0));
+                uint8x16_t swapped1 = vrev32q_u8(vreinterpretq_u8_u32(interleaved1));
+
+                vst1q_u8(dst + outputBytes, swapped0);
+                outputBytes += 16;
+                vst1q_u8(dst + outputBytes, swapped1);
+                outputBytes += 16;
+            }
+
+            for (; i + 4 <= bytesPerChannel; i += 4) {
+                dst[outputBytes++] = srcL[i + 3];
+                dst[outputBytes++] = srcL[i + 2];
+                dst[outputBytes++] = srcL[i + 1];
+                dst[outputBytes++] = srcL[i + 0];
+                dst[outputBytes++] = srcR[i + 3];
+                dst[outputBytes++] = srcR[i + 2];
+                dst[outputBytes++] = srcR[i + 1];
+                dst[outputBytes++] = srcR[i + 0];
+            }
+            return outputBytes;
+        }
 #endif
         // Scalar fallback with byte swap
         for (size_t i = 0; i < bytesPerChannel; i += 4) {
@@ -979,6 +1206,48 @@ public:
             }
 
             _mm256_zeroupper();
+            return outputBytes;
+        }
+#elif DIRETTA_HAS_NEON
+        if (numChannels == 2) {
+            const uint8_t* srcL = src;
+            const uint8_t* srcR = src + bytesPerChannel;
+
+            size_t i = 0;
+            for (; i + 16 <= bytesPerChannel; i += 16) {
+                uint8x16_t left = vld1q_u8(srcL + i);
+                uint8x16_t right = vld1q_u8(srcR + i);
+
+                // Apply bit reversal
+                left = neon_bit_reverse(left);
+                right = neon_bit_reverse(right);
+
+                // Interleave as 32-bit elements
+                uint32x4_t leftU32 = vreinterpretq_u32_u8(left);
+                uint32x4_t rightU32 = vreinterpretq_u32_u8(right);
+                uint32x4_t interleaved0 = vzip1q_u32(leftU32, rightU32);
+                uint32x4_t interleaved1 = vzip2q_u32(leftU32, rightU32);
+
+                // Byte swap within each 32-bit element
+                uint8x16_t swapped0 = vrev32q_u8(vreinterpretq_u8_u32(interleaved0));
+                uint8x16_t swapped1 = vrev32q_u8(vreinterpretq_u8_u32(interleaved1));
+
+                vst1q_u8(dst + outputBytes, swapped0);
+                outputBytes += 16;
+                vst1q_u8(dst + outputBytes, swapped1);
+                outputBytes += 16;
+            }
+
+            for (; i + 4 <= bytesPerChannel; i += 4) {
+                dst[outputBytes++] = kBitReverseLUT[srcL[i + 3]];
+                dst[outputBytes++] = kBitReverseLUT[srcL[i + 2]];
+                dst[outputBytes++] = kBitReverseLUT[srcL[i + 1]];
+                dst[outputBytes++] = kBitReverseLUT[srcL[i + 0]];
+                dst[outputBytes++] = kBitReverseLUT[srcR[i + 3]];
+                dst[outputBytes++] = kBitReverseLUT[srcR[i + 2]];
+                dst[outputBytes++] = kBitReverseLUT[srcR[i + 1]];
+                dst[outputBytes++] = kBitReverseLUT[srcR[i + 0]];
+            }
             return outputBytes;
         }
 #endif
@@ -1081,6 +1350,30 @@ private:
         return _mm256_or_si256(_mm256_slli_epi16(lo_reversed, 4), hi_reversed);
     }
 #endif // DIRETTA_HAS_AVX2
+
+#if DIRETTA_HAS_NEON
+    /**
+     * NEON bit reversal using nibble lookup table
+     * Same algorithm as AVX2 simd_bit_reverse() but on 128-bit vectors
+     * vqtbl1q_u8 performs 16-entry LUT lookup (equivalent to pshufb)
+     */
+    static uint8x16_t neon_bit_reverse(uint8x16_t x) {
+        static const uint8_t lut_data[16] = {
+            0x0, 0x8, 0x4, 0xC, 0x2, 0xA, 0x6, 0xE,
+            0x1, 0x9, 0x5, 0xD, 0x3, 0xB, 0x7, 0xF
+        };
+        uint8x16_t lut = vld1q_u8(lut_data);
+        uint8x16_t mask = vdupq_n_u8(0x0F);
+
+        uint8x16_t lo = vandq_u8(x, mask);
+        uint8x16_t hi = vandq_u8(vshrq_n_u8(x, 4), mask);
+
+        uint8x16_t lo_rev = vqtbl1q_u8(lut, lo);
+        uint8x16_t hi_rev = vqtbl1q_u8(lut, hi);
+
+        return vorrq_u8(vshlq_n_u8(lo_rev, 4), hi_rev);
+    }
+#endif // DIRETTA_HAS_NEON
 
     static size_t roundUpPow2(size_t value) {
         if (value < 2) {

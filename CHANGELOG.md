@@ -54,6 +54,41 @@
 - `diretta-renderer.conf`: documented `--quiet` option alongside `--verbose`
 - `start-renderer.sh`: updated comments for log verbosity options
 
+**Privilege Drop (`--user`):**
+- New `--user, -u <name>` option to drop root privileges after network initialization
+- Uses Linux-native `prctl(PR_SET_KEEPCAPS)` + `capset()` syscall — no libcap dependency
+- Retains `CAP_NET_RAW`, `CAP_NET_ADMIN`, `CAP_SYS_NICE` capabilities after dropping to unprivileged user
+- Non-fatal fallback: if `capset()` fails, logs a warning and continues with reduced capabilities
+
+**Systemd Hardening:**
+- 20+ security directives added to `diretta-renderer.service`
+- Filesystem isolation: `ProtectSystem=strict`, `ProtectHome=true`, `PrivateTmp=true`
+- Kernel protection: `ProtectKernelTunables`, `ProtectKernelModules`, `ProtectKernelLogs`
+- Syscall filtering: blocks `@mount`, `@keyring`, `@debug`, `@module`, `@swap`, `@reboot`, `@obsolete`
+- Dedicated `diretta` system user created by `install-systemd.sh`
+- `CapabilityBoundingSet` limits to `CAP_NET_RAW CAP_NET_ADMIN CAP_SYS_NICE`
+
+### 🏗️ ARM Architecture
+
+**ARM NEON SIMD Format Conversions:**
+- Hand-optimized NEON intrinsics for all PCM and DSD format conversions on ARM64
+- PCM: `convert24BitPacked` (LSB/MSB), `convert16To32` using `vzip`/`vshrn`/`vmovn` intrinsics
+- DSD: all 4 conversion modes (Passthrough, BitReverse, ByteSwap, BitReverseSwap) using `vzip1q_u32`/`vzip2q_u32` interleaving
+- Bit reversal via `vqtbl1q_u8` LUT-based nibble swap, byte swap via `vrev32q_u8`
+- Automatic detection via `DIRETTA_HAS_NEON` macro (`__aarch64__` + `__ARM_NEON`)
+- Fallback to scalar code when NEON is not available
+
+### 🧪 Testing
+
+**Unit Test Suite (20 tests):**
+- Comprehensive test suite for `DirettaRingBuffer` format conversions
+- 3 memory infrastructure tests (memcpy correctness, timing variance, buffer alignment)
+- 6 PCM conversion tests (24-bit pack LSB/MSB, 16→32, 16→24, single-sample edge cases)
+- 5 DSD conversion tests (all 4 modes + small input scalar path)
+- 4 ring buffer tests (wraparound, power-of-2 sizing, full buffer, empty pop)
+- 2 integration tests (push24BitPacked→pop, pushDSDPlanarOptimized→pop)
+- Run with `make test` — zero external dependencies
+
 ---
 
 ## [2.0.3] - 2026-02-15

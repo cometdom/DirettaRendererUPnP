@@ -32,6 +32,7 @@ public:
         bool gaplessEnabled = true;
         int targetIndex = -1;  // -1 = interactive, >= 0 = specific
         std::string networkInterface;  // Empty = auto-detect
+        std::string dropUser;  // Empty = no privilege drop
 
         Config();
     };

@@ -1,4 +1,4 @@
-# Diretta UPnP Renderer v2.0.3
+# Diretta UPnP Renderer v2.0.4
 
 **The world's first native UPnP/DLNA renderer with Diretta protocol support - Low-Latency Edition**
 
@@ -8,10 +8,25 @@
 
 ---
 
-![Version](https://img.shields.io/badge/version-2.0.3-blue.svg)
+![Version](https://img.shields.io/badge/version-2.0.4-blue.svg)
 ![Low Latency](https://img.shields.io/badge/Latency-Low-green.svg)
 ![SDK](https://img.shields.io/badge/SDK-DIRETTA::Sync-orange.svg)
 ![Audirvana](https://img.shields.io/badge/Audirvana-Compatible-green.svg)
+
+---
+
+## What's New in v2.0.4
+
+**Security & Reliability release.**
+
+- **Centralized logging** with 3 verbosity levels: `--quiet` (warnings only), default (INFO), `--verbose` (DEBUG)
+- **Runtime statistics** via `kill -USR1 <pid>` — dump live playback state, buffer fill, and counters to journal
+- **Privilege drop** (`--user <name>`) — start as root for network init, then drop to unprivileged user while retaining required Linux capabilities
+- **Systemd hardening** — 20+ security directives (filesystem isolation, kernel protection, syscall filtering)
+- **ARM NEON SIMD** — hand-optimized DSD (4 modes) and PCM format conversions for Raspberry Pi 4/5
+- **20 unit tests** for DirettaRingBuffer covering all conversion functions (`make test`)
+
+See [CHANGELOG.md](CHANGELOG.md) for details.
 
 ---
 
@@ -391,10 +406,10 @@ Open your UPnP control point (JPlay, BubbleUPnP, mConnect, etc.) and look for "D
 
 | Format Type | Bit Depth | Sample Rates | Container | SIMD Optimization |
 |-------------|-----------|--------------|-----------|-------------------|
-| **PCM** | 16-bit | 44.1kHz - 384kHz | FLAC, WAV, AIFF | AVX2 16x |
-| **PCM** | 24-bit | 44.1kHz - 384kHz | FLAC, ALAC, WAV | AVX2 8x |
+| **PCM** | 16-bit | 44.1kHz - 384kHz | FLAC, WAV, AIFF | AVX2 16x / NEON 8x |
+| **PCM** | 24-bit | 44.1kHz - 384kHz | FLAC, ALAC, WAV | AVX2 8x / NEON 4x |
 | **PCM** | 32-bit | 44.1kHz - 1536kHz | WAV | memcpy |
-| **DSD** | 1-bit | DSD64 - DSD1024 | DSF, DFF | AVX2 32x |
+| **DSD** | 1-bit | DSD64 - DSD1024 | DSF, DFF | AVX2 32x / NEON 16x |
 | **Lossy** | Variable | Up to 192kHz | MP3, AAC, OGG | - |
 
 ### PCM Bypass Mode
@@ -588,7 +603,9 @@ For a dedicated audio server, **nosmt** mode provides more consistent latency be
 --port, -p <port>       UPnP port (default: auto)
 --target, -t <index>    Select Diretta target by index (1, 2, 3...)
 --list-targets          List available Diretta targets and exit
---verbose, -v           Enable verbose debug output
+--verbose, -v           Enable verbose debug output (log level: DEBUG)
+--quiet, -q             Quiet mode - only errors and warnings (log level: WARN)
+--user, -u <name>       Drop privileges to user after network init
 --interface <name>      Bind to specific network interface
 ```
 
@@ -659,6 +676,8 @@ This is normal and ensures clean transitions.
 |----------|-------------|
 | [CHANGELOG.md](CHANGELOG.md) | Version history and changes |
 | [CLAUDE.md](CLAUDE.md) | Technical reference for developers |
+| [docs/INSTALLATION.md](docs/INSTALLATION.md) | Step-by-step installation guide |
+| [docs/SYSTEMD_GUIDE.md](docs/SYSTEMD_GUIDE.md) | Systemd service setup and hardening |
 | [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | Detailed troubleshooting guide |
 | [docs/CONFIGURATION.md](docs/CONFIGURATION.md) | Configuration reference |
 | [docs/FORK_CHANGES.md](docs/FORK_CHANGES.md) | Differences from v1.x |
@@ -714,4 +733,4 @@ This software is provided "as is" without warranty. While designed for high-qual
 
 **Enjoy bit-perfect, low-latency audio streaming!**
 
-*Last updated: 2026-02-15 (v2.0.3)*
+*Last updated: 2026-02-16 (v2.0.4)*
