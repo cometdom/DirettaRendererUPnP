@@ -17,8 +17,9 @@
 
 ## What's New in v2.0.4
 
-**Security & Reliability release.**
+**Security, reliability & streaming resilience.**
 
+- **Rebuffering on underrun** — when a network stall empties the buffer (Tidal/Qobuz streaming), holds clean silence until the buffer refills to 20%, preventing the "CD skip" stuttering effect
 - **Centralized logging** with 3 verbosity levels: `--quiet` (warnings only), default (INFO), `--verbose` (DEBUG)
 - **Runtime statistics** via `kill -USR1 <pid>` — dump live playback state, buffer fill, and counters to journal
 - **Privilege drop** (`--user <name>`) — start as root for network init, then drop to unprivileged user while retaining required Linux capabilities
@@ -28,57 +29,16 @@
 
 See [CHANGELOG.md](CHANGELOG.md) for details.
 
----
+### Previous Versions
 
-## What's New in v2.0.3
+| Version | Highlights |
+|---------|-----------|
+| **v2.0.3** | Audirvana compatibility (UPnP event deduplication), adaptive buffer for remote streaming |
+| **v2.0.2** | Native DSD from Audirvana (DSDIFF parser), UPnP event notifications, gapless preload |
+| **v2.0.1** | 24-bit white noise fix for DACs without 32-bit support |
+| **v2.0.0** | Complete rewrite — low-latency architecture, lock-free ring buffer, AVX2 SIMD |
 
-**Audirvana fully compatible!** Fixed duplicate UPnP GENA events that caused progress bar hiccups on Audirvana. Each transport action (Play, Pause, Stop, SetNextAVTransportURI) now sends exactly one `LastChange` event, eliminating unwanted re-synchronizations during playback.
-
-> **Audirvana users:** The "Universal Gapless" option in Audirvana is **no longer needed** and should be **disabled**. DirettaRendererUPnP handles gapless transitions natively via `SetNextAVTransportURI`. Simply play your music — gapless works out of the box.
-
-See [CHANGELOG.md](CHANGELOG.md) for details.
-
----
-
-## What's New in v2.0.2
-
-**Native DSD playback from Audirvana!** FFmpeg has no DSDIFF/DFF demuxer, making DSD playback from Audirvana impossible. v2.0.2 adds a built-in DSDIFF parser that reads DFF containers directly via HTTP, enabling native DSD64-DSD512 playback from Audirvana and any other UPnP controller that streams DFF.
-
-**UPnP event notifications** are now fully implemented. Control points (Audirvana, BubbleUPnP, mConnect) receive real-time `LastChange` events for transport state, track changes, and position updates. This fixes the progress bar not updating on track transitions.
-
-See [CHANGELOG.md](CHANGELOG.md) for details.
-
----
-
-## What's New in v2.0.1
-
-**Bug Fix:** Fixed white noise when playing 24-bit audio on DACs that only support 24-bit output (not 32-bit), such as the TEAC UD-701N. The issue was caused by incorrect byte extraction in the S24 format conversion. See [CHANGELOG.md](CHANGELOG.md) for details.
-
----
-
-## What's New in v2.0
-
-Version 2.0 is a **complete rewrite** focused on low-latency and jitter reduction. It uses the Diretta SDK (by **Yu Harada**) at a lower level (`DIRETTA::Sync` instead of `DIRETTA::SyncBuffer`) for finer timing control, with core Diretta integration code contributed by **SwissMountainsBear** (ported from his MPD Diretta Output Plugin), and incorporating advanced optimizations from **leeeanh**.
-
-### Key Improvements over v1.x
-
-| Metric | v1.x | v2.0 | Improvement |
-|--------|------|------|-------------|
-| PCM buffer latency | ~1000ms | ~300ms | **70% reduction** |
-| Time to first audio | ~50ms | ~30ms | **40% faster** |
-| Jitter (DSD flow control) | ±2.5ms | ±50µs | **50x reduction** |
-| Ring buffer operations | 10-20 cycles | 1 cycle | **10-20x faster** |
-| 24-bit conversion | ~1 sample/cycle | ~8 samples/cycle | **8x faster** |
-| DSD interleave | ~1 byte/cycle | ~32 bytes/cycle | **32x faster** |
-
-### Technical Highlights
-
-- **Low-level SDK integration**: Inherits `DIRETTA::Sync` directly with `getNewStream()` callback (pull model)
-- **Lock-free audio path**: Zero mutex locks in the critical audio path using atomic operations
-- **SIMD optimizations**: AVX2/AVX-512 format conversions for maximum throughput
-- **Zero heap allocations**: Pre-allocated buffers eliminate allocation jitter during playback
-- **Power-of-2 ring buffer**: Bitmask modulo for single-cycle position calculations
-- **Cache-line separation**: 64-byte aligned atomics to eliminate false sharing
+See [CHANGELOG.md](CHANGELOG.md) for full version history.
 
 ---
 
@@ -108,7 +68,7 @@ This renderer uses the **Diretta Host SDK**, which is proprietary software by Yu
 - [Architecture](#architecture)
 - [Features](#features)
 - [Requirements](#requirements)
-- [Upgrading from v1.x](#upgrading-from-v1x)
+- [Upgrading](#upgrading)
 - [Quick Start](#quick-start)
 - [Supported Formats](#supported-formats)
 - [Performance](#performance)
@@ -268,34 +228,44 @@ The renderer automatically detects and optimizes for your CPU:
 
 ---
 
-## Upgrading from v1.x
+## Upgrading
 
-If you have version 1.3.3 or earlier installed, **a clean installation is required**. Version 2.x has a completely different architecture and configuration format.
+### From v2.0.3 to v2.0.4
 
-### Step 1: Stop and disable the service
+No configuration changes needed. Just rebuild and reinstall:
 
 ```bash
+# 1. Stop the service
+sudo systemctl stop diretta-renderer
+
+# 2. Pull the latest version and rebuild
+cd ~/DirettaRendererUPnP
+git pull
+make clean && make
+
+# 3. Re-run the installer (reinstalls binary + systemd service)
+./install.sh
+
+# 4. Restart the service
+sudo systemctl start diretta-renderer
+```
+
+> **Note:** Your existing configuration (`diretta-renderer.conf`) is preserved.
+
+### From v1.x (clean install required)
+
+Version 2.x has a completely different architecture and configuration format. A clean installation is required:
+
+```bash
+# Stop and remove old installation
 sudo systemctl stop diretta-renderer
 sudo systemctl disable diretta-renderer
-```
-
-### Step 2: Remove old installation
-
-```bash
-# Remove installed files
 sudo rm -rf /opt/diretta-renderer-upnp
-
-# Remove old systemd service
 sudo rm -f /etc/systemd/system/diretta-renderer.service
 sudo systemctl daemon-reload
-
-# Remove old source directory (backup your custom configs first!)
-rm -rf ~/DirettaRendererUPnP
 ```
 
-### Step 3: Fresh install v2.x
-
-Follow the [Quick Start](#quick-start) instructions below for a clean installation.
+Then follow the [Quick Start](#quick-start) instructions for a fresh installation.
 
 > **Note:** The v2.x configuration file (`diretta-renderer.conf`) has a different format than v1.x. Your old configuration will not work with v2.x.
 
@@ -733,4 +703,4 @@ This software is provided "as is" without warranty. While designed for high-qual
 
 **Enjoy bit-perfect, low-latency audio streaming!**
 
-*Last updated: 2026-02-16 (v2.0.4)*
+*Last updated: 2026-02-19 (v2.0.4)*
