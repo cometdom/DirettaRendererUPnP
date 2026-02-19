@@ -241,7 +241,7 @@ sudo systemctl stop diretta-renderer
 # 2. Pull the latest version and rebuild
 cd ~/DirettaRendererUPnP
 git pull
-make clean && make
+
 
 # 3. Re-run the installer (reinstalls binary + systemd service)
 ./install.sh
