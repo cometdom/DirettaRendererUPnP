@@ -197,6 +197,8 @@ namespace DirettaBuffer {
     constexpr size_t PCM_REMOTE_PREFILL_MS = 150;        // Remote - larger prefill for internet latency
     constexpr size_t PCM_LOWRATE_PREFILL_MS = 100;
 
+    constexpr float REBUFFER_THRESHOLD_PCT = 0.20f;      // Resume playback after 20% buffer refill
+
     constexpr unsigned int DAC_STABILIZATION_MS = 100;
     constexpr unsigned int ONLINE_WAIT_MS = 2000;
     constexpr unsigned int FORMAT_SWITCH_DELAY_MS = 800;
@@ -616,6 +618,7 @@ private:
     std::atomic<int> m_streamCount{0};
     std::atomic<int> m_pushCount{0};
     std::atomic<uint32_t> m_underrunCount{0};
+    std::atomic<bool> m_rebuffering{false};              // Rebuffering after sustained underrun
 };
 
 #endif // DIRETTA_SYNC_H

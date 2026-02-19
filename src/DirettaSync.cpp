@@ -443,6 +443,7 @@ bool DirettaSync::open(const AudioFormat& format) {
             // to send additional silence after prefill completes.
             m_ringBuffer.clear();
             m_prefillComplete = false;
+            m_rebuffering.store(false, std::memory_order_relaxed);
             // m_postOnlineDelayDone stays true - DAC already stable
             m_stabilizationCount = 0;
             m_stopRequested = false;
@@ -789,6 +790,7 @@ void DirettaSync::close() {
     m_open = false;
     m_playing = false;
     m_paused = false;
+    m_rebuffering.store(false, std::memory_order_relaxed);
 
     // Reset cached consumer generation to force reload on next getNewStream()
     m_cachedConsumerGen = UINT32_MAX;
@@ -901,6 +903,7 @@ void DirettaSync::fullReset() {
         m_stabilizationCount = 0;
         m_streamCount = 0;
         m_pushCount = 0;
+        m_rebuffering.store(false, std::memory_order_relaxed);
         m_isDsdMode.store(false, std::memory_order_release);
         m_needDsdBitReversal.store(false, std::memory_order_release);
         m_needDsdByteSwap.store(false, std::memory_order_release);
@@ -1606,9 +1609,30 @@ bool DirettaSync::getNewStream(diretta_stream& baseStream) {
                           << fillPct << "%) " << (currentIsDsd ? "[DSD]" : "[PCM]"));
     }
 
-    // Underrun - count silently, log at session end
+    // Rebuffering: hold silence until buffer recovers to threshold
+    // Prevents stuttering ("CD skip" effect) when small data bursts trickle in
+    // during a network stall — accumulates data for a clean resumption
+    if (m_rebuffering.load(std::memory_order_acquire)) {
+        size_t threshold = static_cast<size_t>(currentRingSize * DirettaBuffer::REBUFFER_THRESHOLD_PCT);
+        if (avail >= threshold) {
+            m_rebuffering.store(false, std::memory_order_release);
+            DIRETTA_LOG_ASYNC("Rebuffering complete — resuming playback (avail="
+                              << avail << ", threshold=" << threshold << ")");
+            // Fall through to normal pop below
+        } else {
+            std::memset(dest, currentSilenceByte, currentBytesPerBuffer);
+            m_workerActive = false;
+            return true;
+        }
+    }
+
+    // Underrun detection — enter rebuffering mode for clean silence
     if (avail < static_cast<size_t>(currentBytesPerBuffer)) {
         m_underrunCount.fetch_add(1, std::memory_order_relaxed);
+        if (!m_rebuffering.load(std::memory_order_relaxed)) {
+            m_rebuffering.store(true, std::memory_order_release);
+            DIRETTA_LOG_ASYNC("Buffer underrun — entering rebuffering mode (avail=" << avail << ")");
+        }
         std::memset(dest, currentSilenceByte, currentBytesPerBuffer);
         m_workerActive = false;
         return true;
