@@ -236,18 +236,22 @@ From `DirettaSync.h` (low-latency tuned):
 ```cpp
 namespace DirettaBuffer {
     constexpr float DSD_BUFFER_SECONDS = 0.8f;
-    constexpr float PCM_BUFFER_SECONDS = 0.3f;   // Was 1.0f - 70% latency reduction
+    constexpr float PCM_BUFFER_SECONDS = 0.5f;          // Local playback
+    constexpr float PCM_REMOTE_BUFFER_SECONDS = 1.0f;   // Remote streaming (Tidal/Qobuz)
 
     constexpr size_t DSD_PREFILL_MS = 200;
-    constexpr size_t PCM_PREFILL_MS = 30;        // Was 50ms - faster start
+    constexpr size_t PCM_PREFILL_MS = 80;
+    constexpr size_t PCM_REMOTE_PREFILL_MS = 150;        // Remote - larger prefill
     constexpr size_t PCM_LOWRATE_PREFILL_MS = 100;
+
+    constexpr float REBUFFER_THRESHOLD_PCT = 0.20f;      // Resume after 20% buffer refill
 
     constexpr unsigned int DAC_STABILIZATION_MS = 100;
     constexpr unsigned int ONLINE_WAIT_MS = 2000;
     constexpr unsigned int FORMAT_SWITCH_DELAY_MS = 800;
-    constexpr unsigned int POST_ONLINE_SILENCE_BUFFERS = 50;
+    constexpr unsigned int POST_ONLINE_SILENCE_BUFFERS = 20;
 
-    constexpr size_t MIN_BUFFER_BYTES = 65536;   // Was 3072000 - allows 300ms at all rates
+    constexpr size_t MIN_BUFFER_BYTES = 65536;
     constexpr size_t MAX_BUFFER_BYTES = 16777216; // 16MB
 }
 ```
