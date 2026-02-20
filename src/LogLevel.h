@@ -6,7 +6,8 @@
  * Default level is INFO. --verbose sets DEBUG, --quiet sets WARN.
  *
  * Replaces per-file DEBUG_LOG definitions with a unified system.
- * In NOLOG builds, all logging is compiled out.
+ * These macros are always active (runtime-controlled via g_logLevel).
+ * NOLOG only disables SDK internal logging (DIRETTA_LOG in DirettaSync.h).
  */
 
 #ifndef LOG_LEVEL_H
@@ -18,13 +19,6 @@ enum class LogLevel { ERROR = 0, WARN = 1, INFO = 2, DEBUG = 3 };
 
 extern LogLevel g_logLevel;
 
-#ifdef NOLOG
-// Production build: compile out all logging for zero overhead
-#define LOG_ERROR(x) do {} while(0)
-#define LOG_WARN(x)  do {} while(0)
-#define LOG_INFO(x)  do {} while(0)
-#define LOG_DEBUG(x) do {} while(0)
-#else
 #define LOG_ERROR(x) do { \
     if (g_logLevel >= LogLevel::ERROR) { std::cerr << x << std::endl; } \
 } while(0)
@@ -40,6 +34,5 @@ extern LogLevel g_logLevel;
 #define LOG_DEBUG(x) do { \
     if (g_logLevel >= LogLevel::DEBUG) { std::cout << x << std::endl; } \
 } while(0)
-#endif
 
 #endif // LOG_LEVEL_H

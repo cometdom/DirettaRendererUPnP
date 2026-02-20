@@ -10,7 +10,7 @@
 - `--verbose` continues to work as before (DEBUG level)
 - Default level (INFO) produces the same output as v2.0.3
 - All source files migrated from per-file `DEBUG_LOG` macros to unified `LOG_DEBUG`/`LOG_INFO`/`LOG_WARN`/`LOG_ERROR`
-- In `NOLOG` builds, all logging macros compile to no-ops
+- `NOLOG` builds now only disable SDK internal logging (`DIRETTA_LOG`); application `LOG_*` macros remain active with runtime level control, so `--verbose` and `--quiet` work correctly in production builds
 
 **Runtime Statistics via SIGUSR1:**
 - Send `kill -USR1 <pid>` to dump live statistics to stdout
