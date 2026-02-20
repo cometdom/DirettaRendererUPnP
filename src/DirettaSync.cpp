@@ -128,7 +128,7 @@ bool DirettaSync::enable(const DirettaConfig& config) {
     }
 
     m_enabled = true;
-    DIRETTA_LOG("Enabled, MTU=" << m_effectiveMTU);
+    std::cout << "[DirettaSync] Enabled, MTU=" << m_effectiveMTU << std::endl;
     return true;
 }
 
