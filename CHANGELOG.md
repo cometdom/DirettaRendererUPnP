@@ -27,7 +27,7 @@
 - When the ring buffer empties during a network stall (e.g., Tidal/Qobuz streaming), small data bursts were immediately consumed, creating a rapid silence/audio alternation ("CD skip" effect)
 - Now enters rebuffering mode on underrun: holds silence until the buffer refills to 20%
 - Result: clean silence gap followed by smooth playback resumption instead of stuttering
-- Logged as `Buffer underrun — entering rebuffering mode` / `Rebuffering complete — resuming playback`
+- Rebuffering events logged at WARN level, visible in all builds (including `NOLOG=1` production builds and `--quiet` mode)
 
 ### ⚡ Performance
 

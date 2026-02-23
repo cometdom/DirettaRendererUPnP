@@ -1616,8 +1616,8 @@ bool DirettaSync::getNewStream(diretta_stream& baseStream) {
         size_t threshold = static_cast<size_t>(currentRingSize * DirettaBuffer::REBUFFER_THRESHOLD_PCT);
         if (avail >= threshold) {
             m_rebuffering.store(false, std::memory_order_release);
-            DIRETTA_LOG_ASYNC("Rebuffering complete — resuming playback (avail="
-                              << avail << ", threshold=" << threshold << ")");
+            LOG_WARN("[DirettaSync] Rebuffering complete — resuming playback (avail="
+                     << avail << ", threshold=" << threshold << ")");
             // Fall through to normal pop below
         } else {
             std::memset(dest, currentSilenceByte, currentBytesPerBuffer);
@@ -1631,7 +1631,7 @@ bool DirettaSync::getNewStream(diretta_stream& baseStream) {
         m_underrunCount.fetch_add(1, std::memory_order_relaxed);
         if (!m_rebuffering.load(std::memory_order_relaxed)) {
             m_rebuffering.store(true, std::memory_order_release);
-            DIRETTA_LOG_ASYNC("Buffer underrun — entering rebuffering mode (avail=" << avail << ")");
+            LOG_WARN("[DirettaSync] Buffer underrun — entering rebuffering mode (avail=" << avail << ")");
         }
         std::memset(dest, currentSilenceByte, currentBytesPerBuffer);
         m_workerActive = false;
