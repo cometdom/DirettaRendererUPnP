@@ -365,9 +365,22 @@ endif
 endif
 $(info )
 
+# Detect libupnp include path via pkg-config, fallback to standard paths
+UPNP_CFLAGS := $(shell pkg-config --cflags libupnp 2>/dev/null)
+ifeq ($(UPNP_CFLAGS),)
+    # pkg-config not available or libupnp not found - try standard locations
+    ifneq (,$(wildcard /usr/include/upnp/upnp.h))
+        UPNP_CFLAGS =
+    else ifneq (,$(wildcard /usr/local/include/upnp/upnp.h))
+        UPNP_CFLAGS = -I/usr/local/include
+    else
+        $(warning libupnp headers not found. Install libupnp-dev or set UPNP_CFLAGS manually.)
+    endif
+endif
+
 INCLUDES = \
     $(FFMPEG_INCLUDES) \
-    -I/usr/include/upnp \
+    $(UPNP_CFLAGS) \
     -I/usr/local/include \
     -I. \
     -Isrc \
