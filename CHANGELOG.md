@@ -1,5 +1,103 @@
 # Changelog
 
+## [2.0.4] - 2026-02-24
+
+### ✨ New Features
+
+**Centralized Log Level System:**
+- New `LogLevel.h` header with 4 levels: ERROR, WARN, INFO, DEBUG
+- `--quiet` (`-q`) option: show only warnings and errors (WARN level)
+- `--verbose` continues to work as before (DEBUG level)
+- Default level (INFO) produces the same output as v2.0.3
+- All source files migrated from per-file `DEBUG_LOG` macros to unified `LOG_DEBUG`/`LOG_INFO`/`LOG_WARN`/`LOG_ERROR`
+- `NOLOG` builds now only disable SDK internal logging (`DIRETTA_LOG`); application `LOG_*` macros remain active with runtime level control, so `--verbose` and `--quiet` work correctly in production builds
+
+**Runtime Statistics via SIGUSR1:**
+- Send `kill -USR1 <pid>` to dump live statistics to stdout
+- Shows: playback state, current format, buffer fill level, MTU, stream/push/underrun counters
+- Useful for monitoring production systems via systemd journal
+
+**MS Mode Negotiation Logging (feature request by Alfred):**
+- Verbose log now shows the MS mode negotiated with the Diretta Target
+- From second track onwards: supported modes, requested mode, and negotiated mode
+- First track: clear message that MS info becomes available after first connection
+- Uses "negotiated" wording to clarify the mode is inferred from AUTO algorithm + target capabilities
+
+**Rebuffering on Underrun (streaming resilience):**
+- When the ring buffer empties during a network stall (e.g., Tidal/Qobuz streaming), small data bursts were immediately consumed, creating a rapid silence/audio alternation ("CD skip" effect)
+- Now enters rebuffering mode on underrun: holds silence until the buffer refills to 20%
+- Result: clean silence gap followed by smooth playback resumption instead of stuttering
+- Rebuffering events logged at WARN level, visible in all builds (including `NOLOG=1` production builds and `--quiet` mode)
+
+### ⚡ Performance
+
+**Zero-Allocation Streaming Detection:**
+- Replaced `std::string` + `std::transform` with POSIX `strcasestr()` for Qobuz/Tidal URL detection
+- Eliminates heap allocation on every `openSource()` call
+
+### 🐛 Bug Fixes
+
+**FFmpeg DSD Streaming Error Handling:**
+- Added handling for `AVERROR(ETIMEDOUT)`, `AVERROR(ECONNRESET)`, and `AVERROR_EXIT` in DSD read loop
+- Generic fallback with `av_strerror()` for unexpected error codes
+- Prevents silent hangs on network interruptions during DSD streaming
+
+**Atomic Ordering Fix in RingAccessGuard:**
+- Changed `fetch_add` from `memory_order_acquire` to `memory_order_acq_rel`
+- Ensures the increment is visible to the reconfiguration thread on all architectures (ARM64)
+
+**Stop Action Log Noise Reduction:**
+- Redundant stop requests from control points now log at DEBUG level instead of INFO
+- Actual stop actions still show a clear banner at INFO level
+- Reduces log clutter when control points send multiple Stop actions (normal UPnP behavior)
+
+### 🔧 Build & Configuration
+
+**Production Build in install.sh:**
+- `install.sh` now builds with `NOLOG=1` by default (disables SDK internal logging)
+- Application-level logging (`--verbose`/`--quiet`) remains fully functional
+
+**Updated systemd Configuration:**
+- `diretta-renderer.conf`: documented `--quiet` option alongside `--verbose`
+- `start-renderer.sh`: updated comments for log verbosity options
+
+**Privilege Drop (`--user`):**
+- New `--user, -u <name>` option to drop root privileges after network initialization
+- Uses Linux-native `prctl(PR_SET_KEEPCAPS)` + `capset()` syscall — no libcap dependency
+- Retains `CAP_NET_RAW`, `CAP_NET_ADMIN`, `CAP_SYS_NICE` capabilities after dropping to unprivileged user
+- Non-fatal fallback: if `capset()` fails, logs a warning and continues with reduced capabilities
+
+**Systemd Hardening:**
+- 20+ security directives added to `diretta-renderer.service`
+- Filesystem isolation: `ProtectSystem=strict`, `ProtectHome=true`, `PrivateTmp=true`
+- Kernel protection: `ProtectKernelTunables`, `ProtectKernelModules`, `ProtectKernelLogs`
+- Syscall filtering: blocks `@mount`, `@keyring`, `@debug`, `@module`, `@swap`, `@reboot`, `@obsolete`
+- Dedicated `diretta` system user created by `install-systemd.sh`
+- `CapabilityBoundingSet` limits to `CAP_NET_RAW CAP_NET_ADMIN CAP_SYS_NICE`
+
+### 🏗️ ARM Architecture
+
+**ARM NEON SIMD Format Conversions:**
+- Hand-optimized NEON intrinsics for all PCM and DSD format conversions on ARM64
+- PCM: `convert24BitPacked` (LSB/MSB), `convert16To32` using `vzip`/`vshrn`/`vmovn` intrinsics
+- DSD: all 4 conversion modes (Passthrough, BitReverse, ByteSwap, BitReverseSwap) using `vzip1q_u32`/`vzip2q_u32` interleaving
+- Bit reversal via `vqtbl1q_u8` LUT-based nibble swap, byte swap via `vrev32q_u8`
+- Automatic detection via `DIRETTA_HAS_NEON` macro (`__aarch64__` + `__ARM_NEON`)
+- Fallback to scalar code when NEON is not available
+
+### 🧪 Testing
+
+**Unit Test Suite (20 tests):**
+- Comprehensive test suite for `DirettaRingBuffer` format conversions
+- 3 memory infrastructure tests (memcpy correctness, timing variance, buffer alignment)
+- 6 PCM conversion tests (24-bit pack LSB/MSB, 16→32, 16→24, single-sample edge cases)
+- 5 DSD conversion tests (all 4 modes + small input scalar path)
+- 4 ring buffer tests (wraparound, power-of-2 sizing, full buffer, empty pop)
+- 2 integration tests (push24BitPacked→pop, pushDSDPlanarOptimized→pop)
+- Run with `make test` — zero external dependencies
+
+---
+
 ## [2.0.3] - 2026-02-15
 
 ### 🐛 Bug Fixes

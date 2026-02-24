@@ -10,14 +10,10 @@
 #include <chrono>
 
 // ============================================================================
-// Logging system - Variable globale définie dans main.cpp
+// Logging: uses centralized LogLevel system from LogLevel.h
 // ============================================================================
-extern bool g_verbose;
-#ifdef NOLOG
-#define DEBUG_LOG(x) do {} while(0)
-#else
-#define DEBUG_LOG(x) if (g_verbose) { std::cout << x << std::endl; }
-#endif
+#include "LogLevel.h"
+#define DEBUG_LOG(x) LOG_DEBUG(x)
 
 // Helper: XML-escape a string for use in attribute values
 static std::string xmlEscape(const std::string& input) {
@@ -595,9 +591,7 @@ int UPnPDevice::actionPause(UpnpActionRequest* request) {
 }
 
 int UPnPDevice::actionStop(UpnpActionRequest* request) {
-    std::cout << "════════════════════════════════════════" << std::endl;
-    std::cout << "[UPnPDevice] ⛔ STOP ACTION RECEIVED" << std::endl;
-    std::cout << "════════════════════════════════════════" << std::endl;
+    DEBUG_LOG("[UPnPDevice] Stop action received");
     
     {
         std::lock_guard<std::mutex> lock(m_stateMutex);

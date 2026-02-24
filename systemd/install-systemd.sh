@@ -21,6 +21,16 @@ if [ "$EUID" -ne 0 ]; then
     exit 1
 fi
 
+# Create dedicated system user for privilege drop
+echo "0. Creating system user 'diretta'..."
+if ! id -u diretta &>/dev/null; then
+    useradd -r -s /usr/sbin/nologin -d /opt/diretta-renderer-upnp diretta
+    echo "   ✓ System user 'diretta' created"
+else
+    echo "   ℹ System user 'diretta' already exists"
+fi
+echo ""
+
 # Detect script location and find binary
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"

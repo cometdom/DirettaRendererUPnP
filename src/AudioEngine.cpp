@@ -11,17 +11,13 @@
 #include <algorithm>
 #include "memcpyfast_audio.h"
 
-extern "C" {
+// ============================================================================
+// Logging: uses centralized LogLevel system from LogLevel.h
+// ============================================================================
+#include "LogLevel.h"
+#define DEBUG_LOG(x) LOG_DEBUG(x)
 
-// ============================================================================
-// Logging system - Variable globale définie dans main.cpp
-// ============================================================================
-extern bool g_verbose;
-#ifdef NOLOG
-#define DEBUG_LOG(x) do {} while(0)
-#else
-#define DEBUG_LOG(x) if (g_verbose) { std::cout << x << std::endl; }
-#endif
+extern "C" {
 #include <libavutil/opt.h>
 }
 
@@ -121,10 +117,10 @@ bool AudioDecoder::open(const std::string& url) {
     const AVInputFormat* inputFormat = nullptr;
     // Detect streaming service URLs proxied through local UPnP servers
     // (e.g., Audirvana relays Qobuz/Tidal via http://192.168.x.x/...qobuz...)
-    std::string urlLower = url;
-    std::transform(urlLower.begin(), urlLower.end(), urlLower.begin(), ::tolower);
-    bool isStreamingProxy = (urlLower.find("qobuz") != std::string::npos ||
-                             urlLower.find("tidal") != std::string::npos);
+    // Use strcasestr() to avoid allocating a full URL copy for case-insensitive search
+    const char* urlCStr = url.c_str();
+    bool isStreamingProxy = (strcasestr(urlCStr, "qobuz") != nullptr ||
+                             strcasestr(urlCStr, "tidal") != nullptr);
 
     bool isLocalServer = !isStreamingProxy &&
                          (url.find("://192.168.") != std::string::npos ||
@@ -999,6 +995,21 @@ size_t AudioDecoder::readSamples(AudioBuffer& buffer, size_t numSamples,
                 int ret = av_read_frame(m_formatContext, m_packet);
                 if (ret < 0) {
                     if (ret == AVERROR_EOF) {
+                        m_eof = true;
+                        DEBUG_LOG("[AudioDecoder] DSD: EOF reached");
+                    } else if (ret == AVERROR(ETIMEDOUT)) {
+                        std::cerr << "[AudioDecoder] DSD: Timeout - connection too slow or lost" << std::endl;
+                        m_eof = true;
+                    } else if (ret == AVERROR(ECONNRESET)) {
+                        std::cerr << "[AudioDecoder] DSD: Connection reset by server" << std::endl;
+                        m_eof = true;
+                    } else if (ret == AVERROR_EXIT) {
+                        std::cerr << "[AudioDecoder] DSD: Exit requested" << std::endl;
+                        m_eof = true;
+                    } else {
+                        char errbuf[AV_ERROR_MAX_STRING_SIZE];
+                        av_strerror(ret, errbuf, sizeof(errbuf));
+                        std::cerr << "[AudioDecoder] DSD: Read error (" << ret << "): " << errbuf << std::endl;
                         m_eof = true;
                     }
                     break;

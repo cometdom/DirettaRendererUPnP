@@ -32,6 +32,7 @@ public:
         bool gaplessEnabled = true;
         int targetIndex = -1;  // -1 = interactive, >= 0 = specific
         std::string networkInterface;  // Empty = auto-detect
+        std::string dropUser;  // Empty = no privilege drop
 
         Config();
     };
@@ -43,6 +44,9 @@ public:
     void stop();
 
     bool isRunning() const { return m_running; }
+
+    /** @brief Dump runtime statistics (called by SIGUSR1 handler) */
+    void dumpStats() const;
 
 private:
     // Thread functions

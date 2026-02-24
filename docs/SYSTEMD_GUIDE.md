@@ -61,9 +61,18 @@ PORT=4005
 # Add "--no-gapless" to disable, leave empty to enable
 GAPLESS=""
 
-# Verbose logging
-# Add "--verbose" to enable debug logs, leave empty for normal output
+# Log verbosity
+# Options: "" (normal), "--verbose" (debug), "--quiet" (warnings only)
 VERBOSE=""
+
+# Drop privileges to this user after initialization
+# The 'diretta' user is created by install.sh
+# Set to "" to stay as root (not recommended for production)
+DROP_USER="diretta"
+
+# Network interface for multi-homed systems (default: auto-detect)
+# Use interface name ("eth0") or IP address ("192.168.1.10")
+NETWORK_INTERFACE=""
 ```
 
 ### Apply Changes
@@ -167,26 +176,59 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=root                          # Run as root (for network capabilities)
+User=root                          # Start as root for network init
 WorkingDirectory=/opt/diretta-renderer-upnp
 EnvironmentFile=-/opt/diretta-renderer-upnp/diretta-renderer.conf
 ExecStart=/opt/diretta-renderer-upnp/start-renderer.sh
 
-# Restart on failure
 Restart=on-failure
 RestartSec=5
 
-# Logging to journald
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=diretta-renderer
 
-# Network capabilities (for raw sockets)
-AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN
+# Capabilities: SETUID/SETGID for privilege drop, then NET_RAW/ADMIN/SYS_NICE
+AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN CAP_SYS_NICE CAP_SETUID CAP_SETGID
+CapabilityBoundingSet=CAP_NET_RAW CAP_NET_ADMIN CAP_SYS_NICE CAP_SETUID CAP_SETGID
+
+# Filesystem: read-only except private /tmp
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadOnlyPaths=/opt/diretta-renderer-upnp
+ReadWritePaths=/var/log
+
+# Kernel/device isolation (no /dev access, no kernel tuning)
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+
+# Security restrictions
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictRealtime=false             # Needed for SCHED_FIFO audio threads
+RestrictSUIDSGID=true
+RemoveIPC=true
+RestrictNamespaces=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_NETLINK AF_UNIX AF_PACKET
+SystemCallArchitectures=native
+SystemCallFilter=~@mount @keyring @debug @module @swap @reboot @obsolete
+
+# Performance
+Nice=-10
+IOSchedulingClass=realtime
+IOSchedulingPriority=0
 
 [Install]
 WantedBy=multi-user.target
 ```
+
+The service starts as root for network initialization (raw sockets, multicast), then drops privileges to the `diretta` user via the `--user` option (configured by `DROP_USER` in the config file). `CAP_SETUID`/`CAP_SETGID` are needed for the `setuid()`/`setgid()` syscalls during the privilege drop. After the drop, only `CAP_NET_RAW`, `CAP_NET_ADMIN`, and `CAP_SYS_NICE` are retained via `capset()`. The `CapabilityBoundingSet` ensures the process can never acquire capabilities beyond those listed.
 
 ---
 
@@ -350,15 +392,11 @@ Service configuration based on recommendations from **Piero** (AudioLinux develo
 
 ## ❓ FAQ
 
-**Q: Why run as root?**
-A: The renderer needs `CAP_NET_RAW` and `CAP_NET_ADMIN` capabilities for network operations. Running as root with `AmbientCapabilities` is the cleanest approach.
+**Q: Why does the service start as root?**
+A: The Diretta SDK needs `CAP_NET_RAW` and `CAP_NET_ADMIN` for raw socket access during initialization. The service starts as root, then drops privileges to the `diretta` user after init completes. Set `DROP_USER="diretta"` in the config file (this is the default).
 
-**Q: Can I run as a non-root user?**
-A: Yes, but you'll need to configure capabilities manually:
-```bash
-sudo setcap cap_net_raw,cap_net_admin+eip /opt/diretta-renderer-upnp/DirettaRendererUPnP
-```
-Then change `User=root` to `User=audiouser` in the service file.
+**Q: Can I disable the privilege drop?**
+A: Yes, set `DROP_USER=""` in `/opt/diretta-renderer-upnp/diretta-renderer.conf` to stay as root. This is not recommended for production.
 
 **Q: How do I see if the renderer is actually playing audio?**
 A: Check the logs:

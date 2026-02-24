@@ -102,6 +102,8 @@ extern LogRing* g_logRing;
 // Debug Logging
 //=============================================================================
 
+#include "LogLevel.h"
+
 extern bool g_verbose;
 
 #ifdef NOLOG
@@ -109,16 +111,16 @@ extern bool g_verbose;
 #define DIRETTA_LOG(msg) do {} while(0)
 #define DIRETTA_LOG_ASYNC(msg) do {} while(0)
 #else
-// Debug build: check g_verbose at runtime
+// DIRETTA_LOG: uses centralized LogLevel system (DEBUG level)
 #define DIRETTA_LOG(msg) do { \
-    if (g_verbose) { \
+    if (g_logLevel >= LogLevel::DEBUG) { \
         std::cout << "[DirettaSync] " << msg << std::endl; \
     } \
 } while(0)
 
-// Async logging macro for hot paths (non-blocking)
+// Async logging macro for hot paths (non-blocking, uses ring buffer)
 #define DIRETTA_LOG_ASYNC(msg) do { \
-    if (g_logRing && g_verbose) { \
+    if (g_logRing && g_logLevel >= LogLevel::DEBUG) { \
         std::ostringstream _oss; \
         _oss << msg; \
         g_logRing->push(_oss.str().c_str()); \
@@ -194,6 +196,8 @@ namespace DirettaBuffer {
     constexpr size_t PCM_PREFILL_MS = 80;                // Local
     constexpr size_t PCM_REMOTE_PREFILL_MS = 150;        // Remote - larger prefill for internet latency
     constexpr size_t PCM_LOWRATE_PREFILL_MS = 100;
+
+    constexpr float REBUFFER_THRESHOLD_PCT = 0.20f;      // Resume playback after 20% buffer refill
 
     constexpr unsigned int DAC_STABILIZATION_MS = 100;
     constexpr unsigned int ONLINE_WAIT_MS = 2000;
@@ -386,6 +390,14 @@ public:
 
     float getBufferLevel() const;
     const AudioFormat& getFormat() const { return m_currentFormat; }
+
+    /**
+     * @brief Dump runtime statistics to stdout
+     *
+     * Shows buffer level, underrun count, stream/push counts, and format info.
+     * Called by SIGUSR1 handler for runtime diagnostics.
+     */
+    void dumpStats() const;
 
     /**
      * @brief Set S24 pack mode hint for 24-bit audio
@@ -606,6 +618,7 @@ private:
     std::atomic<int> m_streamCount{0};
     std::atomic<int> m_pushCount{0};
     std::atomic<uint32_t> m_underrunCount{0};
+    std::atomic<bool> m_rebuffering{false};              // Rebuffering after sustained underrun
 };
 
 #endif // DIRETTA_SYNC_H

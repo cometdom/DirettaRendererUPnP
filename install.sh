@@ -917,12 +917,13 @@ build_renderer() {
     # Set SDK path via environment variable
     export DIRETTA_SDK_PATH="$SDK_PATH"
 
+    # Production build: NOLOG=1 disables SDK internal logging
     # Use local FFmpeg headers if available (for ABI compatibility)
     if [ -d "$FFMPEG_HEADERS_DIR" ] && [ -f "$FFMPEG_HEADERS_DIR/.version" ]; then
         print_info "Building with FFmpeg headers from $FFMPEG_HEADERS_DIR"
-        make FFMPEG_PATH="$FFMPEG_HEADERS_DIR"
+        make NOLOG=1 FFMPEG_PATH="$FFMPEG_HEADERS_DIR"
     else
-        make
+        make NOLOG=1
     fi
 
     if [ ! -f "bin/DirettaRendererUPnP" ]; then
@@ -1097,6 +1098,14 @@ setup_systemd_service() {
     print_info "1. Creating installation directory..."
     sudo mkdir -p "$INSTALL_DIR"
 
+    print_info "1b. Creating system user for privilege drop..."
+    if ! id -u diretta &>/dev/null; then
+        sudo useradd -r -s /usr/sbin/nologin -d "$INSTALL_DIR" diretta
+        print_success "System user 'diretta' created"
+    else
+        print_info "System user 'diretta' already exists"
+    fi
+
     print_info "2. Copying binary..."
     sudo cp "$BINARY_PATH" "$INSTALL_DIR/"
     sudo chmod +x "$INSTALL_DIR/DirettaRendererUPnP"
@@ -1121,6 +1130,7 @@ TARGET="${TARGET:-1}"
 PORT="${PORT:-4005}"
 GAPLESS="${GAPLESS:-}"
 VERBOSE="${VERBOSE:-}"
+DROP_USER="${DROP_USER:-}"
 NETWORK_INTERFACE="${NETWORK_INTERFACE:-}"
 THREAD_MODE="${THREAD_MODE:-}"
 CYCLE_TIME="${CYCLE_TIME:-}"
@@ -1153,12 +1163,17 @@ if [ -n "$NETWORK_INTERFACE" ]; then
     fi
 fi
 
+# Privilege drop
+if [ -n "$DROP_USER" ] && [ "$DROP_USER" != "root" ]; then
+    CMD="$CMD --user $DROP_USER"
+fi
+
 # Gapless
 if [ -n "$GAPLESS" ]; then
     CMD="$CMD $GAPLESS"
 fi
 
-# Verbose
+# Log verbosity (--verbose or --quiet)
 if [ -n "$VERBOSE" ]; then
     CMD="$CMD $VERBOSE"
 fi
@@ -1236,9 +1251,17 @@ PORT=4005
 # Add "--no-gapless" to disable, leave empty to enable
 GAPLESS=""
 
-# Verbose logging
-# Add "--verbose" to enable debug logs, leave empty for normal output
+# Log verbosity
+# Options:
+#   ""          - Normal output (INFO level, default)
+#   "--verbose" - Debug logs (all messages)
+#   "--quiet"   - Warnings and errors only
 VERBOSE=""
+
+# Drop privileges to this user after initialization
+# The 'diretta' user is created automatically by install.sh
+# Set to "" to stay as root (not recommended for production)
+DROP_USER="diretta"
 
 # ============================================================================
 # NETWORK INTERFACE SETTINGS (for multi-homed systems)
@@ -1342,7 +1365,7 @@ CONFIG_EOF
     if [ -f "$SYSTEMD_DIR/diretta-renderer.service" ]; then
         sudo cp "$SYSTEMD_DIR/diretta-renderer.service" "$SERVICE_FILE"
     else
-        # Create service file if not found
+        # Create service file if not found (fallback, matches systemd/diretta-renderer.service)
         sudo tee "$SERVICE_FILE" > /dev/null <<'SERVICE_EOF'
 [Unit]
 Description=Diretta UPnP Renderer
@@ -1355,18 +1378,54 @@ Type=simple
 User=root
 WorkingDirectory=/opt/diretta-renderer-upnp
 EnvironmentFile=-/opt/diretta-renderer-upnp/diretta-renderer.conf
-
-# Use wrapper script to handle complex command building
 ExecStart=/opt/diretta-renderer-upnp/start-renderer.sh
 
+# Restart policy
 Restart=on-failure
 RestartSec=5
+
+# Logging
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=diretta-renderer
-AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN
 
-# Performance optimizations
+# --- Capabilities ---
+# CAP_SETUID/CAP_SETGID: needed for privilege drop (setuid/setgid)
+# CAP_NET_RAW/CAP_NET_ADMIN: needed for Diretta raw sockets
+# CAP_SYS_NICE: needed for real-time thread priority
+AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN CAP_SYS_NICE CAP_SETUID CAP_SETGID
+CapabilityBoundingSet=CAP_NET_RAW CAP_NET_ADMIN CAP_SYS_NICE CAP_SETUID CAP_SETGID
+
+# --- Filesystem isolation ---
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadOnlyPaths=/opt/diretta-renderer-upnp
+ReadWritePaths=/var/log
+
+# --- Device and kernel isolation ---
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+
+# --- Misc hardening ---
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictRealtime=false
+RestrictSUIDSGID=true
+RemoveIPC=true
+RestrictNamespaces=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_NETLINK AF_UNIX AF_PACKET
+
+# --- System call filtering ---
+SystemCallArchitectures=native
+SystemCallFilter=~@mount @keyring @debug @module @swap @reboot @obsolete
+
+# --- Performance ---
 Nice=-10
 IOSchedulingClass=realtime
 IOSchedulingPriority=0

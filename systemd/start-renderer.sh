@@ -9,6 +9,7 @@ TARGET="${TARGET:-1}"
 PORT="${PORT:-4005}"
 GAPLESS="${GAPLESS:-}"
 VERBOSE="${VERBOSE:-}"
+DROP_USER="${DROP_USER:-}"
 NETWORK_INTERFACE="${NETWORK_INTERFACE:-}"
 THREAD_MODE="${THREAD_MODE:-}"
 CYCLE_TIME="${CYCLE_TIME:-}"
@@ -41,12 +42,17 @@ if [ -n "$NETWORK_INTERFACE" ]; then
     fi
 fi
 
+# Privilege drop
+if [ -n "$DROP_USER" ] && [ "$DROP_USER" != "root" ]; then
+    CMD="$CMD --user $DROP_USER"
+fi
+
 # Gapless
 if [ -n "$GAPLESS" ]; then
     CMD="$CMD $GAPLESS"
 fi
 
-# Verbose
+# Log verbosity (--verbose or --quiet)
 if [ -n "$VERBOSE" ]; then
     CMD="$CMD $VERBOSE"
 fi

@@ -73,6 +73,9 @@ DirettaRendererUPnP-L is the **low-latency optimized** fork of DirettaRendererUP
 | `src/main.cpp` | CLI parsing, initialization, signal handling | No |
 | `src/memcpyfast_audio.h` | AVX2/AVX-512 optimized memcpy dispatcher | **Critical** |
 | `src/fastmemcpy-avx.c` | C AVX implementation (x86 only) | **Critical** |
+| `src/PrivilegeDrop.h` | Linux privilege drop with capability retention | No |
+| `src/LogLevel.h` | Centralized log level system (ERROR/WARN/INFO/DEBUG) | No |
+| `src/test_audio_memory.cpp` | 20 unit tests for DirettaRingBuffer | No |
 
 ## Diretta SDK Reference
 
@@ -173,9 +176,9 @@ class RingAccessGuard {
     RingAccessGuard(std::atomic<int>& users, const std::atomic<bool>& reconfiguring)
         : users_(users), active_(false) {
         if (reconfiguring.load(std::memory_order_acquire)) return;
-        users_.fetch_add(1, std::memory_order_acq_rel);
+        users_.fetch_add(1, std::memory_order_acq_rel);  // acq_rel: visible to beginReconfigure + see reconfiguring
         if (reconfiguring.load(std::memory_order_acquire)) {
-            users_.fetch_sub(1, std::memory_order_acq_rel);
+            users_.fetch_sub(1, std::memory_order_relaxed);  // bail-out: never entered guarded section
             return;
         }
         active_ = true;
@@ -214,17 +217,17 @@ The ring buffer auto-detects 24-bit sample alignment on first push:
 
 ### SIMD Format Conversions
 
-All format conversions use 64-byte aligned staging buffers before writing to the ring:
+All format conversions use 64-byte aligned staging buffers before writing to the ring. Both AVX2 (x86-64) and NEON (ARM64) are supported with automatic detection via `DIRETTA_HAS_AVX2` / `DIRETTA_HAS_NEON` macros:
 
-| Conversion | Function | Throughput |
-|------------|----------|------------|
-| 24-bit pack (LSB) | `convert24BitPacked_AVX2()` | 8 samples/instruction |
-| 24-bit pack (MSB) | `convert24BitPackedShifted_AVX2()` | 8 samples/instruction |
-| 16→32 upsample | `convert16To32_AVX2()` | 16 samples/instruction |
-| DSD planar→interleaved | `convertDSD_Passthrough()` | 32 bytes/instruction |
-| DSD bit reversal | `convertDSD_BitReverse()` | 32 bytes/instruction |
-| DSD byte swap | `convertDSD_ByteSwap()` | 32 bytes/instruction |
-| DSD bit reverse + swap | `convertDSD_BitReverseSwap()` | 32 bytes/instruction |
+| Conversion | Function | AVX2 Throughput | NEON Throughput |
+|------------|----------|----------------|-----------------|
+| 24-bit pack (LSB) | `convert24BitPacked_AVX2()` | 8 samples/iter | 4 samples/iter |
+| 24-bit pack (MSB) | `convert24BitPackedShifted_AVX2()` | 8 samples/iter | 4 samples/iter |
+| 16→32 upsample | `convert16To32_AVX2()` | 16 samples/iter | 8 samples/iter |
+| DSD planar→interleaved | `convertDSD_Passthrough()` | 32 bytes/iter | 16 bytes/iter |
+| DSD bit reversal | `convertDSD_BitReverse()` | 32 bytes/iter | 16 bytes/iter |
+| DSD byte swap | `convertDSD_ByteSwap()` | 32 bytes/iter | 16 bytes/iter |
+| DSD bit reverse + swap | `convertDSD_BitReverseSwap()` | 32 bytes/iter | 16 bytes/iter |
 
 ## Buffer Configuration
 
@@ -233,18 +236,22 @@ From `DirettaSync.h` (low-latency tuned):
 ```cpp
 namespace DirettaBuffer {
     constexpr float DSD_BUFFER_SECONDS = 0.8f;
-    constexpr float PCM_BUFFER_SECONDS = 0.3f;   // Was 1.0f - 70% latency reduction
+    constexpr float PCM_BUFFER_SECONDS = 0.5f;          // Local playback
+    constexpr float PCM_REMOTE_BUFFER_SECONDS = 1.0f;   // Remote streaming (Tidal/Qobuz)
 
     constexpr size_t DSD_PREFILL_MS = 200;
-    constexpr size_t PCM_PREFILL_MS = 30;        // Was 50ms - faster start
+    constexpr size_t PCM_PREFILL_MS = 80;
+    constexpr size_t PCM_REMOTE_PREFILL_MS = 150;        // Remote - larger prefill
     constexpr size_t PCM_LOWRATE_PREFILL_MS = 100;
+
+    constexpr float REBUFFER_THRESHOLD_PCT = 0.20f;      // Resume after 20% buffer refill
 
     constexpr unsigned int DAC_STABILIZATION_MS = 100;
     constexpr unsigned int ONLINE_WAIT_MS = 2000;
     constexpr unsigned int FORMAT_SWITCH_DELAY_MS = 800;
-    constexpr unsigned int POST_ONLINE_SILENCE_BUFFERS = 50;
+    constexpr unsigned int POST_ONLINE_SILENCE_BUFFERS = 20;
 
-    constexpr size_t MIN_BUFFER_BYTES = 65536;   // Was 3072000 - allows 300ms at all rates
+    constexpr size_t MIN_BUFFER_BYTES = 65536;
     constexpr size_t MAX_BUFFER_BYTES = 16777216; // 16MB
 }
 ```
@@ -383,10 +390,13 @@ sudo apt install build-essential libavformat-dev libavcodec-dev libavutil-dev li
 - [x] DSD conversion function specialization (4 modes, no per-iteration branches)
 - [x] Pre-transition silence for DSD format changes
 - [x] DSD512 Zen3 warmup fix (MTU-aware buffer scaling)
+- [x] ARM NEON hand-optimized format conversions (PCM + DSD 4 modes)
+- [x] Privilege drop with Linux capabilities (`--user` option)
+- [x] Systemd hardening (20+ security directives, dedicated `diretta` user)
+- [x] Unit tests (20 tests covering PCM, DSD, ring buffer, integration)
 
 ### Potential Future Work
 - [ ] AVX-512 format conversions (currently only memcpy uses AVX-512)
-- [ ] ARM NEON hand-optimized format conversions
 - [ ] Multi-producer ring buffer for multiple audio sources
 - [ ] Adaptive prefetch tuning based on cache behavior
 
