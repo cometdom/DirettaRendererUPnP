@@ -344,7 +344,7 @@ sudo ./DirettaRendererUPnP --target 1 --port 4005
 You should see:
 ```
 ═══════════════════════════════════════════════════════
-  Diretta UPnP Renderer v2.0.3
+  Diretta UPnP Renderer v2.0.4
 ═══════════════════════════════════════════════════════
 
 Configuration:

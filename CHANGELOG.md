@@ -1,6 +1,6 @@
 # Changelog
 
-## [2.0.4] - Unreleased
+## [2.0.4] - 2026-02-24
 
 ### ✨ New Features
 

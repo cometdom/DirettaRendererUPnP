@@ -1,6 +1,6 @@
 # DirettaRendererUPnP Roadmap
 
-## Current Version: v2.0.3
+## Current Version: v2.0.4
 
 ### Status: Stable
 
@@ -111,4 +111,5 @@ For major changes, please open an issue first to discuss.
 | v1.3.3 | 2025 | DSD improvements |
 | v2.0.0 | 2026-01 | Complete rewrite, low-latency |
 | v2.0.3 | 2026-02 | Adaptive buffer, libupnp compat, UPnP fixes |
+| v2.0.4 | 2026-02 | Rebuffering, privilege drop, NEON SIMD, centralized logging |
 | v2.1.0 | TBD | Web interface, advanced tuning |

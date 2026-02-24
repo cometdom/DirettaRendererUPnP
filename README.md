@@ -703,4 +703,4 @@ This software is provided "as is" without warranty. While designed for high-qual
 
 **Enjoy bit-perfect, low-latency audio streaming!**
 
-*Last updated: 2026-02-19 (v2.0.4)*
+*Last updated: 2026-02-24 (v2.0.4)*
