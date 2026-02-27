@@ -512,12 +512,12 @@ bool DirettaRenderer::start() {
                 m_audioEngine->setCurrentURI(m_currentURI, m_currentMetadata, true);
             }
 
-            // v2.0.1 FIX: Use close() instead of release() on Stop
-            // SDK 148 has issues reopening after release() - causes segfault
-            // close() keeps SDK connection open for faster resume
-            // release() is still called on natural track end (TrackEndCallback)
-            if (m_direttaSync) {
-                m_direttaSync->close();
+            // v2.0.5 FIX: Use stopPlayback() instead of close() on Stop
+            // Keeps DirettaSync SDK connection open for "quick resume" path.
+            // Prevents intermittent white noise on hi-res track transitions
+            // caused by target (Holo Red) failing to resync after SDK reopen.
+            if (m_direttaSync && m_direttaSync->isOpen()) {
+                m_direttaSync->stopPlayback(false);
             }
 
             m_upnp->notifyStateChange("STOPPED");
