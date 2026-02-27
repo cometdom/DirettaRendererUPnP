@@ -1,5 +1,15 @@
 # Changelog
 
+## [2.0.5] - 2026-02-27
+
+### 🐛 Bug Fixes
+
+**Fix white noise on Stop for some DACs (contributed by herisson-88):**
+- Changed `onStop` callback to use `stopPlayback()` instead of `close()` on DirettaSync
+- Keeps SDK connection open for quick resume path, preventing DAC resync failures
+- Fixes intermittent white noise on hi-res track transitions reported with Audirvana
+- Added defensive `isOpen()` guard before calling `stopPlayback()`
+
 ## [2.0.4] - 2026-02-24
 
 ### ✨ New Features

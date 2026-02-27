@@ -8,7 +8,7 @@
 
 ---
 
-![Version](https://img.shields.io/badge/version-2.0.4-blue.svg)
+![Version](https://img.shields.io/badge/version-2.0.5-blue.svg)
 ![Low Latency](https://img.shields.io/badge/Latency-Low-green.svg)
 ![SDK](https://img.shields.io/badge/SDK-DIRETTA::Sync-orange.svg)
 ![Audirvana](https://img.shields.io/badge/Audirvana-Compatible-green.svg)

@@ -1,6 +1,6 @@
 # DirettaRendererUPnP Roadmap
 
-## Current Version: v2.0.4
+## Current Version: v2.0.5
 
 ### Status: Stable
 
