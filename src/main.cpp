@@ -160,10 +160,14 @@ DirettaRenderer::Config parseArguments(int argc, char* argv[]) {
         else if (arg == "--transfer-mode" && i + 1 < argc) {
             config.transferMode = argv[++i];
             if (config.transferMode != "auto" && config.transferMode != "varmax" &&
-                config.transferMode != "varauto" && config.transferMode != "fixauto") {
-                std::cerr << "Invalid transfer-mode. Use: auto, varmax, varauto, fixauto" << std::endl;
+                config.transferMode != "varauto" && config.transferMode != "fixauto" &&
+                config.transferMode != "random") {
+                std::cerr << "Invalid transfer-mode. Use: auto, varmax, varauto, fixauto, random" << std::endl;
                 exit(1);
             }
+        }
+        else if (arg == "--target-profile-limit" && i + 1 < argc) {
+            config.targetProfileLimitTime = std::atoi(argv[++i]);
         }
         else if (arg == "--mtu" && i + 1 < argc) {
             config.mtu = std::atoi(argv[++i]);
@@ -185,14 +189,16 @@ DirettaRenderer::Config parseArguments(int argc, char* argv[]) {
                       << "  --help, -h            Show this help\n"
                       << "\n"
                       << "Advanced Diretta SDK settings:\n"
-                      << "  --thread-mode <mode>     SDK thread mode bitmask (default: 1=CRITICAL)\n"
-                      << "                           Flags: 1=CRITICAL, 2=NOSHORTSLEEP, 4=NOSLEEP4CORE,\n"
-                      << "                           16=OCCUPIED, 2048=NOSLEEPFORCE, 8192=NOJUMBOFRAME\n"
-                      << "  --cycle-time <us>        Cycle time in microseconds (333-10000, default: auto)\n"
-                      << "  --info-cycle <us>        Info packet cycle in microseconds (default: cycle-time)\n"
-                      << "  --cycle-min-time <us>    Minimum cycle time in microseconds\n"
-                      << "  --transfer-mode <mode>   Transfer mode: auto, varmax, varauto, fixauto\n"
-                      << "  --mtu <bytes>            MTU override (default: auto-detect)\n"
+                      << "  --thread-mode <mode>       SDK thread mode bitmask (default: 1=CRITICAL)\n"
+                      << "                             Flags: 1=CRITICAL, 2=NOSHORTSLEEP, 4=NOSLEEP4CORE,\n"
+                      << "                             8=SOCKETNOBLOCK, 16=OCCUPIED, 2048=NOSLEEPFORCE,\n"
+                      << "                             8192=NOJUMBOFRAME, 16384=NOFIREWALL, 32768=NORAWSOCKET\n"
+                      << "  --cycle-time <us>          Max cycle time in microseconds (333-10000, default: auto)\n"
+                      << "  --cycle-min-time <us>      Min cycle time in microseconds (random mode only)\n"
+                      << "  --info-cycle <us>          Info packet cycle in microseconds (default: 100000)\n"
+                      << "  --transfer-mode <mode>     Transfer mode: auto, varmax, varauto, fixauto, random\n"
+                      << "  --target-profile-limit <us> Target profile limit time (0=self, default: 200)\n"
+                      << "  --mtu <bytes>              MTU override (default: auto-detect)\n"
                       << std::endl;
             exit(0);
         }

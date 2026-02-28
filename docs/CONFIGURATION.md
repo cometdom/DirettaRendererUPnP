@@ -110,8 +110,12 @@ These options allow fine-tuning the Diretta SDK transmission behavior. **Leave a
 | CRITICAL | 1 | Set sending thread to critical priority |
 | NOSHORTSLEEP | 2 | Busy-loop for short waits (reduces jitter, uses more CPU) |
 | NOSLEEP4CORE | 4 | Only busy-loop if >= 4 CPU cores available |
+| SOCKETNOBLOCK | 8 | Non-blocking socket |
 | OCCUPIED | 16 | Pin SDK thread to CPU core |
+| FEEDBACK | 32/64/128 | Moving average feedback (3 bits) |
 | NOFASTFEEDBACK | 256 | Disable fast feedback mechanism |
+| IDLEONE | 512 | Run idle handler once per cycle |
+| IDLEALL | 1024 | Always run idle handler (busy-loop variant) |
 | NOSLEEPFORCE | 2048 | Force busy-loop regardless of core count |
 | LIMITRESEND | 4096 | Limit retransmission buffer |
 | NOJUMBOFRAME | 8192 | Disable jumbo frame support |
@@ -130,26 +134,26 @@ sudo ./DirettaRendererUPnP --target 1 --thread-mode 17
 #### `--cycle-time <microseconds>`
 **Default**: Auto-calculated (2620 µs base, adapts to format)
 **Range**: 333-10000
-**Description**: Packet transmission cycle time. When specified, disables automatic cycle time calculation. Lower values = more frequent transmissions = lower latency but higher CPU.
+**Description**: Maximum packet transmission cycle time. When specified, disables automatic cycle time calculation. Lower values = more frequent transmissions = lower latency but higher CPU.
 **Example**:
 ```bash
 sudo ./DirettaRendererUPnP --target 1 --cycle-time 5000
 ```
 
 #### `--info-cycle <microseconds>`
-**Default**: Same as cycle-time
+**Default**: 100000 (100ms)
 **Description**: Information packet cycle time passed to the SDK `open()` method. Controls the interval for control/info packets, separate from the data transmission cycle.
 **Example**:
 ```bash
-sudo ./DirettaRendererUPnP --target 1 --info-cycle 5000
+sudo ./DirettaRendererUPnP --target 1 --info-cycle 50000
 ```
 
 #### `--cycle-min-time <microseconds>`
 **Default**: Unused
-**Description**: Minimum cycle time, reserved for advanced transfer mode configurations.
+**Description**: Minimum cycle time, only used in `random` transfer mode.
 **Example**:
 ```bash
-sudo ./DirettaRendererUPnP --target 1 --cycle-min-time 333
+sudo ./DirettaRendererUPnP --target 1 --transfer-mode random --cycle-min-time 333
 ```
 
 #### `--transfer-mode <mode>`
@@ -159,13 +163,29 @@ sudo ./DirettaRendererUPnP --target 1 --cycle-min-time 333
 | Mode | Description |
 |------|-------------|
 | `auto` | Automatic (VarMax for PCM Hi-Res, VarAuto for DSD/low-bitrate) |
-| `varmax` | Variable-size packets, maximum packet size |
-| `varauto` | Variable-size packets, auto-tuned |
-| `fixauto` | Fixed-cycle packets, auto-tuned |
+| `varmax` | Flex cycle, maximum packet size |
+| `varauto` | Flex cycle, auto-tuned |
+| `fixauto` | Fixed cycle, auto-tuned |
+| `random` | Random cycle (uses `--cycle-min-time` as minimum) |
 
 **Example**:
 ```bash
 sudo ./DirettaRendererUPnP --target 1 --transfer-mode fixauto
+```
+
+#### `--target-profile-limit <microseconds>`
+**Default**: 200
+**Description**: Controls how the SDK manages transmission profiles.
+- `0` = **SelfProfile**: the renderer manages its own profile directly
+- `>0` = **TargetProfile**: the SDK auto-adapts the profile based on the target device capabilities, with the specified value as the minimum cycle time limit. Under high system load, the SDK automatically falls back to lighter processing.
+
+**Example**:
+```bash
+# Use TargetProfile with 200µs limit (default)
+sudo ./DirettaRendererUPnP --target 1 --target-profile-limit 200
+
+# Use SelfProfile (direct control)
+sudo ./DirettaRendererUPnP --target 1 --target-profile-limit 0
 ```
 
 #### `--mtu <bytes>`

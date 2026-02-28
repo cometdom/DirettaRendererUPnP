@@ -154,9 +154,13 @@ bool DirettaRenderer::start() {
                 syncConfig.transferMode = DirettaTransferMode::VAR_AUTO;
             else if (m_config.transferMode == "fixauto")
                 syncConfig.transferMode = DirettaTransferMode::FIX_AUTO;
+            else if (m_config.transferMode == "random")
+                syncConfig.transferMode = DirettaTransferMode::RANDOM;
             else
                 syncConfig.transferMode = DirettaTransferMode::AUTO;
         }
+        if (m_config.targetProfileLimitTime >= 0)
+            syncConfig.targetProfileLimitTime = static_cast<unsigned int>(m_config.targetProfileLimitTime);
 
         // Log non-default SDK settings
         if (m_config.threadMode >= 0)
@@ -171,6 +175,9 @@ bool DirettaRenderer::start() {
             std::cout << "[DirettaRenderer] Transfer mode: " << m_config.transferMode << std::endl;
         if (m_config.mtu >= 0)
             std::cout << "[DirettaRenderer] MTU override: " << syncConfig.mtu << std::endl;
+        if (m_config.targetProfileLimitTime >= 0)
+            std::cout << "[DirettaRenderer] Target profile limit: " << syncConfig.targetProfileLimitTime
+                      << " us (" << (syncConfig.targetProfileLimitTime > 0 ? "TargetProfile" : "SelfProfile") << ")" << std::endl;
 
         if (!m_direttaSync->enable(syncConfig)) {
             std::cerr << "[DirettaRenderer] Failed to enable DirettaSync" << std::endl;

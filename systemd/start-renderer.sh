@@ -14,6 +14,8 @@ THREAD_MODE="${THREAD_MODE:-}"
 CYCLE_TIME="${CYCLE_TIME:-}"
 CYCLE_MIN_TIME="${CYCLE_MIN_TIME:-}"
 INFO_CYCLE="${INFO_CYCLE:-}"
+TRANSFER_MODE="${TRANSFER_MODE:-}"
+TARGET_PROFILE_LIMIT="${TARGET_PROFILE_LIMIT:-}"
 MTU_OVERRIDE="${MTU_OVERRIDE:-}"
 
 RENDERER_BIN="/opt/diretta-renderer-upnp/DirettaRendererUPnP"
@@ -66,6 +68,14 @@ fi
 
 if [ -n "$INFO_CYCLE" ]; then
     CMD="$CMD --info-cycle $INFO_CYCLE"
+fi
+
+if [ -n "$TRANSFER_MODE" ]; then
+    CMD="$CMD --transfer-mode $TRANSFER_MODE"
+fi
+
+if [ -n "$TARGET_PROFILE_LIMIT" ]; then
+    CMD="$CMD --target-profile-limit $TARGET_PROFILE_LIMIT"
 fi
 
 if [ -n "$MTU_OVERRIDE" ]; then

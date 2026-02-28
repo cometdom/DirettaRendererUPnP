@@ -5,14 +5,15 @@
 ### ✨ New Features
 
 **Advanced Diretta SDK Settings Exposed via CLI:**
-- `--thread-mode <mode>`: SDK thread mode bitmask (CRITICAL, NOSHORTSLEEP, OCCUPIED, etc.)
-- `--cycle-time <us>`: Packet transmission cycle time in microseconds (disables auto-calculation)
-- `--info-cycle <us>`: Info packet cycle time (separate from data cycle)
-- `--cycle-min-time <us>`: Minimum cycle time for advanced configurations
-- `--transfer-mode <mode>`: Transfer mode selection (auto, varmax, varauto, fixauto)
+- `--thread-mode <mode>`: SDK thread mode bitmask (CRITICAL, NOSHORTSLEEP, SOCKETNOBLOCK, OCCUPIED, etc.)
+- `--cycle-time <us>`: Max packet transmission cycle time in microseconds (disables auto-calculation)
+- `--cycle-min-time <us>`: Min cycle time in microseconds (random mode only)
+- `--info-cycle <us>`: Info packet cycle time (default: 100000µs = 100ms)
+- `--transfer-mode <mode>`: Transfer mode (auto, varmax, varauto, fixauto, random)
+- `--target-profile-limit <us>`: Target profile limit time (0=SelfProfile, default: 200=TargetProfile with auto-adaptation)
 - `--mtu <bytes>`: MTU override (skip auto-detection)
 - These options were available in v1.3.3 and have been reintroduced with the new DirettaSync architecture
-- Systemd configuration (`diretta-renderer.conf`) already supports these settings
+- TargetProfile mode uses SDK `getProfileMaker()` for target-adaptive transmission profiles
 - Refactored SDK `open()` calls into a single `openSDK()` helper to eliminate code duplication
 
 ### 🐛 Bug Fixes

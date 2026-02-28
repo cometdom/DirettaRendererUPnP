@@ -1127,6 +1127,8 @@ THREAD_MODE="${THREAD_MODE:-}"
 CYCLE_TIME="${CYCLE_TIME:-}"
 CYCLE_MIN_TIME="${CYCLE_MIN_TIME:-}"
 INFO_CYCLE="${INFO_CYCLE:-}"
+TRANSFER_MODE="${TRANSFER_MODE:-}"
+TARGET_PROFILE_LIMIT="${TARGET_PROFILE_LIMIT:-}"
 MTU_OVERRIDE="${MTU_OVERRIDE:-}"
 
 RENDERER_BIN="/opt/diretta-renderer-upnp/DirettaRendererUPnP"
@@ -1179,6 +1181,14 @@ fi
 
 if [ -n "$INFO_CYCLE" ]; then
     CMD="$CMD --info-cycle $INFO_CYCLE"
+fi
+
+if [ -n "$TRANSFER_MODE" ]; then
+    CMD="$CMD --transfer-mode $TRANSFER_MODE"
+fi
+
+if [ -n "$TARGET_PROFILE_LIMIT" ]; then
+    CMD="$CMD --target-profile-limit $TARGET_PROFILE_LIMIT"
 fi
 
 if [ -n "$MTU_OVERRIDE" ]; then
@@ -1311,8 +1321,18 @@ NETWORK_INTERFACE=""
 #CYCLE_MIN_TIME=333
 
 # Information Packet Cycle Time (microseconds)
-# Default: 5000 (5ms)
-#INFO_CYCLE=5000
+# Default: 100000 (100ms)
+#INFO_CYCLE=100000
+
+# Transfer Mode
+# Default: auto
+# Options: auto, varmax, varauto, fixauto, random
+#TRANSFER_MODE=auto
+
+# Target Profile Limit Time (microseconds)
+# Default: 200
+# 0 = SelfProfile, >0 = TargetProfile (auto-adapts to system load)
+#TARGET_PROFILE_LIMIT=200
 
 # MTU Override (bytes)
 # Default: auto-detect

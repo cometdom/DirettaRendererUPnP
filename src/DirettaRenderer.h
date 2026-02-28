@@ -36,10 +36,11 @@ public:
         // Advanced Diretta SDK settings (-1 = use default)
         int threadMode = -1;       // SDK THRED_MODE bitmask (default: 1 = CRITICAL)
         int cycleTime = -1;        // Cycle time in µs (default: 2620, auto-calculated)
-        int infoCycle = -1;        // Info packet cycle in µs (default: same as cycleTime)
-        int cycleMinTime = -1;     // Min cycle time in µs (default: unused)
-        std::string transferMode;  // Transfer mode: auto|varmax|varauto|fixauto
+        int infoCycle = -1;        // Info packet cycle in µs (default: 100000 = 100ms)
+        int cycleMinTime = -1;     // Min cycle time in µs (default: unused, random mode only)
+        std::string transferMode;  // Transfer mode: auto|varmax|varauto|fixauto|random
         int mtu = -1;             // MTU override in bytes (default: auto-detect)
+        int targetProfileLimitTime = -1;  // 0=SelfProfile, >0=TargetProfile limit in µs (default: 200)
 
         Config();
     };
