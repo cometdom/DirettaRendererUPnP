@@ -1,4 +1,4 @@
-# Diretta UPnP Renderer v2.0.4
+# Diretta UPnP Renderer v2.0.6
 
 **The world's first native UPnP/DLNA renderer with Diretta protocol support - Low-Latency Edition**
 
@@ -8,24 +8,19 @@
 
 ---
 
-![Version](https://img.shields.io/badge/version-2.0.4-blue.svg)
+![Version](https://img.shields.io/badge/version-2.0.6-blue.svg)
 ![Low Latency](https://img.shields.io/badge/Latency-Low-green.svg)
 ![SDK](https://img.shields.io/badge/SDK-DIRETTA::Sync-orange.svg)
 ![Audirvana](https://img.shields.io/badge/Audirvana-Compatible-green.svg)
 
 ---
 
-## What's New in v2.0.4
+## What's New in v2.0.6
 
-**Security, reliability & streaming resilience.**
+**Stability & compatibility fixes.**
 
-- **Rebuffering on underrun** — when a network stall empties the buffer (Tidal/Qobuz streaming), holds clean silence until the buffer refills to 20%, preventing the "CD skip" stuttering effect
-- **Centralized logging** with 3 verbosity levels: `--quiet` (warnings only), default (INFO), `--verbose` (DEBUG)
-- **Runtime statistics** via `kill -USR1 <pid>` — dump live playback state, buffer fill, and counters to journal
-- **Privilege drop** (`--user <name>`) — start as root for network init, then drop to unprivileged user while retaining required Linux capabilities
-- **Systemd hardening** — 20+ security directives (filesystem isolation, kernel protection, syscall filtering)
-- **ARM NEON SIMD** — hand-optimized DSD (4 modes) and PCM format conversions for Raspberry Pi 4/5
-- **20 unit tests** for DirettaRingBuffer covering all conversion functions (`make test`)
+- **Stop action fix** (by herisson-88) — uses `stopPlayback()` instead of `close()` on UPnP Stop, keeping the SDK connection open for faster resume and preventing white noise on hi-res transitions (Holo Red and similar targets)
+- **libupnp auto-detection** — Makefile uses `pkg-config` to detect libupnp include paths, fixing compilation on GentooPlayer and other non-standard distributions
 
 See [CHANGELOG.md](CHANGELOG.md) for details.
 
@@ -33,6 +28,7 @@ See [CHANGELOG.md](CHANGELOG.md) for details.
 
 | Version | Highlights |
 |---------|-----------|
+| **v2.0.4** | Centralized logging, rebuffering on underrun, ARM NEON SIMD, systemd hardening, unit tests |
 | **v2.0.3** | Audirvana compatibility (UPnP event deduplication), adaptive buffer for remote streaming |
 | **v2.0.2** | Native DSD from Audirvana (DSDIFF parser), UPnP event notifications, gapless preload |
 | **v2.0.1** | 24-bit white noise fix for DACs without 32-bit support |
@@ -230,7 +226,7 @@ The renderer automatically detects and optimizes for your CPU:
 
 ## Upgrading
 
-### From v2.0.3 to v2.0.4
+### From v2.0.4 to v2.0.6
 
 No configuration changes needed. Just rebuild and reinstall:
 
@@ -703,4 +699,4 @@ This software is provided "as is" without warranty. While designed for high-qual
 
 **Enjoy bit-perfect, low-latency audio streaming!**
 
-*Last updated: 2026-02-24 (v2.0.4)*
+*Last updated: 2026-02-28 (v2.0.6)*

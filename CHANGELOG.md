@@ -1,5 +1,21 @@
 # Changelog
 
+## [2.0.6] - Unreleased
+
+### 🐛 Bug Fixes
+
+**Stop Action Uses stopPlayback() Instead of close() (fix by herisson-88):**
+- Changed UPnP Stop handler from `close()` to `stopPlayback(false)` in DirettaSync
+- Keeps SDK connection open for faster "quick resume" path on next Play
+- Prevents intermittent white noise on hi-res track transitions caused by target (e.g., Holo Red) failing to resync after SDK reopen
+
+**Auto-Detect libupnp Include Path:**
+- Makefile now uses `pkg-config --cflags libupnp` to detect the correct include path
+- Falls back to standard path detection if pkg-config is not available
+- Fixes compilation on systems where libupnp headers are in non-standard locations (e.g., GentooPlayer on RPi4)
+
+---
+
 ## [2.0.4] - 2026-02-24
 
 ### ✨ New Features
