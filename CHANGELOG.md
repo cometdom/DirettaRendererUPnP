@@ -16,6 +16,13 @@
 - TargetProfile mode uses SDK `getProfileMaker()` for target-adaptive transmission profiles
 - Refactored SDK `open()` calls into a single `openSDK()` helper to eliminate code duplication
 
+**Automatic Configuration Migration on Upgrade:**
+- When upgrading, `install.sh` now automatically migrates your settings from the old `diretta-renderer.conf` to the new template
+- Old config is backed up as `diretta-renderer.conf.bak`
+- User settings (TARGET, PORT, NETWORK_INTERFACE, etc.) are preserved and applied to the new file
+- New options (SDK settings) appear with their default values, ready to customize
+- Obsolete settings (e.g., `DROP_USER` from v2.0.5) are detected and reported
+
 ### 🐛 Bug Fixes
 
 **Stop Action Uses stopPlayback() Instead of close() (fix by herisson-88):**

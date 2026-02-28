@@ -17,10 +17,13 @@
 
 ## What's New in v2.0.6
 
-**Stability & compatibility fixes.**
+**Advanced SDK settings, stability & compatibility fixes.**
 
+- **Advanced Diretta SDK settings** — All tuning options from v1.3.3 are back: `--thread-mode`, `--cycle-time`, `--info-cycle`, `--transfer-mode`, `--target-profile-limit`, `--mtu` (see [Command Line Options](#advanced-diretta-sdk-settings) and [docs/CONFIGURATION.md](docs/CONFIGURATION.md))
+- **Automatic config migration** — Upgrading from a previous version? `install.sh` now automatically migrates your settings to the new config file (backup saved as `.bak`)
 - **Stop action fix** (by herisson-88) — uses `stopPlayback()` instead of `close()` on UPnP Stop, keeping the SDK connection open for faster resume and preventing white noise on hi-res transitions (Holo Red and similar targets)
 - **libupnp auto-detection** — Makefile uses `pkg-config` to detect libupnp include paths, fixing compilation on GentooPlayer and other non-standard distributions
+- **Privilege drop removed** — The `--user`/`DROP_USER` feature has been removed (caused SCHED_FIFO loss on worker threads)
 
 See [CHANGELOG.md](CHANGELOG.md) for details.
 
@@ -226,27 +229,34 @@ The renderer automatically detects and optimizes for your CPU:
 
 ## Upgrading
 
-### From v2.0.4 to v2.0.6
+### From v2.0.4/v2.0.5 to v2.0.6
 
-No configuration changes needed. Just rebuild and reinstall:
+The configuration file has changed significantly in v2.0.6 (new SDK settings, removed options). The installer **automatically migrates your settings**:
 
 ```bash
 # 1. Stop the service
 sudo systemctl stop diretta-renderer
 
-# 2. Pull the latest version and rebuild
+# 2. Pull the latest version
 cd ~/DirettaRendererUPnP
 git pull
 
-
-# 3. Re-run the installer (reinstalls binary + systemd service)
+# 3. Re-run the installer (rebuilds, migrates config, reinstalls service)
 ./install.sh
+# Select: Full install or Build + Service
 
 # 4. Restart the service
 sudo systemctl start diretta-renderer
 ```
 
-> **Note:** Your existing configuration (`diretta-renderer.conf`) is preserved.
+**What happens during upgrade:**
+- Your old `diretta-renderer.conf` is backed up as `diretta-renderer.conf.bak`
+- A fresh config template is installed with all new v2.0.6 options
+- Your existing settings (TARGET, PORT, NETWORK_INTERFACE, etc.) are **automatically migrated** to the new file
+- Obsolete settings (e.g., `DROP_USER`) are detected and skipped with a warning
+- New advanced SDK settings appear commented with their default values, ready to customize
+
+> **Tip:** After upgrading, review the new options in `/opt/diretta-renderer-upnp/diretta-renderer.conf` — the advanced Diretta SDK settings section allows fine-tuning of thread priority, transfer mode, and timing parameters.
 
 ### From v1.x (clean install required)
 
@@ -574,6 +584,22 @@ For a dedicated audio server, **nosmt** mode provides more consistent latency be
 --interface <name>      Bind to specific network interface
 ```
 
+### Advanced Diretta SDK Settings
+
+These options allow fine-tuning the Diretta SDK transmission behavior. **Leave at defaults unless you have a specific reason to change them.** See [docs/CONFIGURATION.md](docs/CONFIGURATION.md) for detailed documentation.
+
+```bash
+--thread-mode <mode>        SDK thread mode bitmask (default: 1=CRITICAL)
+--cycle-time <us>           Max cycle time in microseconds (333-10000, default: auto)
+--cycle-min-time <us>       Min cycle time in microseconds (random mode only)
+--info-cycle <us>           Info packet cycle in microseconds (default: 100000)
+--transfer-mode <mode>      Transfer mode: auto, varmax, varauto, fixauto, random
+--target-profile-limit <us> Target profile limit (0=SelfProfile, default: 200)
+--mtu <bytes>               MTU override (default: auto-detect)
+```
+
+> **Note:** These options were available in v1.3.3 and have been reintroduced with the v2.x architecture. They can also be set in `diretta-renderer.conf` for systemd service use.
+
 ### Examples
 
 ```bash
@@ -591,6 +617,9 @@ sudo ./bin/DirettaRendererUPnP --target 1 --verbose
 
 # Bind to specific network interface
 sudo ./bin/DirettaRendererUPnP --target 1 --interface eth0
+
+# Advanced: Custom thread mode and transfer mode
+sudo ./bin/DirettaRendererUPnP --target 1 --thread-mode 17 --transfer-mode fixauto
 ```
 
 ---
