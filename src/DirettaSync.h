@@ -295,6 +295,8 @@ struct DirettaConfig {
     int threadMode = 1;
     unsigned int mtu = 0;  // 0 = auto-detect
     unsigned int mtuFallback = 1500;
+    unsigned int infoCycle = 0;      // 0 = use cycleTime as info cycle
+    unsigned int cycleMinTime = 0;   // 0 = unused (reserved for configTransferAuto)
     unsigned int dacStabilizationMs = DirettaBuffer::DAC_STABILIZATION_MS;
     unsigned int onlineWaitMs = DirettaBuffer::ONLINE_WAIT_MS;
     unsigned int formatSwitchDelayMs = DirettaBuffer::FORMAT_SWITCH_DELAY_MS;
@@ -469,6 +471,7 @@ private:
     bool discoverTarget();
     bool measureMTU();
     bool openSyncConnection();
+    bool openSDK();  // Helper: calls DIRETTA::Sync::open() with config params
     bool reopenForFormatChange();
     void fullReset();
     void shutdownWorker();

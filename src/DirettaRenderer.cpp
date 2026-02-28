@@ -133,6 +133,45 @@ bool DirettaRenderer::start() {
         }
 
         DirettaConfig syncConfig;
+
+        // Apply user-specified SDK settings (override defaults)
+        if (m_config.threadMode >= 0)
+            syncConfig.threadMode = m_config.threadMode;
+        if (m_config.cycleTime >= 0) {
+            syncConfig.cycleTime = static_cast<unsigned int>(m_config.cycleTime);
+            syncConfig.cycleTimeAuto = false;
+        }
+        if (m_config.infoCycle >= 0)
+            syncConfig.infoCycle = static_cast<unsigned int>(m_config.infoCycle);
+        if (m_config.cycleMinTime >= 0)
+            syncConfig.cycleMinTime = static_cast<unsigned int>(m_config.cycleMinTime);
+        if (m_config.mtu >= 0)
+            syncConfig.mtu = static_cast<unsigned int>(m_config.mtu);
+        if (!m_config.transferMode.empty()) {
+            if (m_config.transferMode == "varmax")
+                syncConfig.transferMode = DirettaTransferMode::VAR_MAX;
+            else if (m_config.transferMode == "varauto")
+                syncConfig.transferMode = DirettaTransferMode::VAR_AUTO;
+            else if (m_config.transferMode == "fixauto")
+                syncConfig.transferMode = DirettaTransferMode::FIX_AUTO;
+            else
+                syncConfig.transferMode = DirettaTransferMode::AUTO;
+        }
+
+        // Log non-default SDK settings
+        if (m_config.threadMode >= 0)
+            std::cout << "[DirettaRenderer] Thread mode: " << syncConfig.threadMode << std::endl;
+        if (m_config.cycleTime >= 0)
+            std::cout << "[DirettaRenderer] Cycle time: " << syncConfig.cycleTime << " us (auto disabled)" << std::endl;
+        if (m_config.infoCycle >= 0)
+            std::cout << "[DirettaRenderer] Info cycle: " << syncConfig.infoCycle << " us" << std::endl;
+        if (m_config.cycleMinTime >= 0)
+            std::cout << "[DirettaRenderer] Cycle min time: " << syncConfig.cycleMinTime << " us" << std::endl;
+        if (!m_config.transferMode.empty())
+            std::cout << "[DirettaRenderer] Transfer mode: " << m_config.transferMode << std::endl;
+        if (m_config.mtu >= 0)
+            std::cout << "[DirettaRenderer] MTU override: " << syncConfig.mtu << std::endl;
+
         if (!m_direttaSync->enable(syncConfig)) {
             std::cerr << "[DirettaRenderer] Failed to enable DirettaSync" << std::endl;
             return false;

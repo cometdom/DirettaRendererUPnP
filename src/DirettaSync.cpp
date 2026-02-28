@@ -158,9 +158,17 @@ void DirettaSync::disable() {
     DIRETTA_LOG("Disabled");
 }
 
-bool DirettaSync::openSyncConnection() {
-    ACQUA::Clock cycleTime = ACQUA::Clock::MicroSeconds(m_config.cycleTime);
+bool DirettaSync::openSDK() {
+    ACQUA::Clock infoCycle = (m_config.infoCycle > 0)
+        ? ACQUA::Clock::MicroSeconds(m_config.infoCycle)
+        : ACQUA::Clock::MicroSeconds(m_config.cycleTime);
+    return DIRETTA::Sync::open(
+        DIRETTA::Sync::THRED_MODE(m_config.threadMode),
+        infoCycle, 0, "DirettaRenderer", 0x44525400,
+        -1, -1, 0, DIRETTA::Sync::MSMODE_AUTO);
+}
 
+bool DirettaSync::openSyncConnection() {
     DIRETTA_LOG("Opening DIRETTA::Sync with threadMode=" << m_config.threadMode);
 
     bool opened = false;
@@ -169,10 +177,7 @@ bool DirettaSync::openSyncConnection() {
             DIRETTA_LOG("open() retry #" << attempt);
             std::this_thread::sleep_for(std::chrono::milliseconds(DirettaRetry::OPEN_DELAY_MS));
         }
-        opened = DIRETTA::Sync::open(
-            DIRETTA::Sync::THRED_MODE(m_config.threadMode),
-            cycleTime, 0, "DirettaRenderer", 0x44525400,
-            -1, -1, 0, DIRETTA::Sync::MSMODE_AUTO);
+        opened = openSDK();
     }
 
     if (!opened) {
@@ -533,11 +538,7 @@ bool DirettaSync::open(const AudioFormat& format) {
                 interruptibleWait(m_transitionMutex, m_transitionCv, m_transitionWakeup, resetDelayMs);
 
                 // Reopen DIRETTA::Sync fresh
-                ACQUA::Clock cycleTime = ACQUA::Clock::MicroSeconds(m_config.cycleTime);
-                if (!DIRETTA::Sync::open(
-                        DIRETTA::Sync::THRED_MODE(m_config.threadMode),
-                        cycleTime, 0, "DirettaRenderer", 0x44525400,
-                        -1, -1, 0, DIRETTA::Sync::MSMODE_AUTO)) {
+                if (!openSDK()) {
                     std::cerr << "[DirettaSync] Failed to re-open DIRETTA::Sync" << std::endl;
                     return false;
                 }
@@ -581,11 +582,7 @@ bool DirettaSync::open(const AudioFormat& format) {
                 interruptibleWait(m_transitionMutex, m_transitionCv, m_transitionWakeup, resetDelayMs);
 
                 // Reopen DIRETTA::Sync fresh
-                ACQUA::Clock cycleTime = ACQUA::Clock::MicroSeconds(m_config.cycleTime);
-                if (!DIRETTA::Sync::open(
-                        DIRETTA::Sync::THRED_MODE(m_config.threadMode),
-                        cycleTime, 0, "DirettaRenderer", 0x44525400,
-                        -1, -1, 0, DIRETTA::Sync::MSMODE_AUTO)) {
+                if (!openSDK()) {
                     std::cerr << "[DirettaSync] Failed to re-open DIRETTA::Sync" << std::endl;
                     return false;
                 }
@@ -862,12 +859,7 @@ bool DirettaSync::reopenForFormatChange() {
     interruptibleWait(m_transitionMutex, m_transitionCv, m_transitionWakeup,
                       static_cast<int>(m_config.formatSwitchDelayMs));
 
-    ACQUA::Clock cycleTime = ACQUA::Clock::MicroSeconds(m_config.cycleTime);
-
-    if (!DIRETTA::Sync::open(
-            DIRETTA::Sync::THRED_MODE(m_config.threadMode),
-            cycleTime, 0, "DirettaRenderer", 0x44525400,
-            -1, -1, 0, DIRETTA::Sync::MSMODE_AUTO)) {
+    if (!openSDK()) {
         std::cerr << "[DirettaSync] Failed to re-open sync" << std::endl;
         return false;
     }

@@ -2,6 +2,19 @@
 
 ## [2.0.6] - Unreleased
 
+### ✨ New Features
+
+**Advanced Diretta SDK Settings Exposed via CLI:**
+- `--thread-mode <mode>`: SDK thread mode bitmask (CRITICAL, NOSHORTSLEEP, OCCUPIED, etc.)
+- `--cycle-time <us>`: Packet transmission cycle time in microseconds (disables auto-calculation)
+- `--info-cycle <us>`: Info packet cycle time (separate from data cycle)
+- `--cycle-min-time <us>`: Minimum cycle time for advanced configurations
+- `--transfer-mode <mode>`: Transfer mode selection (auto, varmax, varauto, fixauto)
+- `--mtu <bytes>`: MTU override (skip auto-detection)
+- These options were available in v1.3.3 and have been reintroduced with the new DirettaSync architecture
+- Systemd configuration (`diretta-renderer.conf`) already supports these settings
+- Refactored SDK `open()` calls into a single `openSDK()` helper to eliminate code duplication
+
 ### 🐛 Bug Fixes
 
 **Stop Action Uses stopPlayback() Instead of close() (fix by herisson-88):**

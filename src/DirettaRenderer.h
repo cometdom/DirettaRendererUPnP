@@ -33,6 +33,14 @@ public:
         int targetIndex = -1;  // -1 = interactive, >= 0 = specific
         std::string networkInterface;  // Empty = auto-detect
 
+        // Advanced Diretta SDK settings (-1 = use default)
+        int threadMode = -1;       // SDK THRED_MODE bitmask (default: 1 = CRITICAL)
+        int cycleTime = -1;        // Cycle time in µs (default: 2620, auto-calculated)
+        int infoCycle = -1;        // Info packet cycle in µs (default: same as cycleTime)
+        int cycleMinTime = -1;     // Min cycle time in µs (default: unused)
+        std::string transferMode;  // Transfer mode: auto|varmax|varauto|fixauto
+        int mtu = -1;             // MTU override in bytes (default: auto-detect)
+
         Config();
     };
 

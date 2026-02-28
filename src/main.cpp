@@ -141,6 +141,33 @@ DirettaRenderer::Config parseArguments(int argc, char* argv[]) {
             g_logLevel = LogLevel::WARN;
             std::cout << "Quiet mode enabled (log level: WARN)" << std::endl;
         }
+        // Advanced Diretta SDK settings
+        else if (arg == "--thread-mode" && i + 1 < argc) {
+            config.threadMode = std::atoi(argv[++i]);
+        }
+        else if (arg == "--cycle-time" && i + 1 < argc) {
+            config.cycleTime = std::atoi(argv[++i]);
+            if (config.cycleTime < 333 || config.cycleTime > 10000) {
+                std::cerr << "Warning: cycle-time should be between 333-10000 us" << std::endl;
+            }
+        }
+        else if (arg == "--info-cycle" && i + 1 < argc) {
+            config.infoCycle = std::atoi(argv[++i]);
+        }
+        else if (arg == "--cycle-min-time" && i + 1 < argc) {
+            config.cycleMinTime = std::atoi(argv[++i]);
+        }
+        else if (arg == "--transfer-mode" && i + 1 < argc) {
+            config.transferMode = argv[++i];
+            if (config.transferMode != "auto" && config.transferMode != "varmax" &&
+                config.transferMode != "varauto" && config.transferMode != "fixauto") {
+                std::cerr << "Invalid transfer-mode. Use: auto, varmax, varauto, fixauto" << std::endl;
+                exit(1);
+            }
+        }
+        else if (arg == "--mtu" && i + 1 < argc) {
+            config.mtu = std::atoi(argv[++i]);
+        }
         else if (arg == "--help" || arg == "-h") {
             std::cout << "Diretta UPnP Renderer (Simplified Architecture)\n\n"
                       << "Usage: " << argv[0] << " [options]\n\n"
@@ -156,6 +183,16 @@ DirettaRenderer::Config parseArguments(int argc, char* argv[]) {
                       << "  --quiet, -q           Quiet mode - only errors and warnings (log level: WARN)\n"
                       << "  --version, -V         Show version information\n"
                       << "  --help, -h            Show this help\n"
+                      << "\n"
+                      << "Advanced Diretta SDK settings:\n"
+                      << "  --thread-mode <mode>     SDK thread mode bitmask (default: 1=CRITICAL)\n"
+                      << "                           Flags: 1=CRITICAL, 2=NOSHORTSLEEP, 4=NOSLEEP4CORE,\n"
+                      << "                           16=OCCUPIED, 2048=NOSLEEPFORCE, 8192=NOJUMBOFRAME\n"
+                      << "  --cycle-time <us>        Cycle time in microseconds (333-10000, default: auto)\n"
+                      << "  --info-cycle <us>        Info packet cycle in microseconds (default: cycle-time)\n"
+                      << "  --cycle-min-time <us>    Minimum cycle time in microseconds\n"
+                      << "  --transfer-mode <mode>   Transfer mode: auto, varmax, varauto, fixauto\n"
+                      << "  --mtu <bytes>            MTU override (default: auto-detect)\n"
                       << std::endl;
             exit(0);
         }
