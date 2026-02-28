@@ -65,11 +65,6 @@ GAPLESS=""
 # Options: "" (normal), "--verbose" (debug), "--quiet" (warnings only)
 VERBOSE=""
 
-# Drop privileges to this user after initialization
-# The 'diretta' user is created by install.sh
-# Set to "" to stay as root (not recommended for production)
-DROP_USER="diretta"
-
 # Network interface for multi-homed systems (default: auto-detect)
 # Use interface name ("eth0") or IP address ("192.168.1.10")
 NETWORK_INTERFACE=""
@@ -188,9 +183,9 @@ StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=diretta-renderer
 
-# Capabilities: SETUID/SETGID for privilege drop, then NET_RAW/ADMIN/SYS_NICE
-AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN CAP_SYS_NICE CAP_SETUID CAP_SETGID
-CapabilityBoundingSet=CAP_NET_RAW CAP_NET_ADMIN CAP_SYS_NICE CAP_SETUID CAP_SETGID
+# Capabilities: NET_RAW/ADMIN for Diretta raw sockets, SYS_NICE for SCHED_FIFO
+AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN CAP_SYS_NICE
+CapabilityBoundingSet=CAP_NET_RAW CAP_NET_ADMIN CAP_SYS_NICE
 
 # Filesystem: read-only except private /tmp
 ProtectSystem=strict
@@ -228,7 +223,7 @@ IOSchedulingPriority=0
 WantedBy=multi-user.target
 ```
 
-The service starts as root for network initialization (raw sockets, multicast), then drops privileges to the `diretta` user via the `--user` option (configured by `DROP_USER` in the config file). `CAP_SETUID`/`CAP_SETGID` are needed for the `setuid()`/`setgid()` syscalls during the privilege drop. After the drop, only `CAP_NET_RAW`, `CAP_NET_ADMIN`, and `CAP_SYS_NICE` are retained via `capset()`. The `CapabilityBoundingSet` ensures the process can never acquire capabilities beyond those listed.
+The service runs as root to ensure full access to raw sockets (Diretta protocol) and real-time thread priorities (SCHED_FIFO). The `CapabilityBoundingSet` restricts the process to only the capabilities it needs: `CAP_NET_RAW`/`CAP_NET_ADMIN` for network operations and `CAP_SYS_NICE` for real-time scheduling. The filesystem and kernel hardening directives provide security isolation without impacting audio performance.
 
 ---
 
@@ -392,11 +387,8 @@ Service configuration based on recommendations from **Piero** (AudioLinux develo
 
 ## ❓ FAQ
 
-**Q: Why does the service start as root?**
-A: The Diretta SDK needs `CAP_NET_RAW` and `CAP_NET_ADMIN` for raw socket access during initialization. The service starts as root, then drops privileges to the `diretta` user after init completes. Set `DROP_USER="diretta"` in the config file (this is the default).
-
-**Q: Can I disable the privilege drop?**
-A: Yes, set `DROP_USER=""` in `/opt/diretta-renderer-upnp/diretta-renderer.conf` to stay as root. This is not recommended for production.
+**Q: Why does the service run as root?**
+A: The Diretta SDK needs `CAP_NET_RAW` and `CAP_NET_ADMIN` for raw socket access, and `CAP_SYS_NICE` for real-time thread priorities (SCHED_FIFO). Running as root on a dedicated audio machine is the recommended approach — it guarantees optimal scheduling for the audio worker threads.
 
 **Q: How do I see if the renderer is actually playing audio?**
 A: Check the logs:

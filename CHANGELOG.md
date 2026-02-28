@@ -14,6 +14,15 @@
 - Falls back to standard path detection if pkg-config is not available
 - Fixes compilation on systems where libupnp headers are in non-standard locations (e.g., GentooPlayer on RPi4)
 
+### 🗑️ Removed
+
+**Privilege Drop (`--user` / `DROP_USER`) Removed:**
+- Removed `--user` / `-u` command-line option and `DROP_USER` configuration setting
+- Removed `PrivilegeDrop.h` module
+- All users run dedicated audio machines where privilege isolation provides no benefit
+- Running as root guarantees SCHED_FIFO real-time priority on worker threads — a bug in capability inheritance caused worker threads to lose SCHED_FIFO when dropping to an unprivileged user, resulting in degraded audio quality
+- Systemd service simplified: removed `CAP_SETUID`/`CAP_SETGID` from `AmbientCapabilities` and `CapabilityBoundingSet`
+
 ---
 
 ## [2.0.4] - 2026-02-24

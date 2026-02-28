@@ -571,7 +571,6 @@ For a dedicated audio server, **nosmt** mode provides more consistent latency be
 --list-targets          List available Diretta targets and exit
 --verbose, -v           Enable verbose debug output (log level: DEBUG)
 --quiet, -q             Quiet mode - only errors and warnings (log level: WARN)
---user, -u <name>       Drop privileges to user after network init
 --interface <name>      Bind to specific network interface
 ```
 

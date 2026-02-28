@@ -1098,14 +1098,6 @@ setup_systemd_service() {
     print_info "1. Creating installation directory..."
     sudo mkdir -p "$INSTALL_DIR"
 
-    print_info "1b. Creating system user for privilege drop..."
-    if ! id -u diretta &>/dev/null; then
-        sudo useradd -r -s /usr/sbin/nologin -d "$INSTALL_DIR" diretta
-        print_success "System user 'diretta' created"
-    else
-        print_info "System user 'diretta' already exists"
-    fi
-
     print_info "2. Copying binary..."
     sudo cp "$BINARY_PATH" "$INSTALL_DIR/"
     sudo chmod +x "$INSTALL_DIR/DirettaRendererUPnP"
@@ -1130,7 +1122,6 @@ TARGET="${TARGET:-1}"
 PORT="${PORT:-4005}"
 GAPLESS="${GAPLESS:-}"
 VERBOSE="${VERBOSE:-}"
-DROP_USER="${DROP_USER:-}"
 NETWORK_INTERFACE="${NETWORK_INTERFACE:-}"
 THREAD_MODE="${THREAD_MODE:-}"
 CYCLE_TIME="${CYCLE_TIME:-}"
@@ -1161,11 +1152,6 @@ if [ -n "$NETWORK_INTERFACE" ]; then
         echo "Binding to network interface: $NETWORK_INTERFACE"
         CMD="$CMD --interface $NETWORK_INTERFACE"
     fi
-fi
-
-# Privilege drop
-if [ -n "$DROP_USER" ] && [ "$DROP_USER" != "root" ]; then
-    CMD="$CMD --user $DROP_USER"
 fi
 
 # Gapless
@@ -1257,11 +1243,6 @@ GAPLESS=""
 #   "--verbose" - Debug logs (all messages)
 #   "--quiet"   - Warnings and errors only
 VERBOSE=""
-
-# Drop privileges to this user after initialization
-# The 'diretta' user is created automatically by install.sh
-# Set to "" to stay as root (not recommended for production)
-DROP_USER="diretta"
 
 # ============================================================================
 # NETWORK INTERFACE SETTINGS (for multi-homed systems)

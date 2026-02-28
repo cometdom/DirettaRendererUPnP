@@ -73,7 +73,6 @@ DirettaRendererUPnP-L is the **low-latency optimized** fork of DirettaRendererUP
 | `src/main.cpp` | CLI parsing, initialization, signal handling | No |
 | `src/memcpyfast_audio.h` | AVX2/AVX-512 optimized memcpy dispatcher | **Critical** |
 | `src/fastmemcpy-avx.c` | C AVX implementation (x86 only) | **Critical** |
-| `src/PrivilegeDrop.h` | Linux privilege drop with capability retention | No |
 | `src/LogLevel.h` | Centralized log level system (ERROR/WARN/INFO/DEBUG) | No |
 | `src/test_audio_memory.cpp` | 20 unit tests for DirettaRingBuffer | No |
 
@@ -391,8 +390,7 @@ sudo apt install build-essential libavformat-dev libavcodec-dev libavutil-dev li
 - [x] Pre-transition silence for DSD format changes
 - [x] DSD512 Zen3 warmup fix (MTU-aware buffer scaling)
 - [x] ARM NEON hand-optimized format conversions (PCM + DSD 4 modes)
-- [x] Privilege drop with Linux capabilities (`--user` option)
-- [x] Systemd hardening (20+ security directives, dedicated `diretta` user)
+- [x] Systemd hardening (20+ security directives)
 - [x] Unit tests (20 tests covering PCM, DSD, ring buffer, integration)
 
 ### Potential Future Work

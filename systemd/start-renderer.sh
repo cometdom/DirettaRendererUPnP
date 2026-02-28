@@ -9,7 +9,6 @@ TARGET="${TARGET:-1}"
 PORT="${PORT:-4005}"
 GAPLESS="${GAPLESS:-}"
 VERBOSE="${VERBOSE:-}"
-DROP_USER="${DROP_USER:-}"
 NETWORK_INTERFACE="${NETWORK_INTERFACE:-}"
 THREAD_MODE="${THREAD_MODE:-}"
 CYCLE_TIME="${CYCLE_TIME:-}"
@@ -40,11 +39,6 @@ if [ -n "$NETWORK_INTERFACE" ]; then
         echo "Binding to network interface: $NETWORK_INTERFACE"
         CMD="$CMD --interface $NETWORK_INTERFACE"
     fi
-fi
-
-# Privilege drop
-if [ -n "$DROP_USER" ] && [ "$DROP_USER" != "root" ]; then
-    CMD="$CMD --user $DROP_USER"
 fi
 
 # Gapless

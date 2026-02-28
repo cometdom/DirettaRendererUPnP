@@ -94,14 +94,6 @@ sudo ./DirettaRendererUPnP --target 1 --verbose
 sudo ./DirettaRendererUPnP --target 1 --quiet
 ```
 
-#### `--user, -u <name>`
-**Default**: No privilege drop (stays as root)
-**Description**: Drop root privileges to the specified user after network initialization. The process retains `CAP_NET_RAW`, `CAP_NET_ADMIN`, and `CAP_SYS_NICE` capabilities via Linux `capset()` syscall. Requires starting as root.
-**Example**:
-```bash
-sudo ./DirettaRendererUPnP --target 1 --user diretta
-```
-
 #### `--version, -V`
 **Description**: Show version information and exit
 
