@@ -140,7 +140,7 @@ enum class DirettaTransferMode { FIX_AUTO, VAR_AUTO, VAR_MAX, AUTO };
 //=============================================================================
 
 struct DirettaConfig {
-    unsigned int cycleTime = 2620;
+    unsigned int cycleTime = 10000;
     bool cycleTimeAuto = true;
     DirettaTransferMode transferMode = DirettaTransferMode::AUTO;
     int threadMode = 1;

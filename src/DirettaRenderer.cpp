@@ -33,6 +33,12 @@ namespace FlowControl {
 }
 
 //=============================================================================
+// Auto-release: free Diretta target after idle for coexistence
+//=============================================================================
+
+static constexpr int IDLE_RELEASE_TIMEOUT_S = 5;
+
+//=============================================================================
 // UUID Generation
 //=============================================================================
 
@@ -488,6 +494,10 @@ bool DirettaRenderer::start() {
             std::cout << "[DirettaRenderer] Play" << std::endl;
             std::lock_guard<std::mutex> lock(m_mutex);
 
+            // Cancel idle release timer
+            m_idleTimerActive.store(false, std::memory_order_release);
+            m_direttaReleased.store(false, std::memory_order_release);
+
             // Resume from pause?
             if (m_direttaSync && m_direttaSync->isOpen() && m_direttaSync->isPaused()) {
                 DEBUG_LOG("[DirettaRenderer] Resuming from pause");
@@ -567,6 +577,9 @@ bool DirettaRenderer::start() {
             }
 
             m_upnp->notifyStateChange("STOPPED");
+
+            // Start idle release timer
+            m_idleTimerActive.store(true, std::memory_order_release);
         };
 
         callbacks.onSeek = [this](const std::string& target) {
@@ -726,6 +739,23 @@ void DirettaRenderer::audioThreadFunc() {
                 }
             }
         } else {
+            // Auto-release Diretta target after idle timeout
+            if (m_idleTimerActive.load(std::memory_order_acquire) &&
+                !m_direttaReleased.load(std::memory_order_acquire)) {
+                auto elapsed = std::chrono::steady_clock::now() - m_lastStopTime;
+                if (elapsed >= std::chrono::seconds(IDLE_RELEASE_TIMEOUT_S)) {
+                    std::lock_guard<std::mutex> lock(m_mutex);
+                    if (m_direttaSync && m_direttaSync->isOpen()) {
+                        std::cout << "[DirettaRenderer] No activity for "
+                                  << IDLE_RELEASE_TIMEOUT_S
+                                  << "s — releasing Diretta target for other sources"
+                                  << std::endl;
+                        m_direttaSync->release();
+                    }
+                    m_direttaReleased.store(true, std::memory_order_release);
+                    m_idleTimerActive.store(false, std::memory_order_release);
+                }
+            }
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
             lastSampleRate = 0;
         }

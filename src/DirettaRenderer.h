@@ -92,4 +92,8 @@ private:
 
     // DAC stabilization timing
     std::chrono::steady_clock::time_point m_lastStopTime;
+
+    // Auto-release: free Diretta target after idle timeout for coexistence
+    std::atomic<bool> m_idleTimerActive{false};
+    std::atomic<bool> m_direttaReleased{false};
 };
