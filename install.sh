@@ -261,9 +261,10 @@ get_ffmpeg_8_minimal_opts() {
 --disable-doc
 --disable-avdevice
 --disable-swscale
---enable-protocol=file,http,https,tcp
---enable-demuxer=flac,wav,dsf,aac,mov
---enable-decoder=flac,alac,pcm_s16le,pcm_s24le,pcm_s32le,pcm_f32le,dsd_lsbf,dsd_msbf,dsd_lsbf_planar,dsd_msbf_planar,aac
+--enable-protocol=file,http,https,tcp,hls
+--enable-demuxer=flac,wav,dsf,aac,mov,mp3,ogg,hls,mpegts
+--enable-decoder=flac,alac,pcm_s16le,pcm_s24le,pcm_s32le,pcm_f32le,dsd_lsbf,dsd_msbf,dsd_lsbf_planar,dsd_msbf_planar,aac,aac_fixed,aac_latm,mp3,mp3float,vorbis
+--enable-parser=aac,aac_latm,mpegaudio,vorbis
 --enable-muxer=flac,wav
 --enable-filter=aresample
 OPTS
