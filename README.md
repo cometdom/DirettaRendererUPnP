@@ -31,6 +31,7 @@ See [CHANGELOG.md](CHANGELOG.md) for details.
 
 | Version | Highlights |
 |---------|-----------|
+| **v2.0.5** | Stop fix for Holo Red (herisson-88), libupnp auto-detection, privilege drop removed |
 | **v2.0.4** | Centralized logging, rebuffering on underrun, ARM NEON SIMD, systemd hardening, unit tests |
 | **v2.0.3** | Audirvana compatibility (UPnP event deduplication), adaptive buffer for remote streaming |
 | **v2.0.2** | Native DSD from Audirvana (DSDIFF parser), UPnP event notifications, gapless preload |
