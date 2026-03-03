@@ -375,6 +375,21 @@ bool DirettaRenderer::start() {
 
         m_audioEngine->setTrackChangeCallback(
             [this](int trackNumber, const TrackInfo& info, const std::string& uri, const std::string& metadata) {
+                // Keep DirettaRenderer URI in sync with AudioEngine
+                // Critical for gapless transitions where only AudioEngine::m_currentURI
+                // is updated by transitionToNextTrack(). Without this, onStop/onPlay
+                // would use a stale URI from the previous track.
+                // try_to_lock: avoids deadlock when called from onPlay → play() → openCurrentTrack()
+                // (onPlay already holds m_mutex). If lock fails, m_currentURI was already
+                // set correctly by onSetURI before onPlay.
+                {
+                    std::unique_lock<std::mutex> lock(m_mutex, std::try_to_lock);
+                    if (lock.owns_lock()) {
+                        m_currentURI = uri;
+                        m_currentMetadata = metadata;
+                    }
+                }
+
                 if (g_verbose) {
                     std::cout << "[DirettaRenderer] Track " << trackNumber << ": " << info.codec;
                     if (info.isDSD) {
@@ -445,15 +460,25 @@ bool DirettaRenderer::start() {
         callbacks.onSetURI = [this](const std::string& uri, const std::string& metadata) {
             DEBUG_LOG("[DirettaRenderer] SetURI: " << uri);
 
-            AudioEngine::State currentState;
-            {
-                std::lock_guard<std::mutex> lock(m_mutex);
-                currentState = m_audioEngine->getState();
-            }
+            // Single mutex lock for entire operation - prevents race condition where
+            // onPlay (from concurrent libupnp thread) reads stale m_currentURI between
+            // auto-stop and URI update. Same pattern as onStop handler.
+            std::lock_guard<std::mutex> lock(m_mutex);
+
+            auto currentState = m_audioEngine->getState();
 
             // Auto-stop if playing
             if (currentState == AudioEngine::State::PLAYING ||
                 currentState == AudioEngine::State::PAUSED) {
+
+                // Skip auto-stop if same URI already playing
+                // (control point confirming current track after gapless transition)
+                if (uri == m_currentURI) {
+                    DEBUG_LOG("[DirettaRenderer] Same URI already active, skipping auto-stop");
+                    m_currentMetadata = metadata;
+                    m_audioEngine->setCurrentURI(uri, metadata);
+                    return;
+                }
 
                 std::cout << "[DirettaRenderer] Auto-STOP before URI change" << std::endl;
 
@@ -476,12 +501,9 @@ bool DirettaRenderer::start() {
                 m_upnp->notifyStateChange("STOPPED");
             }
 
-            {
-                std::lock_guard<std::mutex> lock(m_mutex);
-                m_currentURI = uri;
-                m_currentMetadata = metadata;
-                m_audioEngine->setCurrentURI(uri, metadata);
-            }
+            m_currentURI = uri;
+            m_currentMetadata = metadata;
+            m_audioEngine->setCurrentURI(uri, metadata);
         };
 
         callbacks.onSetNextURI = [this](const std::string& uri, const std::string& metadata) {
@@ -497,6 +519,14 @@ bool DirettaRenderer::start() {
             // Cancel idle release timer
             m_idleTimerActive.store(false, std::memory_order_release);
             m_direttaReleased.store(false, std::memory_order_release);
+
+            // Already playing? No-op per UPnP AVTransport spec
+            // Prevents Audirvana from causing position resets or redundant opens
+            // when it sends Play() to confirm a gapless transition already in progress
+            if (m_audioEngine->getState() == AudioEngine::State::PLAYING) {
+                DEBUG_LOG("[DirettaRenderer] Already playing, ignoring Play");
+                return;
+            }
 
             // Resume from pause?
             if (m_direttaSync && m_direttaSync->isOpen() && m_direttaSync->isPaused()) {
