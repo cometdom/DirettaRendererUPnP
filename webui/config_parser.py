@@ -6,6 +6,7 @@ Two formats supported:
   - CliOptsConfig: single variable with CLI args (slim2diretta)
 """
 
+import os
 import re
 import shlex
 
@@ -49,8 +50,11 @@ class ShellVarConfig:
         - Comments and blank lines are preserved
         - Keys not present in the file are appended at the end
         """
-        with open(path, 'r') as f:
-            lines = f.readlines()
+        if os.path.exists(path):
+            with open(path, 'r') as f:
+                lines = f.readlines()
+        else:
+            lines = []
 
         written_keys = set()
         new_lines = []
@@ -216,9 +220,12 @@ class CliOptsConfig:
 
         opts_str = ' '.join(parts)
 
-        # Rewrite the file
-        with open(path, 'r') as f:
-            lines = f.readlines()
+        # Rewrite the file (create if missing)
+        if os.path.exists(path):
+            with open(path, 'r') as f:
+                lines = f.readlines()
+        else:
+            lines = []
 
         found = False
         new_lines = []

@@ -1395,7 +1395,7 @@ SERVICE_EOF
 setup_webui() {
     local INSTALL_DIR="/opt/diretta-renderer-upnp"
     local WEBUI_DIR="$INSTALL_DIR/webui"
-    local WEBUI_SERVICE_FILE="/etc/systemd/system/diretta-webui.service"
+    local WEBUI_SERVICE_FILE="/etc/systemd/system/diretta-renderer-webui.service"
     local WEBUI_SRC="$SCRIPT_DIR/webui"
 
     if [ ! -d "$WEBUI_SRC" ]; then
@@ -1427,8 +1427,8 @@ setup_webui() {
     print_success "Web UI files copied to $WEBUI_DIR"
 
     # Install systemd service
-    if [ -f "$WEBUI_SRC/diretta-webui.service" ]; then
-        sudo cp "$WEBUI_SRC/diretta-webui.service" "$WEBUI_SERVICE_FILE"
+    if [ -f "$WEBUI_SRC/diretta-renderer-webui.service" ]; then
+        sudo cp "$WEBUI_SRC/diretta-renderer-webui.service" "$WEBUI_SERVICE_FILE"
     else
         sudo tee "$WEBUI_SERVICE_FILE" > /dev/null <<'WEBUI_SERVICE_EOF'
 [Unit]
@@ -1453,8 +1453,8 @@ WEBUI_SERVICE_EOF
     fi
 
     sudo systemctl daemon-reload
-    sudo systemctl enable diretta-webui.service
-    sudo systemctl restart diretta-webui.service
+    sudo systemctl enable diretta-renderer-webui.service
+    sudo systemctl restart diretta-renderer-webui.service
 
     # Get IP for display
     local IP_ADDR=$(hostname -I 2>/dev/null | awk '{print $1}')
@@ -1467,8 +1467,8 @@ WEBUI_SERVICE_EOF
     echo "    http://${IP_ADDR}:8080"
     echo ""
     echo "  Manage the web UI service:"
-    echo "    sudo systemctl status diretta-webui"
-    echo "    sudo systemctl stop diretta-webui"
+    echo "    sudo systemctl status diretta-renderer-webui"
+    echo "    sudo systemctl stop diretta-renderer-webui"
     echo ""
 }
 
