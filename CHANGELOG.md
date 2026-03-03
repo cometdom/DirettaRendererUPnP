@@ -15,6 +15,14 @@
 - Profile-based architecture: reusable for other Diretta projects (slim2diretta)
 - Installable via `install.sh` option 6 or `./install.sh --webui`
 
+**Configurable Process Priority (Nice/IOScheduling):**
+- Process priority settings (`NICE_LEVEL`, `IO_SCHED_CLASS`, `IO_SCHED_PRIORITY`) now configurable via `/etc/default/diretta-renderer`
+- Removed hardcoded `Nice=-10` and `IOSchedulingClass=realtime` from the systemd service file
+- Priority is applied by `start-renderer.sh` wrapper script via `nice` and `ionice` commands
+- Adjustable through the web UI under the "Process Priority" group
+- Defaults unchanged: nice -10, realtime I/O class, priority 0
+- Same feature added to slim2diretta with `start-slim2diretta.sh` wrapper script
+
 **Advanced Diretta SDK Settings Exposed via CLI:**
 - `--thread-mode <mode>`: SDK thread mode bitmask (CRITICAL, NOSHORTSLEEP, SOCKETNOBLOCK, OCCUPIED, etc.)
 - `--cycle-time <us>`: Max packet transmission cycle time in microseconds (disables auto-calculation)

@@ -40,35 +40,75 @@ def get_parser(profile):
 
 
 def load_current_settings(profile):
-    """Load current settings from the config file."""
+    """Load current settings from the config file.
+
+    Supports mixed config types: groups can override the profile-level
+    config_type with their own (e.g. shell_vars group in a cli_opts profile).
+    """
     config_path = profile['config_path']
     if not os.path.exists(config_path):
         return {}
 
     config_type = profile.get('config_type', 'shell_vars')
     if config_type == 'cli_opts':
-        all_settings = []
+        # Collect CLI opts settings (groups without config_type override)
+        cli_settings_meta = []
         for g in profile.get('groups', []):
-            all_settings.extend(g.get('settings', []))
-        return CliOptsConfig.load(config_path,
-                                  var_name=profile.get('config_var', 'OPTS'),
-                                  settings_meta=all_settings)
+            if g.get('config_type') != 'shell_vars':
+                cli_settings_meta.extend(g.get('settings', []))
+
+        settings = CliOptsConfig.load(config_path,
+                                      var_name=profile.get('config_var', 'OPTS'),
+                                      settings_meta=cli_settings_meta)
+
+        # Also load shell_vars groups from the same config file
+        shell_data = ShellVarConfig.load(config_path)
+        for g in profile.get('groups', []):
+            if g.get('config_type') == 'shell_vars':
+                for s in g.get('settings', []):
+                    key = s['key']
+                    if key in shell_data:
+                        settings[key] = shell_data[key]
+
+        return settings
     return ShellVarConfig.load(config_path)
 
 
 def save_settings(profile, settings):
-    """Write settings back to the config file."""
+    """Write settings back to the config file.
+
+    For cli_opts profiles with shell_vars groups, CLI opts are saved to the
+    config variable and shell vars are saved as separate KEY=VALUE lines.
+    """
     config_path = profile['config_path']
     config_type = profile.get('config_type', 'shell_vars')
 
     if config_type == 'cli_opts':
-        all_settings = []
+        # Identify which keys belong to shell_vars groups
+        shell_var_keys = set()
+        cli_settings_meta = []
         for g in profile.get('groups', []):
-            all_settings.extend(g.get('settings', []))
+            if g.get('config_type') == 'shell_vars':
+                for s in g.get('settings', []):
+                    shell_var_keys.add(s['key'])
+            else:
+                cli_settings_meta.extend(g.get('settings', []))
+
+        # Split settings into CLI opts and shell vars
+        cli_settings = {k: v for k, v in settings.items()
+                        if k not in shell_var_keys}
+        shell_settings = {k: v for k, v in settings.items()
+                          if k in shell_var_keys}
+
+        # Save CLI opts to the config variable
         CliOptsConfig.save(config_path,
                            var_name=profile.get('config_var', 'OPTS'),
-                           settings=settings,
-                           settings_meta=all_settings)
+                           settings=cli_settings,
+                           settings_meta=cli_settings_meta)
+
+        # Save shell vars as separate KEY=VALUE lines
+        if shell_settings:
+            ShellVarConfig.save(config_path, shell_settings)
     else:
         ShellVarConfig.save(config_path, settings)
 

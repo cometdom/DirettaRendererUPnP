@@ -58,6 +58,42 @@
             ]
         },
         {
+            "name": "Process Priority",
+            "collapsed": true,
+            "settings": [
+                {
+                    "key": "NICE_LEVEL",
+                    "type": "number",
+                    "label": "Nice Level",
+                    "description": "CPU scheduling priority (-20 = highest, 19 = lowest). Default: -10",
+                    "default": "-10",
+                    "min": -20,
+                    "max": 19
+                },
+                {
+                    "key": "IO_SCHED_CLASS",
+                    "type": "select",
+                    "label": "I/O Scheduling Class",
+                    "description": "I/O priority class for disk and network operations",
+                    "default": "realtime",
+                    "options": [
+                        {"value": "realtime", "label": "Realtime (highest, best for audio)"},
+                        {"value": "best-effort", "label": "Best-effort (standard)"},
+                        {"value": "idle", "label": "Idle (lowest)"}
+                    ]
+                },
+                {
+                    "key": "IO_SCHED_PRIORITY",
+                    "type": "number",
+                    "label": "I/O Priority",
+                    "description": "Priority within I/O class (0 = highest, 7 = lowest). Not used with idle class.",
+                    "default": "0",
+                    "min": 0,
+                    "max": 7
+                }
+            ]
+        },
+        {
             "name": "Diretta SDK (Advanced)",
             "collapsed": true,
             "settings": [

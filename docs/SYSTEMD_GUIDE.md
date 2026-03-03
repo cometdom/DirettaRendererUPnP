@@ -215,15 +215,14 @@ SystemCallArchitectures=native
 SystemCallFilter=~@mount @keyring @debug @module @swap @reboot @obsolete
 
 # Performance
-Nice=-10
-IOSchedulingClass=realtime
-IOSchedulingPriority=0
+# Nice and IOScheduling are now configurable via /etc/default/diretta-renderer
+# (NICE_LEVEL, IO_SCHED_CLASS, IO_SCHED_PRIORITY) and applied by start-renderer.sh
 
 [Install]
 WantedBy=multi-user.target
 ```
 
-The service runs as root to ensure full access to raw sockets (Diretta protocol) and real-time thread priorities (SCHED_FIFO). The `CapabilityBoundingSet` restricts the process to only the capabilities it needs: `CAP_NET_RAW`/`CAP_NET_ADMIN` for network operations and `CAP_SYS_NICE` for real-time scheduling. The filesystem and kernel hardening directives provide security isolation without impacting audio performance.
+The service runs as root to ensure full access to raw sockets (Diretta protocol) and real-time thread priorities (SCHED_FIFO). The `CapabilityBoundingSet` restricts the process to only the capabilities it needs: `CAP_NET_RAW`/`CAP_NET_ADMIN` for network operations and `CAP_SYS_NICE` for real-time scheduling. Process priority (nice level and I/O scheduling) is configurable via `/etc/default/diretta-renderer` and applied by the startup wrapper script.
 
 ---
 
@@ -353,21 +352,27 @@ sudo systemctl start diretta-renderer-2
 
 ### Performance Tuning (Optional)
 
-Add to service file under `[Service]`:
+Process priority is configurable in `/etc/default/diretta-renderer`:
+
+```bash
+# CPU scheduling priority (-20 = highest, 19 = lowest)
+NICE_LEVEL=-10
+
+# I/O scheduling: realtime, best-effort, idle
+IO_SCHED_CLASS=realtime
+IO_SCHED_PRIORITY=0
+```
+
+These settings can also be adjusted through the web UI under "Process Priority".
+
+For CPU affinity (pinning to specific cores), add to the service file:
 
 ```ini
-# Higher priority (use with caution)
-Nice=-10
-
-# Real-time I/O scheduling
-IOSchedulingClass=realtime
-IOSchedulingPriority=0
-
-# CPU affinity (pin to specific cores)
+[Service]
 CPUAffinity=0 1
 ```
 
-**Warning:** These settings may affect system stability. Test thoroughly!
+**Warning:** Extreme priority settings may affect system stability. Test thoroughly!
 
 ---
 

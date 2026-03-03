@@ -401,15 +401,16 @@ echo 1 | sudo tee /proc/irq/16/smp_affinity
 
 #### 3. Process Priority
 
-The audio thread runs with real-time priority automatically.
+The audio worker thread runs with SCHED_FIFO real-time priority (50) automatically.
 
-Manual adjustment (systemd service):
-```ini
-[Service]
-Nice=-10
-CPUSchedulingPolicy=fifo
-CPUSchedulingPriority=80
+Process-level nice and I/O scheduling are configurable in `/etc/default/diretta-renderer`:
+```bash
+NICE_LEVEL=-10              # -20 (highest) to 19 (lowest)
+IO_SCHED_CLASS=realtime     # realtime, best-effort, idle
+IO_SCHED_PRIORITY=0         # 0 (highest) to 7 (lowest)
 ```
+
+These settings are also adjustable through the web UI under "Process Priority".
 
 ### Audio-Specific Tuning
 
