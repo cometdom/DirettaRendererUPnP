@@ -105,6 +105,13 @@ def render_setting_input(setting, current_value):
             )
         return f'<select name="{key}">\n{options_html}</select>'
 
+    if stype == 'boolean':
+        checked = ' checked' if current_value == 'true' else ''
+        return (
+            f'<input type="checkbox" name="{key}" value="true"{checked}'
+            f' style="width:auto">'
+        )
+
     if stype == 'number':
         attrs = f'type="number" name="{key}" value="{value}"'
         attrs += f' placeholder="{escape(str(setting.get("default", "")))}"'
