@@ -235,6 +235,8 @@ class CliOptsConfig:
             if m and not found:
                 new_lines.append(f'{var_name}="{opts_str}"\n')
                 found = True
+            elif m and found and not stripped.startswith('#'):
+                continue  # Skip duplicate uncommented lines
             else:
                 new_lines.append(line)
 
