@@ -205,7 +205,7 @@ DirettaRenderer::Config parseArguments(int argc, char* argv[]) {
                       << "  --cycle-min-time <us>      Min cycle time in microseconds (random mode only)\n"
                       << "  --info-cycle <us>          Info packet cycle in microseconds (default: 100000)\n"
                       << "  --transfer-mode <mode>     Transfer mode: auto, varmax, varauto, fixauto, random\n"
-                      << "  --target-profile-limit <us> Target profile limit time (0=self, default: 200)\n"
+                      << "  --target-profile-limit <us> Target profile limit time (0=SelfProfile (stable), default: 0, >0=experimental)\n"
                       << "  --mtu <bytes>              MTU override (default: auto-detect)\n"
                       << "  --rt-priority <1-99>       SCHED_FIFO real-time priority for worker thread (default: 50)\n"
                       << std::endl;

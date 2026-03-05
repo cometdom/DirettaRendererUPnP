@@ -174,18 +174,18 @@ sudo ./DirettaRendererUPnP --target 1 --transfer-mode fixauto
 ```
 
 #### `--target-profile-limit <microseconds>`
-**Default**: 200
+**Default**: 0
 **Description**: Controls how the SDK manages transmission profiles.
-- `0` = **SelfProfile**: the renderer manages its own profile directly
-- `>0` = **TargetProfile**: the SDK auto-adapts the profile based on the target device capabilities, with the specified value as the minimum cycle time limit. Under high system load, the SDK automatically falls back to lighter processing.
+- `0` = **SelfProfile** (stable, default): the renderer manages its own profile directly
+- `>0` = **TargetProfile** (experimental): the SDK auto-adapts the profile based on the target device capabilities, with the specified value as the minimum cycle time limit. Under high system load, the SDK automatically falls back to lighter processing.
 
 **Example**:
 ```bash
-# Use TargetProfile with 200µs limit (default)
-sudo ./DirettaRendererUPnP --target 1 --target-profile-limit 200
-
-# Use SelfProfile (direct control)
+# Use SelfProfile (stable, default)
 sudo ./DirettaRendererUPnP --target 1 --target-profile-limit 0
+
+# Use TargetProfile with 200µs limit (experimental)
+sudo ./DirettaRendererUPnP --target 1 --target-profile-limit 200
 ```
 
 #### `--mtu <bytes>`

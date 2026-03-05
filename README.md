@@ -620,7 +620,7 @@ These options allow fine-tuning the Diretta SDK transmission behavior. **Leave a
 --cycle-min-time <us>       Min cycle time in microseconds (random mode only)
 --info-cycle <us>           Info packet cycle in microseconds (default: 100000)
 --transfer-mode <mode>      Transfer mode: auto, varmax, varauto, fixauto, random
---target-profile-limit <us> Target profile limit (0=SelfProfile, default: 200)
+--target-profile-limit <us> Target profile limit (0=SelfProfile (stable), default: 0, >0=experimental)
 --mtu <bytes>               MTU override (default: auto-detect)
 ```
 

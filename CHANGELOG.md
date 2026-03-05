@@ -31,7 +31,7 @@
 - `--cycle-min-time <us>`: Min cycle time in microseconds (random mode only)
 - `--info-cycle <us>`: Info packet cycle time (default: 100000µs = 100ms)
 - `--transfer-mode <mode>`: Transfer mode (auto, varmax, varauto, fixauto, random)
-- `--target-profile-limit <us>`: Target profile limit time (0=SelfProfile, default: 200=TargetProfile with auto-adaptation)
+- `--target-profile-limit <us>`: Target profile limit time (0=SelfProfile (stable), default: 0, >0=TargetProfile with auto-adaptation (experimental))
 - `--mtu <bytes>`: MTU override (skip auto-detection)
 - These options were available in v1.3.3 and have been reintroduced with the new DirettaSync architecture
 - TargetProfile mode uses SDK `getProfileMaker()` for target-adaptive transmission profiles
@@ -58,6 +58,14 @@
 - Previously returned `00:00:00` on first poll because position thread (1s update interval) hadn't updated yet
 - UAPP polls only once and stopped tracking position when it received `00:00:00`
 - Position is now computed directly from AudioEngine via callback, bypassing the cached value
+
+**Audirvana Gapless Track Replay Fix (PR #60 by herisson-88):**
+- Fixed race condition in `onSetURI` where split mutex lock allowed `onPlay` to read stale URI between auto-stop and URI update — Audirvana sends commands on separate HTTP connections, triggering the race consistently
+- Rewrote `preloadNextTrack()` with thread-safe capture-validate-commit pattern: snapshot URI under lock, open decoder without lock, revalidate before commit
+- Added stale preload detection: discards decoder when `m_nextURI` changes during loading
+- Rejects same-URI `SetNextAVTransportURI` (Audirvana quirk that caused previous track replay)
+- Added `onPlay` already-playing guard per UPnP AVTransport spec
+- Syncs `DirettaRenderer::m_currentURI` during gapless transitions via `trackChangeCallback`
 
 **Stop Action Uses stopPlayback() Instead of close() (fix by herisson-88):**
 - Changed UPnP Stop handler from `close()` to `stopPlayback(false)` in DirettaSync
