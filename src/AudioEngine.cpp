@@ -1892,7 +1892,7 @@ bool AudioEngine::process(size_t samplesNeeded) {
         // SetNextAVTransportURI updates leave a mismatched decoder (old track's audio)
         // paired with the new URI, causing the old track to replay on transition.
         if (m_nextURI != oldNextURI && m_nextDecoder) {
-            std::cout << "[AudioEngine] Next URI changed, discarding stale preload" << std::endl;
+            DEBUG_LOG("[AudioEngine] Next URI changed, discarding stale preload");
             m_nextDecoder.reset();
             m_formatChangePending = false;
         }
@@ -1901,7 +1901,7 @@ bool AudioEngine::process(size_t samplesNeeded) {
         // Audirvana sometimes sends SetNextAVTransportURI with the current track's URL
         // before sending the actual next track. Preloading the same URL would cause replay.
         if (!m_nextURI.empty() && m_nextURI == m_currentURI) {
-            std::cout << "[AudioEngine] Next URI same as current, ignoring" << std::endl;
+            DEBUG_LOG("[AudioEngine] Next URI same as current, ignoring");
             m_nextURI.clear();
             m_nextMetadata.clear();
         }
@@ -1910,15 +1910,15 @@ bool AudioEngine::process(size_t samplesNeeded) {
         // This opens the HTTP connection NOW instead of waiting for EOF,
         // preventing buffer underruns during gapless transitions.
         if (!m_nextURI.empty() && !m_nextDecoder && !m_preloadRunning.load(std::memory_order_acquire)) {
-            std::cout << "[AudioEngine] Anticipated preload started" << std::endl;
-            std::cout << "[AudioEngine]   next: " << m_nextURI << std::endl;
-            std::cout << "[AudioEngine]   curr: " << m_currentURI << std::endl;
             waitForPreloadThread();
             m_preloadRunning.store(true, std::memory_order_release);
             m_preloadThread = std::thread([this]() {
                 preloadNextTrack();
                 m_preloadRunning.store(false, std::memory_order_release);
             });
+            std::cout << "[AudioEngine] Anticipated preload started" << std::endl;
+            DEBUG_LOG("[AudioEngine]   next: " << m_nextURI);
+            DEBUG_LOG("[AudioEngine]   curr: " << m_currentURI);
         }
     }
 
@@ -2154,7 +2154,7 @@ bool AudioEngine::preloadNextTrack() {
     // Same as current track? Audirvana sometimes sends SetNextAVTransportURI
     // with the current track's URL before sending the actual next track.
     if (uriToLoad == currentURI) {
-        std::cout << "[AudioEngine] Preload rejected (same URI as current track)" << std::endl;
+        DEBUG_LOG("[AudioEngine] Preload rejected (same URI as current track)");
         std::lock_guard<std::mutex> lock(m_mutex);
         if (m_nextURI == uriToLoad) {
             m_nextURI.clear();
@@ -2179,13 +2179,13 @@ bool AudioEngine::preloadNextTrack() {
 
         // URI changed while we were loading → stale, discard
         if (m_nextURI != uriToLoad) {
-            std::cout << "[AudioEngine] Preload discarded (URI changed during load)" << std::endl;
+            DEBUG_LOG("[AudioEngine] Preload discarded (URI changed during load)");
             return false;
         }
 
         // Double-check same-URI (m_currentURI may have changed during open)
         if (uriToLoad == m_currentURI) {
-            std::cout << "[AudioEngine] Preload discarded (same as current track)" << std::endl;
+            DEBUG_LOG("[AudioEngine] Preload discarded (same as current track)");
             m_nextURI.clear();
             m_nextMetadata.clear();
             return false;
@@ -2232,7 +2232,8 @@ bool AudioEngine::preloadNextTrack() {
         m_nextDecoder = std::move(decoder);
     }
 
-    DEBUG_LOG("[AudioEngine] Next track preloaded successfully");
+    DEBUG_LOG("[AudioEngine] Next track preloaded: "
+              << m_nextDecoder->getTrackInfo().codec);
 
     return true;
 }
