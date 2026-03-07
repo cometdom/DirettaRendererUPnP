@@ -192,11 +192,15 @@ namespace DirettaBuffer {
     constexpr float DSD_BUFFER_SECONDS = 0.8f;
     constexpr float PCM_BUFFER_SECONDS = 0.5f;          // Local playback
     constexpr float PCM_REMOTE_BUFFER_SECONDS = 1.0f;   // Remote streaming (Qobuz/Tidal) - absorbs CDN reconnections
+    constexpr float PCM_HIGHRATE_BUFFER_SECONDS = 2.0f;  // >192kHz: source streams at ~1x real-time
+    constexpr uint32_t HIGHRATE_THRESHOLD = 192000;       // Sample rate above which we use larger buffers
 
     constexpr size_t DSD_PREFILL_MS = 200;
     constexpr size_t PCM_PREFILL_MS = 80;                // Local
     constexpr size_t PCM_REMOTE_PREFILL_MS = 150;        // Remote - larger prefill for internet latency
     constexpr size_t PCM_LOWRATE_PREFILL_MS = 100;
+    // High sample rates (>192kHz): source delivers at ~1x real-time, need more margin
+    constexpr size_t PCM_HIGHRATE_PREFILL_MS = 1000;
 
     constexpr float REBUFFER_THRESHOLD_PCT = 0.20f;      // Resume playback after 20% buffer refill
 
@@ -208,7 +212,7 @@ namespace DirettaBuffer {
     // UPnP push model needs larger buffers than MPD's pull model
     // 64KB = ~370ms floor at 44.1kHz/16-bit, negligible at higher rates
     constexpr size_t MIN_BUFFER_BYTES = 65536;  // Was 3072000
-    constexpr size_t MAX_BUFFER_BYTES = 16777216;
+    constexpr size_t MAX_BUFFER_BYTES = 33554432;  // 32MB: accommodates 1536kHz/32bit/2ch @ 2s
     constexpr size_t MIN_PREFILL_BYTES = 1024;
 
     inline size_t calculateBufferSize(size_t bytesPerSecond, float seconds) {
@@ -218,11 +222,27 @@ namespace DirettaBuffer {
         return size;
     }
 
+    inline float pcmBufferSeconds(uint32_t sampleRate, bool isRemote) {
+        if (sampleRate > HIGHRATE_THRESHOLD) return PCM_HIGHRATE_BUFFER_SECONDS;
+        if (isRemote) return PCM_REMOTE_BUFFER_SECONDS;
+        return PCM_BUFFER_SECONDS;
+    }
+
     inline size_t calculatePrefill(size_t bytesPerSecond, bool isDsd,
-                                   bool isLowBitrate, bool isRemote = false) {
-        size_t prefillMs = isDsd ? DSD_PREFILL_MS :
-                           isRemote ? PCM_REMOTE_PREFILL_MS :
-                           isLowBitrate ? PCM_LOWRATE_PREFILL_MS : PCM_PREFILL_MS;
+                                   bool isLowBitrate, bool isRemote = false,
+                                   uint32_t sampleRate = 0) {
+        size_t prefillMs;
+        if (isDsd) {
+            prefillMs = DSD_PREFILL_MS;
+        } else if (sampleRate > HIGHRATE_THRESHOLD) {
+            prefillMs = PCM_HIGHRATE_PREFILL_MS;
+        } else if (isRemote) {
+            prefillMs = PCM_REMOTE_PREFILL_MS;
+        } else if (isLowBitrate) {
+            prefillMs = PCM_LOWRATE_PREFILL_MS;
+        } else {
+            prefillMs = PCM_PREFILL_MS;
+        }
         size_t result = (bytesPerSecond * prefillMs) / 1000;
         return std::max(result, MIN_PREFILL_BYTES);
     }

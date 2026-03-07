@@ -236,6 +236,34 @@ int main(int argc, char* argv[]) {
               << "═══════════════════════════════════════════════════════\n"
               << std::endl;
 
+    // Log build capabilities for diagnostics
+    {
+        const char* arch =
+#if defined(__aarch64__)
+            "aarch64"
+#elif defined(__x86_64__) || defined(_M_X64)
+            "x86_64"
+#elif defined(__i386__) || defined(_M_IX86)
+            "x86"
+#elif defined(__arm__)
+            "arm"
+#else
+            "unknown"
+#endif
+        ;
+        const char* simd =
+#if DIRETTA_HAS_AVX2
+            "AVX2"
+#elif DIRETTA_HAS_NEON
+            "NEON"
+#else
+            "scalar"
+#endif
+        ;
+        std::cout << "Build: " << arch << " " << simd
+                  << " (" << RENDERER_BUILD_DATE << ")" << std::endl;
+    }
+
     DirettaRenderer::Config config = parseArguments(argc, argv);
 
     // Initialize async logging ring buffer (A3 optimization)

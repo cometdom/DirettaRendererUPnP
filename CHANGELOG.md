@@ -1,5 +1,21 @@
 # Changelog
 
+## [2.1.1] - unreleased
+
+### Fixed
+
+- **High sample rate buffer underruns (>192kHz)**: Adaptive buffer sizing for sample rates above 192kHz (352.8kHz, 384kHz, 768kHz, 1536kHz). Source streams at ~1x real-time at these rates, leaving no margin with the previous 0.5s ring buffer. New behavior:
+  - Ring buffer: 0.5s → 2.0s for rates >192kHz (takes precedence over remote 1.0s)
+  - SDK prefill: 1000ms for rates >192kHz (vs 80-150ms)
+  - MAX_BUFFER raised to 32MB (accommodates 1536kHz/32bit/2ch @ 2s)
+  - No change for rates ≤192kHz (identical behavior to v2.1.0)
+
+### Added
+
+- **Build capabilities log at startup**: Displays architecture (x86_64/aarch64/arm) and SIMD support (AVX2/NEON/scalar) for easier remote diagnostics
+
+---
+
 ## [2.1.0] - 2026-03-06
 
 ### ✨ New Features

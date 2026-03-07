@@ -1104,9 +1104,7 @@ void DirettaSync::configureRingPCM(int rate, int channels, int direttaBps, int i
 
     size_t bytesPerSecond = static_cast<size_t>(rate) * channels * direttaBps;
     bool remoteStream = m_isRemoteStream.load(std::memory_order_acquire);
-    float bufferSeconds = remoteStream
-        ? DirettaBuffer::PCM_REMOTE_BUFFER_SECONDS
-        : DirettaBuffer::PCM_BUFFER_SECONDS;
+    float bufferSeconds = DirettaBuffer::pcmBufferSeconds(static_cast<uint32_t>(rate), remoteStream);
     size_t ringSize = DirettaBuffer::calculateBufferSize(bytesPerSecond, bufferSeconds);
 
     m_ringBuffer.resize(ringSize, 0x00);
@@ -1152,9 +1150,11 @@ void DirettaSync::configureRingPCM(int rate, int channels, int direttaBps, int i
         DIRETTA_LOG("PCM buffer (MTU): " << bytesPerBuffer << " bytes (" << framesPerBuffer << " frames)");
     }
 
+    bool highRate = static_cast<uint32_t>(rate) > DirettaBuffer::HIGHRATE_THRESHOLD;
     m_prefillTarget = DirettaBuffer::calculatePrefill(bytesPerSecond, false,
-        m_isLowBitrate.load(std::memory_order_acquire), remoteStream);
-    m_prefillTarget = std::min(m_prefillTarget, ringSize / 4);
+        m_isLowBitrate.load(std::memory_order_acquire), remoteStream,
+        static_cast<uint32_t>(rate));
+    m_prefillTarget = std::min(m_prefillTarget, ringSize / (highRate ? 2 : 4));
     m_prefillComplete = false;
 
     DIRETTA_LOG("Ring PCM: " << rate << "Hz " << channels << "ch "
