@@ -497,6 +497,7 @@ private:
     bool reopenForFormatChange();
     void fullReset();
     void shutdownWorker();
+    bool joinWorkerWithTimeout(int timeoutMs = 1000);  // Timed worker thread join
 
     void configureSinkPCM(int rate, int channels, int inputBits, int& acceptedBits);
     void configureSinkDSD(uint32_t dsdBitRate, int channels, const AudioFormat& format);
@@ -564,6 +565,8 @@ private:
     std::thread m_workerThread;
     std::mutex m_workerMutex;
     std::mutex m_configMutex;
+    std::recursive_mutex m_lifecycleMutex;       // Protects open/close/stop/release transitions
+    std::atomic<bool> m_openAbortRequested{false}; // Signal open() to abort early
     std::atomic<bool> m_reconfiguring{false};
     mutable std::atomic<int> m_ringUsers{0};
 

@@ -6,6 +6,11 @@
 
 - **UAPP (USB Audio Player Pro) SOAP response compatibility**: Added `u:` namespace prefix on SOAP action response root elements to match the format produced by libupnp's `UpnpMakeActionResponse`. Strict XML parsers like Cling (used by UAPP on Android) silently rejected our responses, causing GetPositionInfo callbacks to never fire — UAPP couldn't track position or advance to the next track. Lenient parsers (Audirvana, BubbleUPnP, mconnect) were unaffected.
 
+- **Audirvana Studio format change crash**: Fixed race condition during rapid PCM format transitions (rate/bitdepth changes) that could cause crashes or hangs. Three interrelated fixes:
+  - Timed worker thread join (1s timeout) prevents indefinite blocking when SDK is unresponsive
+  - Lifecycle mutex (`m_lifecycleMutex`) prevents concurrent `open()`/`stopPlayback()`/`close()` calls from corrupting DirettaSync state
+  - Interruptible `open()` via abort flag — when a stop is requested during a format transition, `open()` aborts early instead of completing a stale format change
+
 - **High sample rate buffer underruns (>192kHz)**: Adaptive buffer sizing for sample rates above 192kHz (352.8kHz, 384kHz, 768kHz, 1536kHz). Source streams at ~1x real-time at these rates, leaving no margin with the previous 0.5s ring buffer. New behavior:
   - Ring buffer: 0.5s → 2.0s for rates >192kHz (takes precedence over remote 1.0s)
   - SDK prefill: 1000ms for rates >192kHz (vs 80-150ms)
