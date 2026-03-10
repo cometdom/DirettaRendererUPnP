@@ -199,6 +199,19 @@ class ReconfigureGuard {
 };
 ```
 
+### Lifecycle Mutex (v2.1.1 - thread-safe format transitions)
+```cpp
+// m_lifecycleMutex (std::recursive_mutex) protects open/close/stop/release
+// Prevents concurrent access when UPnP thread calls stopPlayback() while
+// audio callback is inside open() doing format transition
+// Recursive because release() → close(), open() → reopenForFormatChange()
+std::lock_guard<std::recursive_mutex> lifecycleLock(m_lifecycleMutex);
+
+// m_openAbortRequested: signals open() to abort early when stop is requested
+// stopPlayback()/close() set this + wake m_transitionCv before acquiring lock
+// open() checks at strategic points and returns false if set
+```
+
 ## Format Support
 
 | Format | Bit Depth | Sample Rates | Ring Buffer Method | SIMD |
@@ -392,11 +405,19 @@ sudo apt install build-essential libavformat-dev libavcodec-dev libavutil-dev li
 - [x] ARM NEON hand-optimized format conversions (PCM + DSD 4 modes)
 - [x] Systemd hardening (20+ security directives)
 - [x] Unit tests (20 tests covering PCM, DSD, ring buffer, integration)
+- [x] UAPP SOAP response compatibility (`u:` namespace prefix on action responses)
+- [x] Lifecycle mutex for thread-safe format transitions (`m_lifecycleMutex`)
+- [x] Timed worker thread join (`joinWorkerWithTimeout`) — prevents deadlock on SDK hang
+- [x] Interruptible `open()` via `m_openAbortRequested` abort flag
+- [x] High sample rate adaptive buffers (>192kHz: 2.0s buffer, 1000ms prefill, 32MB max)
+- [x] Build capabilities logging at startup (architecture + SIMD detection)
 
 ### Potential Future Work
 - [ ] AVX-512 format conversions (currently only memcpy uses AVX-512)
 - [ ] Multi-producer ring buffer for multiple audio sources
 - [ ] Adaptive prefetch tuning based on cache behavior
+- [ ] Configurable buffer settings (PCM/DSD buffer seconds, prefill ms) via config file/CLI/web UI
+- [ ] CPU affinity / core isolation for audio threads
 
 ## Format Transition Handling
 
