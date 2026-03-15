@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.1.3] - 2026-03-15
+
+### Fixed
+
+- **Target retry loop not working**: v2.1.2 introduced resilient target discovery, but `DirettaRenderer::start()` had a pre-check (`verifyTargetAvailable()`) that exited immediately before the retry loop was reached. The retry now works as intended.
+
+---
+
 ## [2.1.2] - 2026-03-15
 
 ### Added

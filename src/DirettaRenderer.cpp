@@ -127,16 +127,8 @@ bool DirettaRenderer::start(std::atomic<bool>* stopSignal) {
 
     try {
         // Create and enable DirettaSync
-        std::cout << "[DirettaRenderer] Checking Diretta Target..." << std::endl;
-
         m_direttaSync = std::make_unique<DirettaSync>();
         m_direttaSync->setTargetIndex(m_config.targetIndex);
-
-        if (!m_direttaSync->verifyTargetAvailable()) {
-            std::cerr << "[DirettaRenderer] No Diretta Target found!" << std::endl;
-            std::cerr << "[DirettaRenderer] Run: ./bin/DirettaRendererUPnP --list-targets" << std::endl;
-            return false;
-        }
 
         DirettaConfig syncConfig;
 

@@ -411,6 +411,8 @@ sudo apt install build-essential libavformat-dev libavcodec-dev libavutil-dev li
 - [x] Interruptible `open()` via `m_openAbortRequested` abort flag
 - [x] High sample rate adaptive buffers (>192kHz: 2.0s buffer, 1000ms prefill, 32MB max)
 - [x] Build capabilities logging at startup (architecture + SIMD detection)
+- [x] Resilient target discovery (retry indefinitely at startup instead of exiting)
+- [x] RENDERER_NAME configuration option
 
 ### Potential Future Work
 - [ ] AVX-512 format conversions (currently only memcpy uses AVX-512)
