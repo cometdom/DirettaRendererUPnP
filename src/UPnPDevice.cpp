@@ -81,18 +81,10 @@ bool UPnPDevice::start() {
         std::cout << "🌐 Using default interface for UPnP (auto-detect)" << std::endl;
     }
     
-    int ret = UpnpInit2(interfaceName, m_config.port);  // ← interfaceName au lieu de nullptr
+    int ret = UpnpInit2(interfaceName, m_config.port);
     if (ret != UPNP_E_SUCCESS) {
         std::cerr << "[UPnPDevice] UpnpInit2 failed: " << ret << std::endl;
-        
-        // ⭐ NOUVEAU: Message d'aide pour multi-homed systems
-        if (interfaceName != nullptr) {
-            std::cerr << "\n💡 Troubleshooting:" << std::endl;
-            std::cerr << "  - Verify interface exists: ip link show" << std::endl;
-            std::cerr << "  - Check IP is assigned: ip addr show " << interfaceName << std::endl;
-            std::cerr << "  - Or try IP address instead: --bind-ip 192.168.x.x" << std::endl;
-        }
-        
+        UpnpFinish();  // Clean up for potential retry
         return false;
     }
 

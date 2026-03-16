@@ -1,5 +1,15 @@
 # Changelog
 
+## [2.1.4] - 2026-03-16
+
+### Fixed
+
+- **Audirvana link-local stream misdetected as remote**: Audirvana Studio on some setups uses link-local addresses (`169.254.x.x`) for its HTTP audio server. These were not recognized as local servers, causing DirettaRendererUPnP to enable HTTP reconnection options (`reconnect=1`, `reconnect_streamed=1`) and larger remote buffers. Audirvana's local HTTP server doesn't support these options, leading to playback interruptions, white noise, and track advancement failures.
+
+- **UPnP server startup failure on boot**: On systems without systemd network-online dependency (e.g., GentooPlayer with OpenRC), `UpnpInit2` could fail if the network interface wasn't ready yet. The UPnP initialization now retries every 2 seconds (with status logged every 5 seconds) until the network is available, matching the resilient target discovery behavior.
+
+---
+
 ## [2.1.3] - 2026-03-15
 
 ### Fixed

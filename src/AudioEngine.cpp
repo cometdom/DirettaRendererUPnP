@@ -126,6 +126,7 @@ bool AudioDecoder::open(const std::string& url) {
                          (url.find("://192.168.") != std::string::npos ||
                           url.find("://10.") != std::string::npos ||
                           url.find("://172.") != std::string::npos ||
+                          url.find("://169.254.") != std::string::npos ||
                           url.find("://localhost") != std::string::npos ||
                           url.find("://127.") != std::string::npos);
 

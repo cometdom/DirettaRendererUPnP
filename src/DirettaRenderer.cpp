@@ -623,10 +623,48 @@ bool DirettaRenderer::start(std::atomic<bool>* stopSignal) {
 
         m_upnp->setCallbacks(callbacks);
 
-        // Start UPnP server
-        if (!m_upnp->start()) {
-            std::cerr << "[DirettaRenderer] Failed to start UPnP server" << std::endl;
-            return false;
+        // Start UPnP server (retry until network is ready or cancelled)
+        {
+            bool upnpStarted = false;
+            auto lastLogTime = std::chrono::steady_clock::now();
+            bool firstAttempt = true;
+
+            while (!upnpStarted) {
+                if (m_upnp->start()) {
+                    upnpStarted = true;
+                    break;
+                }
+
+                // No stop signal = no retry (legacy behavior)
+                if (!stopSignal) {
+                    std::cerr << "[DirettaRenderer] Failed to start UPnP server" << std::endl;
+                    return false;
+                }
+
+                // Check if shutdown requested
+                if (!stopSignal->load(std::memory_order_acquire)) {
+                    std::cerr << "[DirettaRenderer] UPnP startup cancelled" << std::endl;
+                    return false;
+                }
+
+                // Log every 5 seconds
+                auto now = std::chrono::steady_clock::now();
+                auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    now - lastLogTime).count();
+                if (firstAttempt || elapsed >= 5000) {
+                    std::cout << "[DirettaRenderer] Network not ready, retrying UPnP init..." << std::endl;
+                    lastLogTime = now;
+                }
+                firstAttempt = false;
+
+                // Wait 2s before retry, checking stop signal
+                for (int waited = 0; waited < 2000; waited += 100) {
+                    if (stopSignal && !stopSignal->load(std::memory_order_acquire)) {
+                        return false;
+                    }
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                }
+            }
         }
 
         DEBUG_LOG("[DirettaRenderer] UPnP: " << m_upnp->getDeviceURL());

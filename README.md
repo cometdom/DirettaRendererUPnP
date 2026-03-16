@@ -1,4 +1,4 @@
-# Diretta UPnP Renderer v2.1.3
+# Diretta UPnP Renderer v2.1.4
 
 **The world's first native UPnP/DLNA renderer with Diretta protocol support - Low-Latency Edition**
 
@@ -8,18 +8,19 @@
 
 ---
 
-![Version](https://img.shields.io/badge/version-2.1.3-blue.svg)
+![Version](https://img.shields.io/badge/version-2.1.4-blue.svg)
 ![Low Latency](https://img.shields.io/badge/Latency-Low-green.svg)
 ![SDK](https://img.shields.io/badge/SDK-DIRETTA::Sync-orange.svg)
 ![Audirvana](https://img.shields.io/badge/Audirvana-Compatible-green.svg)
 
 ---
 
-## What's New in v2.1.3
+## What's New in v2.1.4
 
-**Fixed resilient target discovery.**
+**Fix Audirvana local stream detection.**
 
-- **Target retry fix** — v2.1.2 introduced resilient target discovery (retry loop at startup), but a pre-check in `DirettaRenderer::start()` caused the process to exit before the retry loop was reached. Now works as intended.
+- **Link-local address detection** — Audirvana streams via link-local addresses (`169.254.x.x`) were incorrectly detected as remote streams, enabling HTTP reconnection options that Audirvana's local HTTP server doesn't support. This caused playback interruptions, white noise, and track advancement issues with Audirvana Studio.
+- **Resilient UPnP startup** — On systems where the network isn't ready at boot (e.g., GentooPlayer with OpenRC), UPnP initialization now retries automatically instead of failing immediately.
 
 See [CHANGELOG.md](CHANGELOG.md) for details.
 
@@ -27,6 +28,7 @@ See [CHANGELOG.md](CHANGELOG.md) for details.
 
 | Version | Highlights |
 |---------|-----------|
+| **v2.1.3** | Fix target retry pre-check bypass |
 | **v2.1.2** | Resilient target discovery (retry at startup instead of immediate exit) |
 | **v2.1.1** | UAPP compatibility, format transition stability, high sample rate buffers, build capabilities logging |
 | **v2.1.0** | Web Configuration UI, Advanced SDK settings, stop fix (herisson-88), libupnp auto-detect |
@@ -793,4 +795,4 @@ This software is provided "as is" without warranty. While designed for high-qual
 
 **Enjoy bit-perfect, low-latency audio streaming!**
 
-*Last updated: 2026-03-15 (v2.1.2)*
+*Last updated: 2026-03-16 (v2.1.4)*
