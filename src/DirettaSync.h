@@ -212,6 +212,7 @@ namespace DirettaBuffer {
     constexpr unsigned int ONLINE_WAIT_MS = 2000;
     constexpr unsigned int FORMAT_SWITCH_DELAY_MS = 800;
     constexpr unsigned int POST_ONLINE_SILENCE_BUFFERS = 20;  // Was 50 - reduced for faster start
+    constexpr unsigned int FIRST_CONNECT_STABILIZATION_MS = 200;  // Extra stabilization on very first connect
 
     // UPnP push model needs larger buffers than MPD's pull model
     // 64KB = ~370ms floor at 44.1kHz/16-bit, negligible at higher rates
@@ -644,6 +645,7 @@ private:
     size_t m_prefillTarget = 0;
     std::atomic<bool> m_prefillComplete{false};
     std::atomic<bool> m_postOnlineDelayDone{false};
+    bool m_isFirstConnect = true;  // Extra stabilization on very first connect after startup
     std::atomic<int> m_silenceBuffersRemaining{0};
     std::atomic<int> m_stabilizationCount{0};
 
