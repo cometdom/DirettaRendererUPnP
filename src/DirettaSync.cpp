@@ -968,19 +968,23 @@ void DirettaSync::fullReset() {
 //=============================================================================
 
 void DirettaSync::configureSinkPCM(int rate, int channels, int inputBits, int& acceptedBits) {
-    (void)inputBits;
     std::lock_guard<std::mutex> lock(m_configMutex);
 
     DIRETTA::FormatConfigure fmt;
     fmt.setSpeed(rate);
     fmt.setChannel(channels);
 
-    fmt.setFormat(DIRETTA::FormatID::FMT_PCM_SIGNED_32);
-    if (checkSinkSupport(fmt)) {
-        setSinkConfigure(fmt);
-        acceptedBits = 32;
-        DIRETTA_LOG("Sink PCM: " << rate << "Hz " << channels << "ch 32-bit");
-        return;
+    // Only try 32-bit if source is actually 32-bit.
+    // Prevents silence/noise on DACs that report 32-bit support
+    // but are physically limited to 24-bit.
+    if (inputBits >= 32) {
+        fmt.setFormat(DIRETTA::FormatID::FMT_PCM_SIGNED_32);
+        if (checkSinkSupport(fmt)) {
+            setSinkConfigure(fmt);
+            acceptedBits = 32;
+            DIRETTA_LOG("Sink PCM: " << rate << "Hz " << channels << "ch 32-bit");
+            return;
+        }
     }
 
     fmt.setFormat(DIRETTA::FormatID::FMT_PCM_SIGNED_24);
