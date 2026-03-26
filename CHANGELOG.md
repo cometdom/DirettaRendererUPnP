@@ -12,6 +12,8 @@
 
 - **First-play glitch (~5s silence)**: Pre-connect Diretta pipeline at startup with default format (44100/24/2 PCM). The first real play now uses quick resume instead of cold connect, eliminating the silence gap reported with LMS (via slim2UPnP) and Roon.
 
+- **White noise after track change with Audirvana** (by herisson-88): Anticipated preload opened a second AudioDecoder in parallel, causing FFmpeg to read up to 5MB (`probesize` default) from Audirvana's HTTP server concurrently with the active stream. Audirvana's embedded server doesn't handle concurrent reads well, corrupting the active stream data → permanent white noise ~4 seconds after track change. Fix: limit `probesize` to 32KB and `max_analyze_duration` to 0 for local servers. (PR #61)
+
 ---
 
 ## [2.1.4] - 2026-03-16
