@@ -15,12 +15,14 @@
 
 ---
 
-## What's New in v2.1.4
+## What's New in v2.1.5
 
-**Fix Audirvana local stream detection.**
+**DAC compatibility, Audirvana stability, UAPP position tracking.**
 
-- **Link-local address detection** — Audirvana streams via link-local addresses (`169.254.x.x`) were incorrectly detected as remote streams, enabling HTTP reconnection options that Audirvana's local HTTP server doesn't support. This caused playback interruptions, white noise, and track advancement issues with Audirvana Studio.
-- **Resilient UPnP startup** — On systems where the network isn't ready at boot (e.g., GentooPlayer with OpenRC), UPnP initialization now retries automatically instead of failing immediately.
+- **DAC bit depth negotiation fix** — 16-bit and 24-bit content no longer produces silence on DACs that report 32-bit support but are physically limited to 24-bit (reported by PatrickW)
+- **Audirvana white noise fix** (by herisson-88) — Anticipated preload no longer saturates Audirvana's HTTP server with concurrent reads. Limited FFmpeg probe to 32KB for local servers (PR #61)
+- **First-play glitch eliminated** — Pre-connects Diretta pipeline at startup, so the first track uses quick resume instead of cold connect
+- **UAPP position tracking** — Removed milliseconds from GetPositionInfo responses (`HH:MM:SS` instead of `HH:MM:SS.FFF`) for compatibility with strict UPnP parsers
 
 See [CHANGELOG.md](CHANGELOG.md) for details.
 
@@ -28,6 +30,7 @@ See [CHANGELOG.md](CHANGELOG.md) for details.
 
 | Version | Highlights |
 |---------|-----------|
+| **v2.1.4** | Audirvana link-local detection, resilient UPnP startup |
 | **v2.1.3** | Fix target retry pre-check bypass |
 | **v2.1.2** | Resilient target discovery (retry at startup instead of immediate exit) |
 | **v2.1.1** | UAPP compatibility, format transition stability, high sample rate buffers, build capabilities logging |
@@ -795,4 +798,4 @@ This software is provided "as is" without warranty. While designed for high-qual
 
 **Enjoy bit-perfect, low-latency audio streaming!**
 
-*Last updated: 2026-03-22 (v2.1.5)*
+*Last updated: 2026-03-27 (v2.1.5)*
