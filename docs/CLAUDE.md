@@ -422,6 +422,10 @@ sudo apt install build-essential libavformat-dev libavcodec-dev libavutil-dev li
 - [x] Resilient target discovery (retry indefinitely at startup instead of exiting)
 - [x] Fix: removed `verifyTargetAvailable()` pre-check in `DirettaRenderer::start()` that bypassed retry loop
 - [x] RENDERER_NAME configuration option
+- [x] Bit depth negotiation fix — only offer 32-bit when source is 32-bit
+- [x] Audirvana preload probe fix — limit `probesize` to 32KB for local servers (herisson-88, PR #61)
+- [x] First-play pre-connect — eliminates cold connect silence on first track
+- [x] UAPP milliseconds fix — `HH:MM:SS` without fractional seconds in GetPositionInfo
 
 ### Potential Future Work
 - [ ] AVX-512 format conversions (currently only memcpy uses AVX-512)
