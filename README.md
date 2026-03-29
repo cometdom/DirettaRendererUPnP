@@ -1,4 +1,4 @@
-# Diretta UPnP Renderer v2.1.5
+# Diretta UPnP Renderer v2.1.6
 
 **The world's first native UPnP/DLNA renderer with Diretta protocol support - Low-Latency Edition**
 
@@ -8,21 +8,19 @@
 
 ---
 
-![Version](https://img.shields.io/badge/version-2.1.5-blue.svg)
+![Version](https://img.shields.io/badge/version-2.1.6-blue.svg)
 ![Low Latency](https://img.shields.io/badge/Latency-Low-green.svg)
 ![SDK](https://img.shields.io/badge/SDK-DIRETTA::Sync-orange.svg)
 ![Audirvana](https://img.shields.io/badge/Audirvana-Compatible-green.svg)
 
 ---
 
-## What's New in v2.1.5
+## What's New in v2.1.6
 
-**DAC compatibility, Audirvana stability, UAPP position tracking.**
+**UAPP progress bar fix, service startup fix.**
 
-- **DAC bit depth negotiation fix** — 16-bit and 24-bit content no longer produces silence on DACs that report 32-bit support but are physically limited to 24-bit (reported by PatrickW)
-- **Audirvana white noise fix** (by herisson-88) — Anticipated preload no longer saturates Audirvana's HTTP server with concurrent reads. Limited FFmpeg probe to 32KB for local servers (PR #61)
-- **First-play glitch eliminated** — Pre-connects Diretta pipeline at startup, so the first track uses quick resume instead of cold connect
-- **UAPP position tracking** — Removed milliseconds from GetPositionInfo responses (`HH:MM:SS` instead of `HH:MM:SS.FFF`) for compatibility with strict UPnP parsers
+- **UAPP progress bar fix** — The Play SOAP response was delayed ~320ms (track opening was synchronous). UAPP has a short timeout and wouldn't start its progress timer. The onPlay callback is now asynchronous so the HTTP 200 response is sent immediately.
+- **Service startup fix** — Fixed `--bind-ip` vs `--interface` mismatch in wrapper script when using IP addresses (reported by Pascal)
 
 See [CHANGELOG.md](CHANGELOG.md) for details.
 
@@ -30,6 +28,7 @@ See [CHANGELOG.md](CHANGELOG.md) for details.
 
 | Version | Highlights |
 |---------|-----------|
+| **v2.1.5** | DAC bit depth negotiation, Audirvana white noise fix (herisson-88), first-play glitch, UAPP milliseconds |
 | **v2.1.4** | Audirvana link-local detection, resilient UPnP startup |
 | **v2.1.3** | Fix target retry pre-check bypass |
 | **v2.1.2** | Resilient target discovery (retry at startup instead of immediate exit) |
@@ -798,4 +797,4 @@ This software is provided "as is" without warranty. While designed for high-qual
 
 **Enjoy bit-perfect, low-latency audio streaming!**
 
-*Last updated: 2026-03-27 (v2.1.5)*
+*Last updated: 2026-03-29 (v2.1.6)*

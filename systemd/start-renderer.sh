@@ -44,15 +44,10 @@ if [ -n "$PORT" ]; then
 fi
 
 # Network interface option (CRITICAL for multi-homed systems)
+# --interface accepts both interface names (eth0) and IP addresses (192.168.1.32)
 if [ -n "$NETWORK_INTERFACE" ]; then
-    # Check if it looks like an IP address or interface name
-    if [[ "$NETWORK_INTERFACE" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-        echo "Binding to IP address: $NETWORK_INTERFACE"
-        CMD+=("--bind-ip" "$NETWORK_INTERFACE")
-    else
-        echo "Binding to network interface: $NETWORK_INTERFACE"
-        CMD+=("--interface" "$NETWORK_INTERFACE")
-    fi
+    echo "Binding to network interface: $NETWORK_INTERFACE"
+    CMD+=("--interface" "$NETWORK_INTERFACE")
 fi
 
 # Gapless

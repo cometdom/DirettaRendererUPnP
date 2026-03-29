@@ -1,5 +1,14 @@
 # Changelog
 
+## [2.1.6] - 2026-03-29
+
+### Fixed
+- **Service startup crash with IP-based NETWORK_INTERFACE**: `start-renderer.sh` passed `--bind-ip` when `NETWORK_INTERFACE` was an IP address (e.g., `192.168.1.32`), but the executable only accepts `--interface`. This caused `Unknown option: --bind-ip` and service failure on restart (reported by Pascal). `--interface` accepts both interface names and IP addresses via libupnp's `UpnpInit2`.
+
+- **UAPP progress bar stuck**: The `Play` SOAP action handler executed the track-opening callback synchronously (FFmpeg init, DirettaSync open) before sending the HTTP 200 response, causing ~320ms latency. UAPP has a short internal timeout on PlayResponse and won't start its progress timer if the response is too slow. Fix: `onPlay` callback is now launched asynchronously so the HTTP 200 is returned immediately (< 50ms). Other control points (mConnect, BubbleUPnP, Audirvana) are unaffected.
+
+---
+
 ## [2.1.5] - 2026-03-27
 
 ### Fixed

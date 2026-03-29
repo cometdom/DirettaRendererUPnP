@@ -538,25 +538,30 @@ int UPnPDevice::actionSetNextAVTransportURI(UpnpActionRequest* request) {
 
 int UPnPDevice::actionPlay(UpnpActionRequest* request) {
     std::cout << "[UPnPDevice] Play" << std::endl;
-    
+
     {
         std::lock_guard<std::mutex> lock(m_stateMutex);
         m_transportState = "PLAYING";
         m_transportStatus = "OK";
     }
-    
-    // Callback - the onPlay handler opens the track and sends a complete
-    // AVTransport event via trackChangeCallback/notifyGaplessTransition
-    // (or notifyStateChange for resume-from-pause). No need to send
-    // another event here; redundant events cause audio hiccups on Audirvana.
+
+    // UAPP fix: Launch onPlay asynchronously so the HTTP 200 response is sent
+    // immediately (< 50ms). UAPP has a short internal timeout on PlayResponse
+    // and won't engage its progress timer if the response is too slow.
+    // The onPlay handler opens the track, initializes FFmpeg and DirettaSync
+    // which can take 300-500ms — too long for UAPP's timeout.
+    // mConnect tolerates slow responses; UAPP does not.
     if (m_callbacks.onPlay) {
-        m_callbacks.onPlay();
+        auto callback = m_callbacks.onPlay;
+        std::thread([callback]() {
+            callback();
+        }).detach();
     }
 
-    // Response
+    // Response — sent immediately by libupnp when we return
     IXML_Document* response = createActionResponse("Play");
     UpnpActionRequest_set_ActionResult(request, response);
-    
+
     return UPNP_E_SUCCESS;
 }
 
