@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.1.8] - 2026-03-30
+
+### Added
+- **Minimal UPnP mode** (`--minimal-upnp`): Disables position thread polling and UPnP event notifications (LastChange NOTIFY) for reduced CPU overhead during playback. Designed for control points like JPlay iOS that don't rely on position polling or event subscriptions. Gapless playback, Play/Stop/Pause, and all audio functionality remain fully operational.
+
+---
+
 ## [2.1.7] - 2026-03-29
 
 ### Fixed

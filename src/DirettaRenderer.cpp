@@ -690,7 +690,11 @@ bool DirettaRenderer::start(std::atomic<bool>* stopSignal) {
         m_running = true;
         m_upnpThread = std::thread(&DirettaRenderer::upnpThreadFunc, this);
         m_audioThread = std::thread(&DirettaRenderer::audioThreadFunc, this);
-        m_positionThread = std::thread(&DirettaRenderer::positionThreadFunc, this);
+        if (!g_minimalUPnP) {
+            m_positionThread = std::thread(&DirettaRenderer::positionThreadFunc, this);
+        } else {
+            DEBUG_LOG("[DirettaRenderer] Minimal UPnP: position thread disabled");
+        }
 
         std::cout << "[DirettaRenderer] Started" << std::endl;
         return true;

@@ -105,6 +105,7 @@ extern LogRing* g_logRing;
 #include "LogLevel.h"
 
 extern bool g_verbose;
+extern bool g_minimalUPnP;
 extern int g_rtPriority;
 
 #ifdef NOLOG

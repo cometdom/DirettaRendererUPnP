@@ -1,4 +1,4 @@
-# Diretta UPnP Renderer v2.1.7
+# Diretta UPnP Renderer v2.1.8
 
 **The world's first native UPnP/DLNA renderer with Diretta protocol support - Low-Latency Edition**
 
@@ -8,18 +8,18 @@
 
 ---
 
-![Version](https://img.shields.io/badge/version-2.1.7-blue.svg)
+![Version](https://img.shields.io/badge/version-2.1.8-blue.svg)
 ![Low Latency](https://img.shields.io/badge/Latency-Low-green.svg)
 ![SDK](https://img.shields.io/badge/SDK-DIRETTA::Sync-orange.svg)
 ![Audirvana](https://img.shields.io/badge/Audirvana-Compatible-green.svg)
 
 ---
 
-## What's New in v2.1.7
+## What's New in v2.1.8
 
-**UAPP full compatibility fix.**
+**Minimal UPnP mode for audiophile-grade playback.**
 
-- **UAPP GetPositionInfo fix** — Cling (UAPP's UPnP parser) validates SOAP responses against the SCPD. Three output arguments (AbsTime, RelCount, AbsCount) were returned in GetPositionInfo responses but not declared in the AVTransport SCPD, causing Cling to silently reject the position data. Now fully spec-compliant.
+- **`--minimal-upnp` mode** — Disables position thread polling and UPnP event notifications for zero CPU overhead during playback. Designed for control points like JPlay iOS that don't need position tracking or event subscriptions. Gapless playback remains fully operational.
 
 See [CHANGELOG.md](CHANGELOG.md) for details.
 
@@ -27,6 +27,7 @@ See [CHANGELOG.md](CHANGELOG.md) for details.
 
 | Version | Highlights |
 |---------|-----------|
+| **v2.1.7** | UAPP SCPD fix (missing GetPositionInfo arguments) |
 | **v2.1.6** | UAPP async Play response, service startup fix (Pascal) |
 | **v2.1.5** | DAC bit depth negotiation, Audirvana white noise fix (herisson-88), first-play glitch, UAPP milliseconds |
 | **v2.1.4** | Audirvana link-local detection, resilient UPnP startup |
@@ -797,4 +798,4 @@ This software is provided "as is" without warranty. While designed for high-qual
 
 **Enjoy bit-perfect, low-latency audio streaming!**
 
-*Last updated: 2026-03-29 (v2.1.7)*
+*Last updated: 2026-03-30 (v2.1.8)*

@@ -15,6 +15,8 @@
 #include "LogLevel.h"
 #define DEBUG_LOG(x) LOG_DEBUG(x)
 
+extern bool g_minimalUPnP;
+
 // Helper: XML-escape a string for use in attribute values
 static std::string xmlEscape(const std::string& input) {
     std::string output;
@@ -996,6 +998,7 @@ std::string UPnPDevice::getArgumentValue(IXML_Document* actionDoc,
 // Position is obtained by control points via GetPositionInfo polling.
 void UPnPDevice::sendAVTransportEvent() {
     if (m_deviceHandle < 0 || !m_running) return;
+    if (g_minimalUPnP) return;  // Minimal mode: no event notifications
 
     // Build LastChange XML with current state (no position - spec forbids it)
     std::string lastChange;
@@ -1058,6 +1061,7 @@ void UPnPDevice::sendAVTransportEvent() {
 // Helper: Send RenderingControl LastChange event to all subscribers
 void UPnPDevice::sendRenderingControlEvent() {
     if (m_deviceHandle < 0 || !m_running) return;
+    if (g_minimalUPnP) return;  // Minimal mode: no event notifications
 
     std::string lastChange;
     {

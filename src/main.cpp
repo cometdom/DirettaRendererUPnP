@@ -14,7 +14,7 @@
 #include <chrono>
 #include <iomanip>
 
-#define RENDERER_VERSION "2.1.7"
+#define RENDERER_VERSION "2.1.8"
 #define RENDERER_BUILD_DATE __DATE__
 #define RENDERER_BUILD_TIME __TIME__
 
@@ -56,6 +56,7 @@ void statsSignalHandler(int /*signal*/) {
 }
 
 bool g_verbose = false;
+bool g_minimalUPnP = false;
 int g_rtPriority = 50;
 LogLevel g_logLevel = LogLevel::INFO;
 
@@ -144,6 +145,10 @@ DirettaRenderer::Config parseArguments(int argc, char* argv[]) {
             g_logLevel = LogLevel::WARN;
             std::cout << "Quiet mode enabled (log level: WARN)" << std::endl;
         }
+        else if (arg == "--minimal-upnp") {
+            g_minimalUPnP = true;
+            std::cout << "Minimal UPnP mode enabled (no position polling, no events)" << std::endl;
+        }
         // Advanced Diretta SDK settings
         else if (arg == "--thread-mode" && i + 1 < argc) {
             config.threadMode = std::atoi(argv[++i]);
@@ -195,6 +200,7 @@ DirettaRenderer::Config parseArguments(int argc, char* argv[]) {
                       << "  --list-targets, -l    List available Diretta targets and exit\n"
                       << "  --verbose, -v         Enable verbose debug output (log level: DEBUG)\n"
                       << "  --quiet, -q           Quiet mode - only errors and warnings (log level: WARN)\n"
+                      << "  --minimal-upnp        Minimal UPnP mode (no position polling, no events)\n"
                       << "  --version, -V         Show version information\n"
                       << "  --help, -h            Show this help\n"
                       << "\n"
@@ -279,6 +285,9 @@ int main(int argc, char* argv[]) {
     std::cout << "  Name:     " << config.name << std::endl;
     std::cout << "  Port:     " << (config.port == 0 ? "auto" : std::to_string(config.port)) << std::endl;
     std::cout << "  Gapless:  " << (config.gaplessEnabled ? "enabled" : "disabled") << std::endl;
+    if (g_minimalUPnP) {
+        std::cout << "  UPnP:     minimal (no position polling, no events)" << std::endl;
+    }
     if (!config.networkInterface.empty()) {
         std::cout << "  Network:  " << config.networkInterface << std::endl;
     }
