@@ -19,7 +19,7 @@
 
 **Minimal UPnP mode for audiophile-grade playback.**
 
-- **`--minimal-upnp` mode** — Disables position thread polling and UPnP event notifications for zero CPU overhead during playback. Designed for control points like JPlay iOS that don't need position tracking or event subscriptions. Gapless playback remains fully operational.
+- **`--minimal-upnp` mode** — Disables position thread polling and UPnP event notifications for improved audio quality (lower noise floor, more analog sound). Recommended for JPlay iOS, LMS via slim2UPnP (fixes position bar drift), and Roon. Progress bar may become approximate but gapless playback remains fully operational.
 
 See [CHANGELOG.md](CHANGELOG.md) for details.
 
