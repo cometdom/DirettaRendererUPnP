@@ -1,6 +1,6 @@
 # Changelog
 
-## [2.1.8] - 2026-03-30
+## [2.1.8] - 2026-03-31
 
 ### Added
 - **Minimal UPnP mode** (`--minimal-upnp`): Disables position thread polling and UPnP event notifications (LastChange NOTIFY) for reduced CPU overhead during playback. Improves audio quality (lower noise floor, more analog sound) by eliminating CPU wakeups during streaming. Recommended for JPlay iOS, LMS via slim2UPnP (fixes position bar drift), and Roon. Gapless playback, Play/Stop/Pause, and all audio functionality remain fully operational.
