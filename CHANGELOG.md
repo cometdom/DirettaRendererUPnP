@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.1.9] - 2026-04-01
+
+### Fixed
+- **Cannot restart track from beginning while playing**: When a control point sends SetAVTransportURI with the same URI as the current track (to restart from beginning), the renderer incorrectly skipped the auto-stop ("Same URI already active") and then ignored the Play ("Already playing"). The track continued playing instead of restarting. Removed the same-URI shortcut — SetAVTransportURI now always performs auto-stop, allowing the track to reopen from the beginning.
+
+---
+
 ## [2.1.8] - 2026-03-31
 
 ### Added

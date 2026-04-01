@@ -1,4 +1,4 @@
-# Diretta UPnP Renderer v2.1.8
+# Diretta UPnP Renderer v2.1.9
 
 **The world's first native UPnP/DLNA renderer with Diretta protocol support - Low-Latency Edition**
 
@@ -8,18 +8,19 @@
 
 ---
 
-![Version](https://img.shields.io/badge/version-2.1.8-blue.svg)
+![Version](https://img.shields.io/badge/version-2.1.9-blue.svg)
 ![Low Latency](https://img.shields.io/badge/Latency-Low-green.svg)
 ![SDK](https://img.shields.io/badge/SDK-DIRETTA::Sync-orange.svg)
 ![Audirvana](https://img.shields.io/badge/Audirvana-Compatible-green.svg)
 
 ---
 
-## What's New in v2.1.8
+## What's New in v2.1.9
 
-**Minimal UPnP mode for audiophile-grade playback.**
+**Track restart fix, minimal UPnP mode.**
 
-- **`--minimal-upnp` mode** — Disables position thread polling and UPnP event notifications for improved audio quality (lower noise floor, more analog sound). Recommended for JPlay iOS, LMS via slim2UPnP (fixes position bar drift), and Roon. Progress bar may become approximate but gapless playback remains fully operational.
+- **Track restart fix** — Restarting a track from the beginning while playing now works correctly. Previously, the renderer ignored the SetAVTransportURI + Play sequence when the same URI was already active.
+- **`--minimal-upnp` mode** (v2.1.8) — Disables position polling and event notifications for improved audio quality. Recommended for JPlay iOS, LMS/slim2UPnP, and Roon.
 
 See [CHANGELOG.md](CHANGELOG.md) for details.
 
@@ -27,6 +28,7 @@ See [CHANGELOG.md](CHANGELOG.md) for details.
 
 | Version | Highlights |
 |---------|-----------|
+| **v2.1.8** | Minimal UPnP mode (`--minimal-upnp`) for audiophile-grade playback |
 | **v2.1.7** | UAPP SCPD fix (missing GetPositionInfo arguments) |
 | **v2.1.6** | UAPP async Play response, service startup fix (Pascal) |
 | **v2.1.5** | DAC bit depth negotiation, Audirvana white noise fix (herisson-88), first-play glitch, UAPP milliseconds |
@@ -798,4 +800,4 @@ This software is provided "as is" without warranty. While designed for high-qual
 
 **Enjoy bit-perfect, low-latency audio streaming!**
 
-*Last updated: 2026-03-31 (v2.1.8)*
+*Last updated: 2026-04-01 (v2.1.9)*

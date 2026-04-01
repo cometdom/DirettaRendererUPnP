@@ -487,15 +487,6 @@ bool DirettaRenderer::start(std::atomic<bool>* stopSignal) {
             if (currentState == AudioEngine::State::PLAYING ||
                 currentState == AudioEngine::State::PAUSED) {
 
-                // Skip auto-stop if same URI already playing
-                // (control point confirming current track after gapless transition)
-                if (uri == m_currentURI) {
-                    DEBUG_LOG("[DirettaRenderer] Same URI already active, skipping auto-stop");
-                    m_currentMetadata = metadata;
-                    m_audioEngine->setCurrentURI(uri, metadata);
-                    return;
-                }
-
                 std::cout << "[DirettaRenderer] Auto-STOP before URI change" << std::endl;
 
                 // v2.0.1 FIX: Record stop time for DAC stabilization delay in onPlay
