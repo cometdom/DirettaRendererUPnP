@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.1.10] - 2026-04-06
+
+### Changed
+- **Config variable names aligned with CLI** (requested by Filippo/GentooPlayer): `RENDERER_NAME` → `NAME`, `NETWORK_INTERFACE` → `INTERFACE`, `MTU_OVERRIDE` → `MTU`. Enables simple automatic mapping (`KEY` → `--key`) for downstream integrations. Old names are still supported as fallback for backward compatibility.
+
+---
+
 ## [2.1.9] - 2026-04-01
 
 ### Fixed

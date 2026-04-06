@@ -1122,17 +1122,17 @@ set -e
 # Default values (can be overridden by config file)
 TARGET="${TARGET:-1}"
 PORT="${PORT:-4005}"
-RENDERER_NAME="${RENDERER_NAME:-}"
+NAME="${NAME:-${RENDERER_NAME:-}}"
 GAPLESS="${GAPLESS:-}"
 VERBOSE="${VERBOSE:-}"
-NETWORK_INTERFACE="${NETWORK_INTERFACE:-}"
+INTERFACE="${INTERFACE:-${NETWORK_INTERFACE:-}}"
 THREAD_MODE="${THREAD_MODE:-}"
 CYCLE_TIME="${CYCLE_TIME:-}"
 CYCLE_MIN_TIME="${CYCLE_MIN_TIME:-}"
 INFO_CYCLE="${INFO_CYCLE:-}"
 TRANSFER_MODE="${TRANSFER_MODE:-}"
 TARGET_PROFILE_LIMIT="${TARGET_PROFILE_LIMIT:-}"
-MTU_OVERRIDE="${MTU_OVERRIDE:-}"
+MTU="${MTU:-${MTU_OVERRIDE:-}}"
 
 # Process priority defaults
 NICE_LEVEL="${NICE_LEVEL:--10}"
@@ -1149,8 +1149,8 @@ CMD=("$RENDERER_BIN")
 CMD+=("--target" "$TARGET")
 
 # Renderer name (supports spaces, e.g., "Devialet Target")
-if [ -n "$RENDERER_NAME" ]; then
-    CMD+=("--name" "$RENDERER_NAME")
+if [ -n "$NAME" ]; then
+    CMD+=("--name" "$NAME")
 fi
 
 # UPnP port (if specified)
@@ -1159,14 +1159,10 @@ if [ -n "$PORT" ]; then
 fi
 
 # Network interface option (CRITICAL for multi-homed systems)
-if [ -n "$NETWORK_INTERFACE" ]; then
-    if [[ "$NETWORK_INTERFACE" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-        echo "Binding to IP address: $NETWORK_INTERFACE"
-        CMD+=("--bind-ip" "$NETWORK_INTERFACE")
-    else
-        echo "Binding to network interface: $NETWORK_INTERFACE"
-        CMD+=("--interface" "$NETWORK_INTERFACE")
-    fi
+# --interface accepts both interface names (eth0) and IP addresses (192.168.1.32)
+if [ -n "$INTERFACE" ]; then
+    echo "Binding to network interface: $INTERFACE"
+    CMD+=("--interface" "$INTERFACE")
 fi
 
 # Gapless
@@ -1204,8 +1200,8 @@ if [ -n "$TARGET_PROFILE_LIMIT" ]; then
     CMD+=("--target-profile-limit" "$TARGET_PROFILE_LIMIT")
 fi
 
-if [ -n "$MTU_OVERRIDE" ]; then
-    CMD+=("--mtu" "$MTU_OVERRIDE")
+if [ -n "$MTU" ]; then
+    CMD+=("--mtu" "$MTU")
 fi
 
 if [ -n "$RT_PRIORITY" ] && [ "$RT_PRIORITY" != "50" ]; then
@@ -1242,8 +1238,8 @@ echo "════════════════════════�
 echo ""
 echo "Configuration:"
 echo "  Target:            $TARGET"
-echo "  Name:              ${RENDERER_NAME:-Diretta Renderer (default)}"
-echo "  Network Interface: ${NETWORK_INTERFACE:-auto-detect}"
+echo "  Name:              ${NAME:-Diretta Renderer (default)}"
+echo "  Network Interface: ${INTERFACE:-auto-detect}"
 echo "  Nice level:        $NICE_LEVEL"
 echo "  I/O scheduling:    $IO_SCHED_CLASS (priority $IO_SCHED_PRIORITY)"
 echo "  RT priority:       $RT_PRIORITY (SCHED_FIFO)"
@@ -1294,7 +1290,7 @@ WRAPPER_EOF
         fi
 
         # Migrate settings from old config
-        local KNOWN_KEYS="TARGET PORT RENDERER_NAME GAPLESS VERBOSE MINIMAL_UPNP NETWORK_INTERFACE THREAD_MODE CYCLE_TIME CYCLE_MIN_TIME INFO_CYCLE TRANSFER_MODE TARGET_PROFILE_LIMIT MTU_OVERRIDE NICE_LEVEL IO_SCHED_CLASS IO_SCHED_PRIORITY RT_PRIORITY"
+        local KNOWN_KEYS="TARGET PORT NAME RENDERER_NAME GAPLESS VERBOSE MINIMAL_UPNP INTERFACE NETWORK_INTERFACE THREAD_MODE CYCLE_TIME CYCLE_MIN_TIME INFO_CYCLE TRANSFER_MODE TARGET_PROFILE_LIMIT MTU MTU_OVERRIDE NICE_LEVEL IO_SCHED_CLASS IO_SCHED_PRIORITY RT_PRIORITY"
         local migrated_keys=""
         local obsolete_keys=""
 

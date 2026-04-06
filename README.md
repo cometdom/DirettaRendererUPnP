@@ -1,4 +1,4 @@
-# Diretta UPnP Renderer v2.1.9
+# Diretta UPnP Renderer v2.1.10
 
 **The world's first native UPnP/DLNA renderer with Diretta protocol support - Low-Latency Edition**
 
@@ -8,19 +8,18 @@
 
 ---
 
-![Version](https://img.shields.io/badge/version-2.1.9-blue.svg)
+![Version](https://img.shields.io/badge/version-2.1.10-blue.svg)
 ![Low Latency](https://img.shields.io/badge/Latency-Low-green.svg)
 ![SDK](https://img.shields.io/badge/SDK-DIRETTA::Sync-orange.svg)
 ![Audirvana](https://img.shields.io/badge/Audirvana-Compatible-green.svg)
 
 ---
 
-## What's New in v2.1.9
+## What's New in v2.1.10
 
-**Track restart fix, minimal UPnP mode.**
+**Config alignment for downstream integrations.**
 
-- **Track restart fix** — Restarting a track from the beginning while playing now works correctly. Previously, the renderer ignored the SetAVTransportURI + Play sequence when the same URI was already active.
-- **`--minimal-upnp` mode** (v2.1.8) — Disables position polling and event notifications for improved audio quality. Recommended for JPlay iOS, LMS/slim2UPnP, and Roon.
+- **Config variable names aligned with CLI** — `RENDERER_NAME` → `NAME`, `NETWORK_INTERFACE` → `INTERFACE`, `MTU_OVERRIDE` → `MTU`. Enables simple `KEY → --key` automatic mapping for GentooPlayer and other distributions. Old names still supported as fallback.
 
 See [CHANGELOG.md](CHANGELOG.md) for details.
 
@@ -28,6 +27,7 @@ See [CHANGELOG.md](CHANGELOG.md) for details.
 
 | Version | Highlights |
 |---------|-----------|
+| **v2.1.9** | Track restart fix (same URI shortcut removed) |
 | **v2.1.8** | Minimal UPnP mode (`--minimal-upnp`) for audiophile-grade playback |
 | **v2.1.7** | UAPP SCPD fix (missing GetPositionInfo arguments) |
 | **v2.1.6** | UAPP async Play response, service startup fix (Pascal) |
@@ -800,4 +800,4 @@ This software is provided "as is" without warranty. While designed for high-qual
 
 **Enjoy bit-perfect, low-latency audio streaming!**
 
-*Last updated: 2026-04-01 (v2.1.9)*
+*Last updated: 2026-04-06 (v2.1.10)*

@@ -9,7 +9,7 @@
             "collapsed": false,
             "settings": [
                 {
-                    "key": "RENDERER_NAME",
+                    "key": "NAME",
                     "type": "text",
                     "label": "Renderer Name",
                     "description": "UPnP friendly name visible to control points. Supports spaces (e.g., 'Devialet Target').",
@@ -56,7 +56,7 @@
                     ]
                 },
                 {
-                    "key": "NETWORK_INTERFACE",
+                    "key": "INTERFACE",
                     "type": "text",
                     "label": "Network Interface",
                     "description": "Interface name (eth0) or IP address. Empty = auto-detect.",
@@ -182,9 +182,9 @@
                     "min": 0
                 },
                 {
-                    "key": "MTU_OVERRIDE",
+                    "key": "MTU",
                     "type": "number",
-                    "label": "MTU Override (bytes)",
+                    "label": "MTU (bytes)",
                     "description": "Force specific MTU. Empty = auto-detect. Common values: 1500, 4096, 9000",
                     "default": "",
                     "min": 1500,
