@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.1.11] - 2026-04-06
+
+### Fixed
+- **AIFF playback failure** (`Invalid data found when processing input`): The local server probesize limit (32KB, introduced in PR #61 for Audirvana preload fix) was too small for AIFF files which can have large metadata chunks (MARK, INST, annotations) before the audio data. Increased to 256KB — still well below FFmpeg's 5MB default that caused Audirvana issues. (Reported by Pascal)
+
+---
+
 ## [2.1.10] - 2026-04-06
 
 ### Changed

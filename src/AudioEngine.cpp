@@ -188,11 +188,12 @@ bool AudioDecoder::open(const std::string& url) {
     // Free unused options
     av_dict_free(&options);
 
-    // Limit probe for local servers: WAV headers are ~44 bytes, no need to
-    // read megabytes. Default probesize (5MB) causes massive concurrent reads
-    // during anticipated preload, saturating Audirvana's HTTP server.
+    // Limit probe for local servers to avoid saturating Audirvana's HTTP server
+    // during anticipated preload (concurrent reads). Default FFmpeg probesize is 5MB.
+    // 256KB is enough for WAV (~44B header), FLAC, DSF, and AIFF (which can have
+    // large metadata chunks before the SSND audio data). 32KB was too small for AIFF.
     if (isLocalServer) {
-        m_formatContext->probesize = 32768;       // 32KB — enough for any WAV/FLAC/DSF header
+        m_formatContext->probesize = 262144;       // 256KB — handles AIFF metadata chunks
         m_formatContext->max_analyze_duration = 0; // Don't analyze beyond header
     }
 
