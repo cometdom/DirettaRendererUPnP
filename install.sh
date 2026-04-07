@@ -226,9 +226,9 @@ get_ffmpeg_configure_opts() {
 --disable-inline-asm
 --disable-doc
 --enable-muxer=flac,mov,ipod,wav,w64,ffmetadata
---enable-demuxer=flac,mov,wav,w64,ffmetadata,dsf,aac,hls,mpegts,mp3,ogg,pcm_s16le,pcm_s24le,pcm_s32le,pcm_f32le,lavfi
+--enable-demuxer=flac,mov,wav,w64,aiff,ffmetadata,dsf,aac,hls,mpegts,mp3,ogg,pcm_s16le,pcm_s24le,pcm_s32le,pcm_f32le,lavfi
 --enable-encoder=alac,flac,pcm_s16le,pcm_s24le,pcm_s32le
---enable-decoder=alac,flac,pcm_s16le,pcm_s24le,pcm_s32le,pcm_f32le,dsd_lsbf,dsd_msbf,dsd_lsbf_planar,dsd_msbf_planar,vorbis,aac,aac_fixed,aac_latm,mp3,mp3float,mjpeg,png
+--enable-decoder=alac,flac,pcm_s16le,pcm_s24le,pcm_s32le,pcm_f32le,pcm_s16be,pcm_s24be,pcm_s32be,dsd_lsbf,dsd_msbf,dsd_lsbf_planar,dsd_msbf_planar,vorbis,aac,aac_fixed,aac_latm,mp3,mp3float,mjpeg,png
 --enable-parser=aac,aac_latm,flac,vorbis,mpegaudio,mjpeg
 --enable-protocol=file,pipe,http,https,tcp,hls
 --enable-filter=aresample,hdcd,sine,anull
@@ -262,8 +262,8 @@ get_ffmpeg_8_minimal_opts() {
 --disable-avdevice
 --disable-swscale
 --enable-protocol=file,http,https,tcp,hls
---enable-demuxer=flac,wav,dsf,aac,mov,mp3,ogg,hls,mpegts
---enable-decoder=flac,alac,pcm_s16le,pcm_s24le,pcm_s32le,pcm_f32le,dsd_lsbf,dsd_msbf,dsd_lsbf_planar,dsd_msbf_planar,aac,aac_fixed,aac_latm,mp3,mp3float,vorbis
+--enable-demuxer=flac,wav,aiff,dsf,aac,mov,mp3,ogg,hls,mpegts
+--enable-decoder=flac,alac,pcm_s16le,pcm_s24le,pcm_s32le,pcm_f32le,pcm_s16be,pcm_s24be,pcm_s32be,dsd_lsbf,dsd_msbf,dsd_lsbf_planar,dsd_msbf_planar,aac,aac_fixed,aac_latm,mp3,mp3float,vorbis
 --enable-parser=aac,aac_latm,mpegaudio,vorbis
 --enable-muxer=flac,wav
 --enable-filter=aresample

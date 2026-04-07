@@ -1,9 +1,9 @@
 # Changelog
 
-## [2.1.11] - 2026-04-06
+## [2.1.11] - 2026-04-07
 
 ### Fixed
-- **AIFF playback failure** (`Invalid data found when processing input`): The local server probesize limit (32KB, introduced in PR #61 for Audirvana preload fix) was too small for AIFF files which can have large metadata chunks (MARK, INST, annotations) before the audio data. Increased to 256KB — still well below FFmpeg's 5MB default that caused Audirvana issues. (Reported by Pascal)
+- **AIFF playback failure** (`Invalid data found when processing input`): FFmpeg was compiled without the AIFF demuxer and big-endian PCM decoders. Added `aiff` demuxer and `pcm_s16be`, `pcm_s24be`, `pcm_s32be` decoders to both FFmpeg build configurations in `install.sh`. Users who compiled FFmpeg via `install.sh` (minimal configuration) need to recompile FFmpeg to enable AIFF support. (Reported by Pascal)
 
 ---
 
