@@ -189,9 +189,21 @@ DirettaRenderer::Config parseArguments(int argc, char* argv[]) {
         }
         else if (arg == "--cpu-audio" && i + 1 < argc) {
             config.cpuAudio = std::atoi(argv[++i]);
+            int numCores = static_cast<int>(sysconf(_SC_NPROCESSORS_ONLN));
+            if (config.cpuAudio < 0 || config.cpuAudio >= numCores) {
+                std::cerr << "Warning: --cpu-audio " << config.cpuAudio
+                          << " is invalid (this system has cores 0-" << (numCores - 1) << ")" << std::endl;
+                config.cpuAudio = -1;
+            }
         }
         else if (arg == "--cpu-other" && i + 1 < argc) {
             config.cpuOther = std::atoi(argv[++i]);
+            int numCores = static_cast<int>(sysconf(_SC_NPROCESSORS_ONLN));
+            if (config.cpuOther < 0 || config.cpuOther >= numCores) {
+                std::cerr << "Warning: --cpu-other " << config.cpuOther
+                          << " is invalid (this system has cores 0-" << (numCores - 1) << ")" << std::endl;
+                config.cpuOther = -1;
+            }
         }
         else if (arg == "--help" || arg == "-h") {
             std::cout << "Diretta UPnP Renderer (Simplified Architecture)\n\n"
@@ -283,6 +295,12 @@ int main(int argc, char* argv[]) {
     }
 
     DirettaRenderer::Config config = parseArguments(argc, argv);
+
+    // Validate CPU affinity: warn if both cores are the same (no isolation)
+    if (config.cpuAudio >= 0 && config.cpuOther >= 0 && config.cpuAudio == config.cpuOther) {
+        std::cerr << "Warning: --cpu-audio and --cpu-other are set to the same core ("
+                  << config.cpuAudio << "). No thread isolation will occur." << std::endl;
+    }
 
     // Initialize async logging ring buffer (A3 optimization)
     // Only active in verbose mode to avoid overhead in production
