@@ -462,6 +462,46 @@ DSD conversion mode is selected once per track for optimal performance:
 | 16→32 upsample | `convert16To32_AVX2()` | 16 samples/instruction |
 | DSD interleave | `convertDSD_*()` | 32 bytes/instruction |
 
+### Audio Quality Tuning
+
+For the best possible audio quality, the following system-level optimizations are recommended:
+
+#### CPU Affinity (v2.2.0+)
+
+Pinning audio threads to dedicated CPU cores reduces jitter and improves soundstage clarity:
+
+```ini
+# In /etc/default/diretta-renderer
+CPU_AUDIO=2    # Diretta worker thread (critical hot path)
+CPU_OTHER=3    # Decode, UPnP, and other threads
+```
+
+Use cores on the same CCD (AMD) or same P-core cluster (Intel) and avoid core 0 (used by kernel/interrupts). Also configurable via the web UI under "CPU Affinity".
+
+#### Disable SMT (Hyperthreading)
+
+Simultaneous Multithreading (SMT/HT) shares physical core resources between two logical threads, which can introduce micro-jitter on the audio path. Disabling SMT ensures each core is fully dedicated:
+
+```bash
+# Disable SMT (temporary, until reboot)
+echo off | sudo tee /sys/devices/system/cpu/smt/control
+
+# Verify
+cat /sys/devices/system/cpu/smt/active   # Should show "0"
+```
+
+For a permanent setting, add `nosmt` to your kernel boot parameters (in `/etc/default/grub`, then run `grub2-mkconfig`).
+
+#### Minimal UPnP Mode (v2.1.8+)
+
+Reduces CPU wakeups during playback by disabling position polling and event notifications:
+
+```ini
+MINIMAL_UPNP=1
+```
+
+Recommended for JPlay iOS, LMS via slim2UPnP, and Roon. See [Minimal UPnP Mode](#minimal-upnp-mode) for details.
+
 ### Network Requirements
 
 #### PCM Formats
