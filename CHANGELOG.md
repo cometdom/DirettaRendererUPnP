@@ -1,6 +1,16 @@
 # Changelog
 
-## [2.1.11] - 2026-04-07
+## [2.2.0] - 2026-04-07
+
+### Added
+- **CPU affinity for audio thread isolation** (`--cpu-audio`, `--cpu-other`): Pin the Diretta worker thread and other threads (decode, UPnP, position) to dedicated CPU cores for reduced jitter and improved audio quality. When `--cpu-audio` is set, the SDK OCCUPIED flag is automatically enabled for hardware-level CPU pinning. Configurable via CLI, config file (`CPU_AUDIO`, `CPU_OTHER`), and web UI. Default: no pinning (current behavior preserved). (Requested by Daniel/Koala887)
+
+### Fixed
+- **AIFF playback failure**: Added `aiff` demuxer and big-endian PCM decoders (`pcm_s16be`, `pcm_s24be`, `pcm_s32be`) to FFmpeg build configuration. Users who compiled FFmpeg via `install.sh` need to recompile for AIFF support. (Reported by Pascal)
+
+---
+
+## [2.1.10] - 2026-04-06
 
 ### Fixed
 - **AIFF playback failure** (`Invalid data found when processing input`): FFmpeg was compiled without the AIFF demuxer and big-endian PCM decoders. Added `aiff` demuxer and `pcm_s16be`, `pcm_s24be`, `pcm_s32be` decoders to both FFmpeg build configurations in `install.sh`. Users who compiled FFmpeg via `install.sh` (minimal configuration) need to recompile FFmpeg to enable AIFF support. (Reported by Pascal)

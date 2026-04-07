@@ -1,4 +1,4 @@
-# Diretta UPnP Renderer v2.1.11
+# Diretta UPnP Renderer v2.2.0
 
 **The world's first native UPnP/DLNA renderer with Diretta protocol support - Low-Latency Edition**
 
@@ -8,19 +8,20 @@
 
 ---
 
-![Version](https://img.shields.io/badge/version-2.1.11-blue.svg)
+![Version](https://img.shields.io/badge/version-2.2.0-blue.svg)
 ![Low Latency](https://img.shields.io/badge/Latency-Low-green.svg)
 ![SDK](https://img.shields.io/badge/SDK-DIRETTA::Sync-orange.svg)
 ![Audirvana](https://img.shields.io/badge/Audirvana-Compatible-green.svg)
 
 ---
 
-## What's New in v2.1.11
+## What's New in v2.2.0
 
-**AIFF support, config alignment.**
+**CPU affinity, AIFF support, audio quality tuning.**
 
-- **AIFF playback support** — Added AIFF demuxer and big-endian PCM decoders (`pcm_s16be`, `pcm_s24be`, `pcm_s32be`) to the FFmpeg build configuration. **Note:** if you installed FFmpeg via `install.sh` (minimal build), you need to recompile FFmpeg to enable AIFF support (re-run `install.sh` and select the FFmpeg compilation option).
-- **Config variable alignment** (v2.1.10) — `NAME`, `INTERFACE`, `MTU` aligned with CLI args. Old names still supported.
+- **CPU affinity** (`--cpu-audio`, `--cpu-other`) — Pin the Diretta worker thread and other threads to dedicated CPU cores for reduced jitter and improved audio quality. Configurable via CLI, config file, and web UI. (Requested by Daniel/Koala887)
+- **AIFF playback support** — Added AIFF demuxer and big-endian PCM decoders to the FFmpeg build. **Note:** if you installed FFmpeg via `install.sh`, you need to recompile FFmpeg for AIFF support.
+- **Audio Quality Tuning guide** — New README section documenting CPU affinity, SMT disabling, and minimal UPnP mode for optimal audio quality.
 
 See [CHANGELOG.md](CHANGELOG.md) for details.
 
@@ -28,6 +29,7 @@ See [CHANGELOG.md](CHANGELOG.md) for details.
 
 | Version | Highlights |
 |---------|-----------|
+| **v2.1.11** | AIFF support (FFmpeg build config) |
 | **v2.1.10** | Config variable alignment for GentooPlayer/downstream integrations |
 | **v2.1.9** | Track restart fix (same URI shortcut removed) |
 | **v2.1.8** | Minimal UPnP mode (`--minimal-upnp`) for audiophile-grade playback |
@@ -842,4 +844,4 @@ This software is provided "as is" without warranty. While designed for high-qual
 
 **Enjoy bit-perfect, low-latency audio streaming!**
 
-*Last updated: 2026-04-07 (v2.1.11)*
+*Last updated: 2026-04-07 (v2.2.0)*
