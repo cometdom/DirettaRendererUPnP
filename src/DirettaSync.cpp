@@ -161,10 +161,19 @@ void DirettaSync::disable() {
 
 bool DirettaSync::openSDK() {
     ACQUA::Clock infoCycle = ACQUA::Clock::MicroSeconds(m_config.infoCycle);
+
+    // CPU affinity: when cpuAudio is set, add OCCUPIED flag to enable SDK CPU pinning
+    int threadMode = m_config.threadMode;
+    if (m_config.cpuAudio >= 0) {
+        threadMode |= 16;  // OCCUPIED = pin thread to CPU
+        DIRETTA_LOG("CPU affinity: SDK thread pinned to core " << m_config.cpuAudio
+                    << " (OCCUPIED mode, threadMode=" << threadMode << ")");
+    }
+
     return DIRETTA::Sync::open(
-        DIRETTA::Sync::THRED_MODE(m_config.threadMode),
+        DIRETTA::Sync::THRED_MODE(threadMode),
         infoCycle, 0, "DirettaRenderer", 0x44525400,
-        -1, -1, 0, DIRETTA::Sync::MSMODE_AUTO);
+        m_config.cpuAudio, m_config.cpuOther, 0, DIRETTA::Sync::MSMODE_AUTO);
 }
 
 bool DirettaSync::openSyncConnection() {

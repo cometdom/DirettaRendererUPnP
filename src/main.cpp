@@ -14,7 +14,7 @@
 #include <chrono>
 #include <iomanip>
 
-#define RENDERER_VERSION "2.1.11"
+#define RENDERER_VERSION "2.2.0"
 #define RENDERER_BUILD_DATE __DATE__
 #define RENDERER_BUILD_TIME __TIME__
 
@@ -187,6 +187,12 @@ DirettaRenderer::Config parseArguments(int argc, char* argv[]) {
                 g_rtPriority = std::max(1, std::min(99, g_rtPriority));
             }
         }
+        else if (arg == "--cpu-audio" && i + 1 < argc) {
+            config.cpuAudio = std::atoi(argv[++i]);
+        }
+        else if (arg == "--cpu-other" && i + 1 < argc) {
+            config.cpuOther = std::atoi(argv[++i]);
+        }
         else if (arg == "--help" || arg == "-h") {
             std::cout << "Diretta UPnP Renderer (Simplified Architecture)\n\n"
                       << "Usage: " << argv[0] << " [options]\n\n"
@@ -216,6 +222,10 @@ DirettaRenderer::Config parseArguments(int argc, char* argv[]) {
                       << "  --target-profile-limit <us> Target profile limit time (0=SelfProfile (stable), default: 0, >0=experimental)\n"
                       << "  --mtu <bytes>              MTU override (default: auto-detect)\n"
                       << "  --rt-priority <1-99>       SCHED_FIFO real-time priority for worker thread (default: 50)\n"
+                      << "\n"
+                      << "CPU affinity (core isolation for audio quality):\n"
+                      << "  --cpu-audio <core>         Pin Diretta worker thread to CPU core (default: no pinning)\n"
+                      << "  --cpu-other <core>         Pin other threads (decode/UPnP) to CPU core (default: no pinning)\n"
                       << std::endl;
             exit(0);
         }

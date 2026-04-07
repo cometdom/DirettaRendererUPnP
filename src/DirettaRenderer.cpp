@@ -16,10 +16,27 @@
 #include <functional>
 #include <unistd.h>
 #include <cstring>
+#include <pthread.h>
+#include <sched.h>
 
 // Logging: uses centralized LogLevel system from LogLevel.h (included via DirettaSync.h)
 // DEBUG_LOG kept as alias for backward compatibility within this file
 #define DEBUG_LOG(x) LOG_DEBUG(x)
+
+// Helper: pin current thread to a specific CPU core
+static bool pinThreadToCore(int core, const char* threadName) {
+    cpu_set_t cpuset;
+    CPU_ZERO(&cpuset);
+    CPU_SET(core, &cpuset);
+    int ret = pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
+    if (ret != 0) {
+        std::cerr << "[" << threadName << "] Failed to set CPU affinity to core "
+                  << core << ": " << strerror(ret) << std::endl;
+        return false;
+    }
+    std::cout << "[" << threadName << "] Pinned to CPU core " << core << std::endl;
+    return true;
+}
 
 //=============================================================================
 // Hybrid Flow Control Constants
@@ -160,6 +177,12 @@ bool DirettaRenderer::start(std::atomic<bool>* stopSignal) {
         if (m_config.targetProfileLimitTime >= 0)
             syncConfig.targetProfileLimitTime = static_cast<unsigned int>(m_config.targetProfileLimitTime);
 
+        // CPU affinity
+        if (m_config.cpuAudio >= 0)
+            syncConfig.cpuAudio = m_config.cpuAudio;
+        if (m_config.cpuOther >= 0)
+            syncConfig.cpuOther = m_config.cpuOther;
+
         // Log non-default SDK settings
         if (m_config.threadMode >= 0)
             std::cout << "[DirettaRenderer] Thread mode: " << syncConfig.threadMode << std::endl;
@@ -176,6 +199,10 @@ bool DirettaRenderer::start(std::atomic<bool>* stopSignal) {
         if (m_config.targetProfileLimitTime >= 0)
             std::cout << "[DirettaRenderer] Target profile limit: " << syncConfig.targetProfileLimitTime
                       << " us (" << (syncConfig.targetProfileLimitTime > 0 ? "TargetProfile" : "SelfProfile") << ")" << std::endl;
+        if (m_config.cpuAudio >= 0)
+            std::cout << "[DirettaRenderer] CPU audio (Diretta worker): core " << m_config.cpuAudio << std::endl;
+        if (m_config.cpuOther >= 0)
+            std::cout << "[DirettaRenderer] CPU other (decode/UPnP): core " << m_config.cpuOther << std::endl;
 
         if (!m_direttaSync->enable(syncConfig, stopSignal)) {
             std::cerr << "[DirettaRenderer] Failed to enable DirettaSync" << std::endl;
@@ -738,6 +765,7 @@ void DirettaRenderer::stop() {
 //=============================================================================
 
 void DirettaRenderer::upnpThreadFunc() {
+    if (m_config.cpuOther >= 0) pinThreadToCore(m_config.cpuOther, "UPnP Thread");
     DEBUG_LOG("[UPnP Thread] Started");
 
     while (m_running) {
@@ -748,6 +776,7 @@ void DirettaRenderer::upnpThreadFunc() {
 }
 
 void DirettaRenderer::audioThreadFunc() {
+    if (m_config.cpuOther >= 0) pinThreadToCore(m_config.cpuOther, "Audio Thread");
     DEBUG_LOG("[Audio Thread] Started");
 
     // Buffer-level flow control thresholds (like MPD's Delay() approach)
@@ -844,6 +873,7 @@ void DirettaRenderer::audioThreadFunc() {
 }
 
 void DirettaRenderer::positionThreadFunc() {
+    if (m_config.cpuOther >= 0) pinThreadToCore(m_config.cpuOther, "Position Thread");
     DEBUG_LOG("[Position Thread] Started");
 
     while (m_running) {
