@@ -1761,7 +1761,8 @@ bool DirettaSync::startSyncWorker() {
             CPU_ZERO(&cpuset);
             CPU_SET(m_config.cpuAudio, &cpuset);
             if (pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset) == 0) {
-                DIRETTA_LOG("Worker thread pinned to CPU core " << m_config.cpuAudio);
+                std::cout << "[DirettaSync] Worker thread pinned to CPU core "
+                          << m_config.cpuAudio << std::endl;
             } else {
                 std::cerr << "[DirettaSync] WARNING: Failed to pin worker to core "
                           << m_config.cpuAudio << std::endl;
