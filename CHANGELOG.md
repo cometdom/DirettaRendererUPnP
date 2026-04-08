@@ -8,6 +8,7 @@
 ### Fixed
 - **AIFF playback failure**: Added `aiff` demuxer and big-endian PCM decoders (`pcm_s16be`, `pcm_s24be`, `pcm_s32be`) to FFmpeg build configuration. Users who compiled FFmpeg via `install.sh` need to recompile for AIFF support. (Reported by Pascal)
 - **CPU affinity core validation**: `--cpu-audio` and `--cpu-other` are now validated against the actual number of CPU cores on the system. Invalid core numbers are rejected with a warning and reset to no pinning. Also warns if both options are set to the same core (no isolation). (Suggested by Hoorna/Alfred)
+- **Diretta worker thread not pinned to cpuAudio core**: The SDK's OCCUPIED mode with `cpuMain` doesn't reliably pin the worker thread on all platforms (confirmed on RPi 4). Now explicitly pins the worker thread via `pthread_setaffinity_np` in `startSyncWorker()`, in addition to the SDK parameter. (Reported by Hoorna/Alfred)
 
 ---
 
