@@ -1754,6 +1754,20 @@ bool DirettaSync::startSyncWorker() {
         // SCHED_FIFO priority 50 (mid-range real-time) - requires root/CAP_SYS_NICE
         setRealtimePriority(g_rtPriority);
 
+        // Pin worker thread to cpuAudio core (belt and suspenders with SDK cpuMain
+        // which doesn't always work, e.g., on RPi 4)
+        if (m_config.cpuAudio >= 0) {
+            cpu_set_t cpuset;
+            CPU_ZERO(&cpuset);
+            CPU_SET(m_config.cpuAudio, &cpuset);
+            if (pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset) == 0) {
+                DIRETTA_LOG("Worker thread pinned to CPU core " << m_config.cpuAudio);
+            } else {
+                std::cerr << "[DirettaSync] WARNING: Failed to pin worker to core "
+                          << m_config.cpuAudio << std::endl;
+            }
+        }
+
         while (m_running.load(std::memory_order_acquire)) {
             if (!syncWorker()) {
                 std::this_thread::sleep_for(std::chrono::microseconds(100));
