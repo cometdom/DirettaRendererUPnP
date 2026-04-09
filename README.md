@@ -845,4 +845,4 @@ This software is provided "as is" without warranty. While designed for high-qual
 
 **Enjoy bit-perfect, low-latency audio streaming!**
 
-*Last updated: 2026-04-07 (v2.2.0)*
+*Last updated: 2026-04-09 (v2.2.0)*
