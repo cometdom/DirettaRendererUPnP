@@ -130,13 +130,32 @@ bool AudioDecoder::open(const std::string& url) {
                           url.find("://localhost") != std::string::npos ||
                           url.find("://127.") != std::string::npos);
 
-    if (url.find(".dsf") != std::string::npos || url.find(".DSF") != std::string::npos) {
-        inputFormat = av_find_input_format("dsf");
-        if (inputFormat) {
-            std::cout << "[AudioDecoder] Format hint: DSF (demuxer: " << inputFormat->name << ")" << std::endl;
-        } else {
-            std::cerr << "[AudioDecoder] WARNING: DSF demuxer not found in FFmpeg!" << std::endl;
-            std::cerr << "[AudioDecoder] Please rebuild FFmpeg with: --enable-demuxer=dsf" << std::endl;
+    // Check URL extension for format hinting — use the LAST extension in the URL
+    // to handle MinimServer transcode URLs like ".dsf/$!transcode-24,176.wav"
+    // where .dsf is the source file but .wav is the actual served format
+    {
+        // Extract last path component (after last '/')
+        std::string urlPath = url;
+        auto queryPos = urlPath.find('?');
+        if (queryPos != std::string::npos) urlPath = urlPath.substr(0, queryPos);
+        auto lastSlash = urlPath.rfind('/');
+        std::string lastComponent = (lastSlash != std::string::npos)
+            ? urlPath.substr(lastSlash) : urlPath;
+
+        // Only hint DSF if the final component ends with .dsf (not transcoded)
+        if (lastComponent.size() >= 4) {
+            std::string ext = lastComponent.substr(lastComponent.size() - 4);
+            std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+            if (ext == ".dsf") {
+                inputFormat = av_find_input_format("dsf");
+                if (inputFormat) {
+                    std::cout << "[AudioDecoder] Format hint: DSF (demuxer: "
+                              << inputFormat->name << ")" << std::endl;
+                } else {
+                    std::cerr << "[AudioDecoder] WARNING: DSF demuxer not found in FFmpeg!" << std::endl;
+                    std::cerr << "[AudioDecoder] Please rebuild FFmpeg with: --enable-demuxer=dsf" << std::endl;
+                }
+            }
         }
     }
 
