@@ -154,10 +154,12 @@ bool AudioDecoder::open(const std::string& url) {
     }
 
     if (isLocalServer) {
-        // Local servers (Audirvana, JRiver, etc.) - use simple HTTP options
-        // These servers often don't support persistent connections or reconnection
-        DEBUG_LOG("[AudioDecoder] Local server detected - using simple HTTP options");
-        av_dict_set(&options, "buffer_size", "32768", 0);  // 32KB sufficient for LAN
+        // Local servers (slim2UPnP, JPLAY, Audirvana, JRiver, etc.)
+        // Use larger buffer and longer timeout to handle long tracks
+        // (40+ min) that may relay streams from Qobuz/Tidal.
+        DEBUG_LOG("[AudioDecoder] Local server detected - using robust local options");
+        av_dict_set(&options, "buffer_size", "262144", 0);   // 256KB to absorb LAN jitter
+        av_dict_set(&options, "timeout", "30000000", 0);     // 30 seconds (override default 10s)
     } else {
         // Remote servers (Qobuz, Tidal, etc.) - use robust streaming options
         DEBUG_LOG("[AudioDecoder] Remote server - using streaming options (reconnect enabled)");
