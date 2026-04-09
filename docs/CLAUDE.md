@@ -432,13 +432,14 @@ sudo apt install build-essential libavformat-dev libavcodec-dev libavutil-dev li
 - [x] Track restart fix — removed same-URI shortcut that prevented restarting track from beginning
 - [x] RENDERER_NAME configuration option
 - [x] Config variable alignment — `NAME`, `INTERFACE`, `MTU` (old names as fallback)
+- [x] AIFF support — added `aiff` demuxer + `pcm_s16be/s24be/s32be` decoders to FFmpeg build config
+- [x] CPU affinity (`--cpu-audio`, `--cpu-other`) — pin threads to dedicated cores via config/CLI/web UI
 
 ### Potential Future Work
 - [ ] AVX-512 format conversions (currently only memcpy uses AVX-512)
 - [ ] Multi-producer ring buffer for multiple audio sources
 - [ ] Adaptive prefetch tuning based on cache behavior
 - [ ] Configurable buffer settings (PCM/DSD buffer seconds, prefill ms) via config file/CLI/web UI
-- [ ] CPU affinity / core isolation for audio threads
 
 ## Format Transition Handling
 

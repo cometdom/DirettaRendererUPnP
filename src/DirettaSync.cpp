@@ -161,10 +161,19 @@ void DirettaSync::disable() {
 
 bool DirettaSync::openSDK() {
     ACQUA::Clock infoCycle = ACQUA::Clock::MicroSeconds(m_config.infoCycle);
+
+    // CPU affinity: when cpuAudio is set, add OCCUPIED flag to enable SDK CPU pinning
+    int threadMode = m_config.threadMode;
+    if (m_config.cpuAudio >= 0) {
+        threadMode |= 16;  // OCCUPIED = pin thread to CPU
+        DIRETTA_LOG("CPU affinity: SDK thread pinned to core " << m_config.cpuAudio
+                    << " (OCCUPIED mode, threadMode=" << threadMode << ")");
+    }
+
     return DIRETTA::Sync::open(
-        DIRETTA::Sync::THRED_MODE(m_config.threadMode),
+        DIRETTA::Sync::THRED_MODE(threadMode),
         infoCycle, 0, "DirettaRenderer", 0x44525400,
-        -1, -1, 0, DIRETTA::Sync::MSMODE_AUTO);
+        m_config.cpuAudio, m_config.cpuOther, 0, DIRETTA::Sync::MSMODE_AUTO);
 }
 
 bool DirettaSync::openSyncConnection() {
@@ -1744,6 +1753,21 @@ bool DirettaSync::startSyncWorker() {
         // F1: Elevate worker thread priority for reduced jitter
         // SCHED_FIFO priority 50 (mid-range real-time) - requires root/CAP_SYS_NICE
         setRealtimePriority(g_rtPriority);
+
+        // Pin worker thread to cpuAudio core (belt and suspenders with SDK cpuMain
+        // which doesn't always work, e.g., on RPi 4)
+        if (m_config.cpuAudio >= 0) {
+            cpu_set_t cpuset;
+            CPU_ZERO(&cpuset);
+            CPU_SET(m_config.cpuAudio, &cpuset);
+            if (pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset) == 0) {
+                std::cout << "[DirettaSync] Worker thread pinned to CPU core "
+                          << m_config.cpuAudio << std::endl;
+            } else {
+                std::cerr << "[DirettaSync] WARNING: Failed to pin worker to core "
+                          << m_config.cpuAudio << std::endl;
+            }
+        }
 
         while (m_running.load(std::memory_order_acquire)) {
             if (!syncWorker()) {

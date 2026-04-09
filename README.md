@@ -1,4 +1,4 @@
-# Diretta UPnP Renderer v2.1.10
+# Diretta UPnP Renderer v2.2.0
 
 **The world's first native UPnP/DLNA renderer with Diretta protocol support - Low-Latency Edition**
 
@@ -8,18 +8,21 @@
 
 ---
 
-![Version](https://img.shields.io/badge/version-2.1.10-blue.svg)
+![Version](https://img.shields.io/badge/version-2.2.0-blue.svg)
 ![Low Latency](https://img.shields.io/badge/Latency-Low-green.svg)
 ![SDK](https://img.shields.io/badge/SDK-DIRETTA::Sync-orange.svg)
 ![Audirvana](https://img.shields.io/badge/Audirvana-Compatible-green.svg)
 
 ---
 
-## What's New in v2.1.10
+## What's New in v2.2.0
 
-**Config alignment for downstream integrations.**
+**CPU affinity, AIFF support, MinimServer DSD transcoding fix, audio quality tuning.**
 
-- **Config variable names aligned with CLI** — `RENDERER_NAME` → `NAME`, `NETWORK_INTERFACE` → `INTERFACE`, `MTU_OVERRIDE` → `MTU`. Enables simple `KEY → --key` automatic mapping for GentooPlayer and other distributions. Old names still supported as fallback.
+- **CPU affinity** (`--cpu-audio`, `--cpu-other`) — Pin the Diretta worker thread and other threads to dedicated CPU cores for reduced jitter and improved audio quality. Configurable via CLI, config file, and web UI. (Requested by Daniel/Koala887)
+- **AIFF playback support** — Added AIFF demuxer and big-endian PCM decoders to the FFmpeg build. **Note:** if you installed FFmpeg via `install.sh`, you need to recompile FFmpeg for AIFF support.
+- **MinimServer DSD transcoding fix** — DSF files transcoded to WAV by MinimServer (e.g., `dsf:wav24;176`) now play correctly. The format hint no longer misdetects transcoded URLs as native DSF.
+- **Audio Quality Tuning guide** — New README section documenting CPU affinity, SMT disabling, and minimal UPnP mode for optimal audio quality.
 
 See [CHANGELOG.md](CHANGELOG.md) for details.
 
@@ -27,6 +30,8 @@ See [CHANGELOG.md](CHANGELOG.md) for details.
 
 | Version | Highlights |
 |---------|-----------|
+| **v2.1.11** | AIFF support (FFmpeg build config) |
+| **v2.1.10** | Config variable alignment for GentooPlayer/downstream integrations |
 | **v2.1.9** | Track restart fix (same URI shortcut removed) |
 | **v2.1.8** | Minimal UPnP mode (`--minimal-upnp`) for audiophile-grade playback |
 | **v2.1.7** | UAPP SCPD fix (missing GetPositionInfo arguments) |
@@ -460,6 +465,46 @@ DSD conversion mode is selected once per track for optimal performance:
 | 16→32 upsample | `convert16To32_AVX2()` | 16 samples/instruction |
 | DSD interleave | `convertDSD_*()` | 32 bytes/instruction |
 
+### Audio Quality Tuning
+
+For the best possible audio quality, the following system-level optimizations are recommended:
+
+#### CPU Affinity (v2.2.0+)
+
+Pinning audio threads to dedicated CPU cores reduces jitter and improves soundstage clarity:
+
+```ini
+# In /etc/default/diretta-renderer
+CPU_AUDIO=2    # Diretta worker thread (critical hot path)
+CPU_OTHER=3    # Decode, UPnP, and other threads
+```
+
+Use cores on the same CCD (AMD) or same P-core cluster (Intel) and avoid core 0 (used by kernel/interrupts). Also configurable via the web UI under "CPU Affinity".
+
+#### Disable SMT (Hyperthreading)
+
+Simultaneous Multithreading (SMT/HT) shares physical core resources between two logical threads, which can introduce micro-jitter on the audio path. Disabling SMT ensures each core is fully dedicated:
+
+```bash
+# Disable SMT (temporary, until reboot)
+echo off | sudo tee /sys/devices/system/cpu/smt/control
+
+# Verify
+cat /sys/devices/system/cpu/smt/active   # Should show "0"
+```
+
+For a permanent setting, add `nosmt` to your kernel boot parameters (in `/etc/default/grub`, then run `grub2-mkconfig`).
+
+#### Minimal UPnP Mode (v2.1.8+)
+
+Reduces CPU wakeups during playback by disabling position polling and event notifications:
+
+```ini
+MINIMAL_UPNP=1
+```
+
+Recommended for JPlay iOS, LMS via slim2UPnP, and Roon. See [Minimal UPnP Mode](#minimal-upnp-mode) for details.
+
 ### Network Requirements
 
 #### PCM Formats
@@ -800,4 +845,4 @@ This software is provided "as is" without warranty. While designed for high-qual
 
 **Enjoy bit-perfect, low-latency audio streaming!**
 
-*Last updated: 2026-04-06 (v2.1.10)*
+*Last updated: 2026-04-07 (v2.2.0)*

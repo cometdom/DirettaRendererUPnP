@@ -130,13 +130,32 @@ bool AudioDecoder::open(const std::string& url) {
                           url.find("://localhost") != std::string::npos ||
                           url.find("://127.") != std::string::npos);
 
-    if (url.find(".dsf") != std::string::npos || url.find(".DSF") != std::string::npos) {
-        inputFormat = av_find_input_format("dsf");
-        if (inputFormat) {
-            std::cout << "[AudioDecoder] Format hint: DSF (demuxer: " << inputFormat->name << ")" << std::endl;
-        } else {
-            std::cerr << "[AudioDecoder] WARNING: DSF demuxer not found in FFmpeg!" << std::endl;
-            std::cerr << "[AudioDecoder] Please rebuild FFmpeg with: --enable-demuxer=dsf" << std::endl;
+    // Check URL extension for format hinting — use the LAST extension in the URL
+    // to handle MinimServer transcode URLs like ".dsf/$!transcode-24,176.wav"
+    // where .dsf is the source file but .wav is the actual served format
+    {
+        // Extract last path component (after last '/')
+        std::string urlPath = url;
+        auto queryPos = urlPath.find('?');
+        if (queryPos != std::string::npos) urlPath = urlPath.substr(0, queryPos);
+        auto lastSlash = urlPath.rfind('/');
+        std::string lastComponent = (lastSlash != std::string::npos)
+            ? urlPath.substr(lastSlash) : urlPath;
+
+        // Only hint DSF if the final component ends with .dsf (not transcoded)
+        if (lastComponent.size() >= 4) {
+            std::string ext = lastComponent.substr(lastComponent.size() - 4);
+            std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+            if (ext == ".dsf") {
+                inputFormat = av_find_input_format("dsf");
+                if (inputFormat) {
+                    std::cout << "[AudioDecoder] Format hint: DSF (demuxer: "
+                              << inputFormat->name << ")" << std::endl;
+                } else {
+                    std::cerr << "[AudioDecoder] WARNING: DSF demuxer not found in FFmpeg!" << std::endl;
+                    std::cerr << "[AudioDecoder] Please rebuild FFmpeg with: --enable-demuxer=dsf" << std::endl;
+                }
+            }
         }
     }
 
@@ -154,10 +173,12 @@ bool AudioDecoder::open(const std::string& url) {
     }
 
     if (isLocalServer) {
-        // Local servers (Audirvana, JRiver, etc.) - use simple HTTP options
-        // These servers often don't support persistent connections or reconnection
-        DEBUG_LOG("[AudioDecoder] Local server detected - using simple HTTP options");
-        av_dict_set(&options, "buffer_size", "32768", 0);  // 32KB sufficient for LAN
+        // Local servers (slim2UPnP, JPLAY, Audirvana, JRiver, etc.)
+        // Use larger buffer and longer timeout to handle long tracks
+        // (40+ min) that may relay streams from Qobuz/Tidal.
+        DEBUG_LOG("[AudioDecoder] Local server detected - using robust local options");
+        av_dict_set(&options, "buffer_size", "262144", 0);   // 256KB to absorb LAN jitter
+        av_dict_set(&options, "timeout", "30000000", 0);     // 30 seconds (override default 10s)
     } else {
         // Remote servers (Qobuz, Tidal, etc.) - use robust streaming options
         DEBUG_LOG("[AudioDecoder] Remote server - using streaming options (reconnect enabled)");

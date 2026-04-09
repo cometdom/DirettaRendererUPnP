@@ -1,5 +1,26 @@
 # Changelog
 
+## [2.2.0] - 2026-04-09
+
+### Added
+- **CPU affinity for audio thread isolation** (`--cpu-audio`, `--cpu-other`): Pin the Diretta worker thread and other threads (decode, UPnP, position) to dedicated CPU cores for reduced jitter and improved audio quality. When `--cpu-audio` is set, the SDK OCCUPIED flag is automatically enabled for hardware-level CPU pinning. Configurable via CLI, config file (`CPU_AUDIO`, `CPU_OTHER`), and web UI. Default: no pinning (current behavior preserved). (Requested by Daniel/Koala887)
+
+### Fixed
+- **Buffer underrun on long tracks from local UPnP sources**: FFmpeg HTTP buffer was 32KB with 10s timeout for local servers (slim2UPnP, JPLAY, etc.), causing underruns and premature track cutoff on long tracks (40+ minutes) when relaying Qobuz/Tidal streams. Now uses 256KB buffer and 30s timeout for all local servers. (Reported by Hoorna/Alfred, Dominique)
+- **AIFF playback failure**: Added `aiff` demuxer and big-endian PCM decoders (`pcm_s16be`, `pcm_s24be`, `pcm_s32be`) to FFmpeg build configuration. Users who compiled FFmpeg via `install.sh` need to recompile for AIFF support. (Reported by Pascal)
+- **CPU affinity core validation**: `--cpu-audio` and `--cpu-other` are now validated against the actual number of CPU cores on the system. Invalid core numbers are rejected with a warning and reset to no pinning. Also warns if both options are set to the same core (no isolation). (Suggested by Hoorna/Alfred)
+- **Diretta worker thread not pinned to cpuAudio core**: The SDK's OCCUPIED mode with `cpuMain` doesn't reliably pin the worker thread on all platforms (confirmed on RPi 4). Now explicitly pins the worker thread via `pthread_setaffinity_np` in `startSyncWorker()`, in addition to the SDK parameter. (Reported by Hoorna/Alfred)
+- **DSF files fail to play with MinimServer transcoding**: When MinimServer transcodes DSF to WAV (e.g., `stream.transcode=dsf:wav24;176`), the URL contains `.dsf` in the source path but ends with `.wav`. The format hint incorrectly forced FFmpeg's DSF demuxer on WAV data. Now checks only the last URL component's extension. (Reported by lithiumnk)
+
+---
+
+## [2.1.10] - 2026-04-06
+
+### Fixed
+- **AIFF playback failure** (`Invalid data found when processing input`): FFmpeg was compiled without the AIFF demuxer and big-endian PCM decoders. Added `aiff` demuxer and `pcm_s16be`, `pcm_s24be`, `pcm_s32be` decoders to both FFmpeg build configurations in `install.sh`. Users who compiled FFmpeg via `install.sh` (minimal configuration) need to recompile FFmpeg to enable AIFF support. (Reported by Pascal)
+
+---
+
 ## [2.1.10] - 2026-04-06
 
 ### Changed

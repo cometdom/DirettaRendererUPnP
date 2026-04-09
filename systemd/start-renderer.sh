@@ -22,6 +22,10 @@ TRANSFER_MODE="${TRANSFER_MODE:-}"
 TARGET_PROFILE_LIMIT="${TARGET_PROFILE_LIMIT:-}"
 MTU="${MTU:-${MTU_OVERRIDE:-}}"
 
+# CPU affinity (no pinning by default)
+CPU_AUDIO="${CPU_AUDIO:-}"
+CPU_OTHER="${CPU_OTHER:-}"
+
 # Process priority defaults
 NICE_LEVEL="${NICE_LEVEL:--10}"
 IO_SCHED_CLASS="${IO_SCHED_CLASS:-realtime}"
@@ -99,6 +103,15 @@ fi
 
 if [ -n "$RT_PRIORITY" ] && [ "$RT_PRIORITY" != "50" ]; then
     CMD+=("--rt-priority" "$RT_PRIORITY")
+fi
+
+# CPU affinity
+if [ -n "$CPU_AUDIO" ]; then
+    CMD+=("--cpu-audio" "$CPU_AUDIO")
+fi
+
+if [ -n "$CPU_OTHER" ]; then
+    CMD+=("--cpu-other" "$CPU_OTHER")
 fi
 
 # Build exec prefix as array for process priority

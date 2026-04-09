@@ -76,6 +76,28 @@
             ]
         },
         {
+            "name": "CPU Affinity",
+            "collapsed": true,
+            "settings": [
+                {
+                    "key": "CPU_AUDIO",
+                    "type": "number",
+                    "label": "Audio Core",
+                    "description": "Pin Diretta worker thread to this CPU core. Empty = no pinning.",
+                    "default": "",
+                    "min": 0
+                },
+                {
+                    "key": "CPU_OTHER",
+                    "type": "number",
+                    "label": "Other Core",
+                    "description": "Pin decode/UPnP threads to this CPU core. Empty = no pinning.",
+                    "default": "",
+                    "min": 0
+                }
+            ]
+        },
+        {
             "name": "Process Priority",
             "collapsed": true,
             "settings": [

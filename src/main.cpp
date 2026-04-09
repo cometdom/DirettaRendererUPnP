@@ -14,7 +14,7 @@
 #include <chrono>
 #include <iomanip>
 
-#define RENDERER_VERSION "2.1.10"
+#define RENDERER_VERSION "2.2.0"
 #define RENDERER_BUILD_DATE __DATE__
 #define RENDERER_BUILD_TIME __TIME__
 
@@ -187,6 +187,24 @@ DirettaRenderer::Config parseArguments(int argc, char* argv[]) {
                 g_rtPriority = std::max(1, std::min(99, g_rtPriority));
             }
         }
+        else if (arg == "--cpu-audio" && i + 1 < argc) {
+            config.cpuAudio = std::atoi(argv[++i]);
+            int numCores = static_cast<int>(sysconf(_SC_NPROCESSORS_ONLN));
+            if (config.cpuAudio < 0 || config.cpuAudio >= numCores) {
+                std::cerr << "Warning: --cpu-audio " << config.cpuAudio
+                          << " is invalid (this system has cores 0-" << (numCores - 1) << ")" << std::endl;
+                config.cpuAudio = -1;
+            }
+        }
+        else if (arg == "--cpu-other" && i + 1 < argc) {
+            config.cpuOther = std::atoi(argv[++i]);
+            int numCores = static_cast<int>(sysconf(_SC_NPROCESSORS_ONLN));
+            if (config.cpuOther < 0 || config.cpuOther >= numCores) {
+                std::cerr << "Warning: --cpu-other " << config.cpuOther
+                          << " is invalid (this system has cores 0-" << (numCores - 1) << ")" << std::endl;
+                config.cpuOther = -1;
+            }
+        }
         else if (arg == "--help" || arg == "-h") {
             std::cout << "Diretta UPnP Renderer (Simplified Architecture)\n\n"
                       << "Usage: " << argv[0] << " [options]\n\n"
@@ -216,6 +234,10 @@ DirettaRenderer::Config parseArguments(int argc, char* argv[]) {
                       << "  --target-profile-limit <us> Target profile limit time (0=SelfProfile (stable), default: 0, >0=experimental)\n"
                       << "  --mtu <bytes>              MTU override (default: auto-detect)\n"
                       << "  --rt-priority <1-99>       SCHED_FIFO real-time priority for worker thread (default: 50)\n"
+                      << "\n"
+                      << "CPU affinity (core isolation for audio quality):\n"
+                      << "  --cpu-audio <core>         Pin Diretta worker thread to CPU core (default: no pinning)\n"
+                      << "  --cpu-other <core>         Pin other threads (decode/UPnP) to CPU core (default: no pinning)\n"
                       << std::endl;
             exit(0);
         }
@@ -273,6 +295,12 @@ int main(int argc, char* argv[]) {
     }
 
     DirettaRenderer::Config config = parseArguments(argc, argv);
+
+    // Validate CPU affinity: warn if both cores are the same (no isolation)
+    if (config.cpuAudio >= 0 && config.cpuOther >= 0 && config.cpuAudio == config.cpuOther) {
+        std::cerr << "Warning: --cpu-audio and --cpu-other are set to the same core ("
+                  << config.cpuAudio << "). No thread isolation will occur." << std::endl;
+    }
 
     // Initialize async logging ring buffer (A3 optimization)
     // Only active in verbose mode to avoid overhead in production
