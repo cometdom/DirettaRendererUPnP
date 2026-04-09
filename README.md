@@ -17,10 +17,11 @@
 
 ## What's New in v2.2.0
 
-**CPU affinity, AIFF support, audio quality tuning.**
+**CPU affinity, AIFF support, MinimServer DSD transcoding fix, audio quality tuning.**
 
 - **CPU affinity** (`--cpu-audio`, `--cpu-other`) — Pin the Diretta worker thread and other threads to dedicated CPU cores for reduced jitter and improved audio quality. Configurable via CLI, config file, and web UI. (Requested by Daniel/Koala887)
 - **AIFF playback support** — Added AIFF demuxer and big-endian PCM decoders to the FFmpeg build. **Note:** if you installed FFmpeg via `install.sh`, you need to recompile FFmpeg for AIFF support.
+- **MinimServer DSD transcoding fix** — DSF files transcoded to WAV by MinimServer (e.g., `dsf:wav24;176`) now play correctly. The format hint no longer misdetects transcoded URLs as native DSF.
 - **Audio Quality Tuning guide** — New README section documenting CPU affinity, SMT disabling, and minimal UPnP mode for optimal audio quality.
 
 See [CHANGELOG.md](CHANGELOG.md) for details.
