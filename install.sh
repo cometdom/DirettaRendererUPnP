@@ -921,14 +921,17 @@ build_renderer() {
     # Set SDK path via environment variable
     export DIRETTA_SDK_PATH="$SDK_PATH"
 
+    MAKE_ARGS=("NOLOG=1")
+    if [ -n "$LLVM" ]; then
+        MAKE_ARGS+=("LLVM=$LLVM")
+    fi
     # Production build: NOLOG=1 disables SDK internal logging
     # Use local FFmpeg headers if available (for ABI compatibility)
     if [ -d "$FFMPEG_HEADERS_DIR" ] && [ -f "$FFMPEG_HEADERS_DIR/.version" ]; then
         print_info "Building with FFmpeg headers from $FFMPEG_HEADERS_DIR"
-        make NOLOG=1 FFMPEG_PATH="$FFMPEG_HEADERS_DIR"
-    else
-        make NOLOG=1
+        MAKE_ARGS+=("FFMPEG_PATH=$FFMPEG_HEADERS_DIR")
     fi
+    make "${MAKE_ARGS[@]}"
 
     if [ ! -f "bin/DirettaRendererUPnP" ]; then
         print_error "Build failed. Please check error messages above."

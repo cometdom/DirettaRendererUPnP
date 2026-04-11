@@ -10,11 +10,21 @@
 # Compiler Settings
 # ============================================
 
-CXX = g++
-CC = gcc
+ifdef LLVM
+    CXX = clang++
+    CC = clang
+else
+    CXX = g++
+    CC = gcc
+endif
 CXXFLAGS = -std=c++17 -Wall -Wextra -O2 -pthread
 CFLAGS = -O3 -Wall
 LDFLAGS = -pthread
+ifdef LLVM
+    CXXFLAGS += -flto
+    CFLAGS += -flto
+    LDFLAGS += -flto
+endif
 
 # ============================================
 # Architecture Detection (unchanged from original)
