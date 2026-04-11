@@ -1691,8 +1691,12 @@ bool DirettaSync::getNewStream(diretta_stream& baseStream) {
     // Rebuffering: hold silence until buffer recovers to threshold
     // Prevents stuttering ("CD skip" effect) when small data bursts trickle in
     // during a network stall — accumulates data for a clean resumption
+    // Remote streams use a higher threshold (50%) for better CDN hiccup resilience
     if (m_rebuffering.load(std::memory_order_acquire)) {
-        size_t threshold = static_cast<size_t>(currentRingSize * DirettaBuffer::REBUFFER_THRESHOLD_PCT);
+        float thresholdPct = m_isRemoteStream.load(std::memory_order_relaxed)
+            ? DirettaBuffer::REBUFFER_THRESHOLD_REMOTE_PCT
+            : DirettaBuffer::REBUFFER_THRESHOLD_PCT;
+        size_t threshold = static_cast<size_t>(currentRingSize * thresholdPct);
         if (avail >= threshold) {
             m_rebuffering.store(false, std::memory_order_release);
             LOG_WARN("[DirettaSync] Rebuffering complete — resuming playback (avail="
