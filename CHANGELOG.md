@@ -2,6 +2,9 @@
 
 ## [2.2.1] - 2026-04-11
 
+### Changed
+- **Larger PCM buffer for CDN resilience**: Increased remote streaming buffer to absorb Qobuz/Tidal CDN hiccups that affect most Diretta users. `PCM_REMOTE_BUFFER_SECONDS` raised from 1.0s to 3.0s (triple the buffer for CDN glitches), `PCM_REMOTE_PREFILL_MS` from 150ms to 500ms (larger initial buffer before playback). Added adaptive `REBUFFER_THRESHOLD_REMOTE_PCT` at 50% (vs 20% for local) — requires more data before resuming after an underrun to avoid stuttering cycles. For a 44.1/16/2 stream: buffer goes from 520KB to 1.5MB (3 seconds of audio), rebuffer threshold from ~200ms to ~1.5 seconds.
+
 ### Fixed
 - **FFmpeg version detection in install.sh** (PR #63 by sheviks): The regex for detecting FFmpeg runtime version didn't handle the optional `n` prefix used by git-tagged builds (`ffmpeg version n8.1`), causing ABI compatibility checks to fail. Also added support for the new `version_major.h` header file introduced in recent FFmpeg releases, where major version macros were moved from `version.h` to a dedicated header. The script now searches both header variants for compatibility with legacy and modern FFmpeg installations.
 
