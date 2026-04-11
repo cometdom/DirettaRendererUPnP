@@ -1,5 +1,16 @@
 # Changelog
 
+## [2.2.2] - 2026-04-11
+
+### Added
+- **Clang + LTO build support** (PR #64 by sheviks): The Makefile and `install.sh` now support building with Clang and Link-Time Optimization as an alternative to the default GCC build. Usage: `env LLVM=1 ./install.sh` or `make LLVM=1`. Clang+LTO may offer different performance and sound characteristics for users who compile from source. GCC remains the default.
+
+### Fixed
+- **32-bit 768kHz playlist advancement**: Streams served without Content-Length (e.g., slim2UPnP for high-rate PCM) would return `AVERROR(EIO)` at end-of-track instead of `AVERROR_EOF` because FFmpeg expected `UINT64_MAX` bytes but the stream closed mid-chunk. This prevented the playlist from advancing to the next track. Fix: if EIO occurs after successfully reading data (pos > 0), treat it as normal EOF. (Reported by abase)
+- **Typo `clag++` → `clang++` in install.sh** (follow-up to PR #64): Small typo in the Clang support code that would have caused FFmpeg's configure step to fail with "compiler not found" when building with `LLVM=1`.
+
+---
+
 ## [2.2.1] - 2026-04-11
 
 ### Changed

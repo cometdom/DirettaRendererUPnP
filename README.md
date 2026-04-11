@@ -1,4 +1,4 @@
-# Diretta UPnP Renderer v2.2.1
+# Diretta UPnP Renderer v2.2.2
 
 **The world's first native UPnP/DLNA renderer with Diretta protocol support - Low-Latency Edition**
 
@@ -8,19 +8,19 @@
 
 ---
 
-![Version](https://img.shields.io/badge/version-2.2.1-blue.svg)
+![Version](https://img.shields.io/badge/version-2.2.2-blue.svg)
 ![Low Latency](https://img.shields.io/badge/Latency-Low-green.svg)
 ![SDK](https://img.shields.io/badge/SDK-DIRETTA::Sync-orange.svg)
 ![Audirvana](https://img.shields.io/badge/Audirvana-Compatible-green.svg)
 
 ---
 
-## What's New in v2.2.1
+## What's New in v2.2.2
 
-**Larger remote buffer for CDN resilience, FFmpeg detection fix.**
+**Clang + LTO build support, 32-bit 768kHz playlist fix.**
 
-- **Larger PCM buffer for CDN resilience** — Remote streaming buffer tripled (1.0s → 3.0s) and prefill increased (150ms → 500ms) to absorb Qobuz/Tidal CDN hiccups. New adaptive rebuffer threshold at 50% for remote streams (vs 20% for local) avoids stuttering cycles after an underrun. For a 44.1/16/2 stream the buffer grows from ~520KB to ~1.5MB.
-- **FFmpeg version detection fix** (PR #63 by sheviks) — The install script now correctly detects FFmpeg versions from git-tagged builds (e.g., `ffmpeg version n8.1`) and supports the new `version_major.h` header introduced in recent FFmpeg releases.
+- **Clang + LTO build support** (PR #64 by sheviks) — The Makefile and `install.sh` now support building DirettaRendererUPnP and FFmpeg with Clang and Link-Time Optimization as an alternative to GCC. Usage: `env LLVM=1 ./install.sh` or `make LLVM=1`. GCC remains the default. Clang+LTO may offer different performance and sound characteristics for users who build from source.
+- **32-bit 768kHz playlist fix** — Playlists with 32-bit 768kHz WAV files (from LMS/slim2UPnP) now advance to the next track correctly instead of stopping after the first one. FFmpeg's EIO error at end-of-stream (when served without Content-Length) is now treated as EOF. (Reported by abase)
 
 See [CHANGELOG.md](CHANGELOG.md) for details.
 
@@ -28,6 +28,7 @@ See [CHANGELOG.md](CHANGELOG.md) for details.
 
 | Version | Highlights |
 |---------|-----------|
+| **v2.2.1** | Larger PCM buffer for CDN resilience, FFmpeg detection fix (sheviks) |
 | **v2.2.0** | CPU affinity, AIFF support, MinimServer DSD transcoding fix |
 | **v2.1.11** | AIFF support (FFmpeg build config) |
 | **v2.1.10** | Config variable alignment for GentooPlayer/downstream integrations |
@@ -844,4 +845,4 @@ This software is provided "as is" without warranty. While designed for high-qual
 
 **Enjoy bit-perfect, low-latency audio streaming!**
 
-*Last updated: 2026-04-11 (v2.2.1)*
+*Last updated: 2026-04-11 (v2.2.2)*
