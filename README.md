@@ -1,4 +1,4 @@
-# Diretta UPnP Renderer v2.2.0
+# Diretta UPnP Renderer v2.2.1
 
 **The world's first native UPnP/DLNA renderer with Diretta protocol support - Low-Latency Edition**
 
@@ -8,21 +8,18 @@
 
 ---
 
-![Version](https://img.shields.io/badge/version-2.2.0-blue.svg)
+![Version](https://img.shields.io/badge/version-2.2.1-blue.svg)
 ![Low Latency](https://img.shields.io/badge/Latency-Low-green.svg)
 ![SDK](https://img.shields.io/badge/SDK-DIRETTA::Sync-orange.svg)
 ![Audirvana](https://img.shields.io/badge/Audirvana-Compatible-green.svg)
 
 ---
 
-## What's New in v2.2.0
+## What's New in v2.2.1
 
-**CPU affinity, AIFF support, MinimServer DSD transcoding fix, audio quality tuning.**
+**FFmpeg detection fix for modern builds.**
 
-- **CPU affinity** (`--cpu-audio`, `--cpu-other`) — Pin the Diretta worker thread and other threads to dedicated CPU cores for reduced jitter and improved audio quality. Configurable via CLI, config file, and web UI. (Requested by Daniel/Koala887 and Alfred/Hoorna))
-- **AIFF playback support** — Added AIFF demuxer and big-endian PCM decoders to the FFmpeg build. **Note:** if you installed FFmpeg via `install.sh`, you need to recompile FFmpeg for AIFF support.
-- **MinimServer DSD transcoding fix** — DSF files transcoded to WAV by MinimServer (e.g., `dsf:wav24;176`) now play correctly. The format hint no longer misdetects transcoded URLs as native DSF.
-- **Audio Quality Tuning guide** — New README section documenting CPU affinity, SMT disabling, and minimal UPnP mode for optimal audio quality.
+- **FFmpeg version detection fix** (PR #63 by sheviks) — The install script now correctly detects FFmpeg versions from git-tagged builds (e.g., `ffmpeg version n8.1`) and supports the new `version_major.h` header introduced in recent FFmpeg releases.
 
 See [CHANGELOG.md](CHANGELOG.md) for details.
 
@@ -30,6 +27,7 @@ See [CHANGELOG.md](CHANGELOG.md) for details.
 
 | Version | Highlights |
 |---------|-----------|
+| **v2.2.0** | CPU affinity, AIFF support, MinimServer DSD transcoding fix |
 | **v2.1.11** | AIFF support (FFmpeg build config) |
 | **v2.1.10** | Config variable alignment for GentooPlayer/downstream integrations |
 | **v2.1.9** | Track restart fix (same URI shortcut removed) |
@@ -845,4 +843,4 @@ This software is provided "as is" without warranty. While designed for high-qual
 
 **Enjoy bit-perfect, low-latency audio streaming!**
 
-*Last updated: 2026-04-09 (v2.2.0)*
+*Last updated: 2026-04-11 (v2.2.1)*
