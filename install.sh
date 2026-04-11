@@ -723,7 +723,7 @@ check_ffmpeg_abi_compatibility() {
     # Get runtime version
     local runtime_ver=""
     if command -v ffmpeg &> /dev/null; then
-        runtime_ver=$(ffmpeg -version 2>&1 | head -1 | grep -oP 'ffmpeg version \K[0-9]+\.[0-9]+(\.[0-9]+)?' || echo "")
+        runtime_ver=$(ffmpeg -version 2>&1 | head -1 | grep -oP 'ffmpeg version n?\K[0-9]+\.[0-9]+(\.[0-9]+)?' || echo "")
     fi
 
     if [ -z "$runtime_ver" ]; then
@@ -738,6 +738,9 @@ check_ffmpeg_abi_compatibility() {
         "/usr/include/ffmpeg/libavformat/version.h"
         "/usr/include/libavformat/version.h"
         "/usr/local/include/libavformat/version.h"
+        "/usr/include/ffmpeg/libavformat/version_major.h"
+        "/usr/include/libavformat/version_major.h"
+        "/usr/local/include/libavformat/version_major.h"
     )
 
     local compile_major=""
@@ -784,7 +787,7 @@ check_ffmpeg_abi_compatibility() {
 detect_ffmpeg_runtime_version() {
     local runtime_ver=""
     if command -v ffmpeg &> /dev/null; then
-        runtime_ver=$(ffmpeg -version 2>&1 | head -1 | grep -oP 'ffmpeg version \K[0-9]+\.[0-9]+(\.[0-9]+)?' || echo "")
+        runtime_ver=$(ffmpeg -version 2>&1 | head -1 | grep -oP 'ffmpeg version n?\K[0-9]+\.[0-9]+(\.[0-9]+)?' || echo "")
     fi
     echo "$runtime_ver"
 }
