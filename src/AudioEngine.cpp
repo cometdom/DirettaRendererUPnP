@@ -1189,8 +1189,9 @@ size_t AudioDecoder::readSamples(AudioBuffer& buffer, size_t numSamples,
 
         if (ret < 0) {
             // Log position when EOF occurs
-            if (m_formatContext->pb && m_formatContext->pb->pos > 0) {
-                std::cout << "[AudioDecoder] Bytes read from stream: " << m_formatContext->pb->pos << std::endl;
+            int64_t bytesRead = (m_formatContext->pb) ? m_formatContext->pb->pos : 0;
+            if (bytesRead > 0) {
+                std::cout << "[AudioDecoder] Bytes read from stream: " << bytesRead << std::endl;
             }
 
             if (ret == AVERROR_EOF) {
@@ -1207,6 +1208,14 @@ size_t AudioDecoder::readSamples(AudioBuffer& buffer, size_t numSamples,
                 m_eof = true;
             } else if (ret == AVERROR_EXIT) {
                 std::cerr << "[AudioDecoder] Exit requested" << std::endl;
+                m_eof = true;
+            } else if (ret == AVERROR(EIO) && bytesRead > 0) {
+                // HTTP stream closed mid-chunk without Content-Length.
+                // FFmpeg reports "Stream ends prematurely" because total size
+                // was unknown (UINT64_MAX). Since we successfully read data,
+                // treat this as normal EOF to allow track advancement.
+                std::cout << "[AudioDecoder] Stream ended (EIO after "
+                          << bytesRead << " bytes read — treating as EOF)" << std::endl;
                 m_eof = true;
             } else {
                 char errbuf[AV_ERROR_MAX_STRING_SIZE];
