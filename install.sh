@@ -297,6 +297,7 @@ install_ffmpeg_8_build_deps() {
 # Build FFmpeg 8.x with minimal audio-only configuration
 build_ffmpeg_8_minimal() {
     local version="$1"
+    local extra_flags="${2:-}"
 
     print_info "Building FFmpeg $version (minimal audio-only)..."
 
@@ -327,8 +328,12 @@ build_ffmpeg_8_minimal() {
     local configure_opts
     configure_opts=$(get_ffmpeg_8_minimal_opts | tr '\n' ' ')
 
+    if [ -n "$LLVM" ]; then
+        extra_flags="$extra_flags --cc=clang --cxx=clag++ --enable-lto --extra-ldflags=-flto"
+    fi
+
     # Run configure
-    ./configure $configure_opts
+    ./configure $configure_opts $extra_flags
 
     print_info "Building FFmpeg (this may take a while)..."
     make -j$(nproc)
@@ -391,6 +396,10 @@ build_ffmpeg_from_source() {
         # Remove --enable-lto and add workarounds
         configure_opts="${configure_opts//--enable-lto/}"
         extra_flags="$extra_flags --disable-inline-asm"
+    fi
+
+    if [ -n "$LLVM" ]; then
+        extra_flags="$extra_flags --cc=clang --cxx=clag++ --enable-lto --extra-ldflags=-flto"
     fi
 
     # Run configure
@@ -921,14 +930,17 @@ build_renderer() {
     # Set SDK path via environment variable
     export DIRETTA_SDK_PATH="$SDK_PATH"
 
+    MAKE_ARGS=("NOLOG=1")
+    if [ -n "$LLVM" ]; then
+        MAKE_ARGS+=("LLVM=$LLVM")
+    fi
     # Production build: NOLOG=1 disables SDK internal logging
     # Use local FFmpeg headers if available (for ABI compatibility)
     if [ -d "$FFMPEG_HEADERS_DIR" ] && [ -f "$FFMPEG_HEADERS_DIR/.version" ]; then
         print_info "Building with FFmpeg headers from $FFMPEG_HEADERS_DIR"
-        make NOLOG=1 FFMPEG_PATH="$FFMPEG_HEADERS_DIR"
-    else
-        make NOLOG=1
+        MAKE_ARGS+=("FFMPEG_PATH=$FFMPEG_HEADERS_DIR")
     fi
+    make "${MAKE_ARGS[@]}"
 
     if [ ! -f "bin/DirettaRendererUPnP" ]; then
         print_error "Build failed. Please check error messages above."
