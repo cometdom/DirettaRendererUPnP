@@ -19,7 +19,7 @@
 
 **Clang + LTO build support, 32-bit 768kHz playlist fix.**
 
-- **Clang + LTO build support** (PR #64 by sheviks) — The Makefile and `install.sh` now support building DirettaRendererUPnP and FFmpeg with Clang and Link-Time Optimization as an alternative to GCC. Usage: `env LLVM=1 ./install.sh` or `make LLVM=1`. GCC remains the default. Clang+LTO may offer different performance and sound characteristics for users who build from source.
+- **Clang + LTO build support** (PR #64 by sheviks) — The Makefile and `install.sh` now support building DirettaRendererUPnP and FFmpeg with Clang and Link-Time Optimization as an alternative to GCC. Usage: `env LLVM=1 ./install.sh` or `make LLVM=1`. **Requires `clang` and `lld` to be installed** (e.g., `sudo dnf install clang lld` on Fedora, `sudo apt install clang lld` on Debian/Ubuntu). GCC remains the default. Clang+LTO may offer different performance and sound characteristics for users who build from source.
 - **32-bit 768kHz playlist fix** — Playlists with 32-bit 768kHz WAV files (from LMS/slim2UPnP) now advance to the next track correctly instead of stopping after the first one. FFmpeg's EIO error at end-of-stream (when served without Content-Length) is now treated as EOF. (Reported by abase)
 
 See [CHANGELOG.md](CHANGELOG.md) for details.
@@ -385,6 +385,23 @@ The installer provides an interactive menu with options for:
 - Configuring automatic startup
 - Setting up the Diretta target
 - Installing the web configuration UI
+
+#### Alternative: Build with Clang + LTO
+
+GCC is the default compiler. Users who prefer Clang with Link-Time Optimization can use:
+
+```bash
+# Install Clang and lld first
+sudo dnf install clang lld          # Fedora
+sudo apt install clang lld          # Debian/Ubuntu
+
+# Build with Clang + LTO
+env LLVM=1 ./install.sh             # Interactive installer
+# or
+make LLVM=1                         # Direct build
+```
+
+Clang+LTO is opt-in and may offer different performance and sound characteristics. (Added in v2.2.2, PR #64 by sheviks)
 
 ### 4. Configure Network (Recommended)
 
