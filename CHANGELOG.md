@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.2.1] - 2026-04-11
+
+### Fixed
+- **FFmpeg version detection in install.sh** (PR #63 by sheviks): The regex for detecting FFmpeg runtime version didn't handle the optional `n` prefix used by git-tagged builds (`ffmpeg version n8.1`), causing ABI compatibility checks to fail. Also added support for the new `version_major.h` header file introduced in recent FFmpeg releases, where major version macros were moved from `version.h` to a dedicated header. The script now searches both header variants for compatibility with legacy and modern FFmpeg installations.
+
+---
+
 ## [2.2.0] - 2026-04-09
 
 ### Added

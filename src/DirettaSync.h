@@ -196,18 +196,19 @@ namespace DirettaRetry {
 namespace DirettaBuffer {
     constexpr float DSD_BUFFER_SECONDS = 0.8f;
     constexpr float PCM_BUFFER_SECONDS = 0.5f;          // Local playback
-    constexpr float PCM_REMOTE_BUFFER_SECONDS = 1.0f;   // Remote streaming (Qobuz/Tidal) - absorbs CDN reconnections
+    constexpr float PCM_REMOTE_BUFFER_SECONDS = 3.0f;   // Remote streaming (Qobuz/Tidal) - absorbs CDN reconnections
     constexpr float PCM_HIGHRATE_BUFFER_SECONDS = 2.0f;  // >192kHz: source streams at ~1x real-time
     constexpr uint32_t HIGHRATE_THRESHOLD = 192000;       // Sample rate above which we use larger buffers
 
     constexpr size_t DSD_PREFILL_MS = 200;
     constexpr size_t PCM_PREFILL_MS = 80;                // Local
-    constexpr size_t PCM_REMOTE_PREFILL_MS = 150;        // Remote - larger prefill for internet latency
+    constexpr size_t PCM_REMOTE_PREFILL_MS = 500;        // Remote - larger prefill for internet latency
     constexpr size_t PCM_LOWRATE_PREFILL_MS = 100;
     // High sample rates (>192kHz): source delivers at ~1x real-time, need more margin
     constexpr size_t PCM_HIGHRATE_PREFILL_MS = 1000;
 
-    constexpr float REBUFFER_THRESHOLD_PCT = 0.20f;      // Resume playback after 20% buffer refill
+    constexpr float REBUFFER_THRESHOLD_PCT = 0.20f;      // Resume playback after 20% buffer refill (local)
+    constexpr float REBUFFER_THRESHOLD_REMOTE_PCT = 0.50f; // Remote: 50% for more resilience against CDN hiccups
 
     constexpr unsigned int DAC_STABILIZATION_MS = 100;
     constexpr unsigned int ONLINE_WAIT_MS = 2000;
