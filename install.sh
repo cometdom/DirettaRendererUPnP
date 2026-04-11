@@ -735,6 +735,9 @@ check_ffmpeg_abi_compatibility() {
 
     # Get compile-time version from system headers
     local header_paths=(
+        "/usr/include/ffmpeg/libavformat/version.h"
+        "/usr/include/libavformat/version.h"
+        "/usr/local/include/libavformat/version.h"
         "/usr/include/ffmpeg/libavformat/version_major.h"
         "/usr/include/libavformat/version_major.h"
         "/usr/local/include/libavformat/version_major.h"
