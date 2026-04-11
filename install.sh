@@ -294,6 +294,40 @@ install_ffmpeg_8_build_deps() {
     esac
 }
 
+# Install Clang + lld (required when building with LLVM=1)
+install_clang_deps() {
+    if command -v clang &>/dev/null && command -v ld.lld &>/dev/null; then
+        print_success "Clang and lld are already installed"
+        return 0
+    fi
+
+    print_info "Installing Clang and lld for LLVM build..."
+
+    case $OS in
+        fedora|rhel|centos)
+            sudo dnf install -y clang lld
+            ;;
+        ubuntu|debian)
+            sudo apt install -y clang lld
+            ;;
+        arch|archarm|manjaro)
+            sudo pacman -Sy --needed --noconfirm clang lld
+            ;;
+        *)
+            print_warning "Unknown distribution — please install 'clang' and 'lld' manually"
+            return 1
+            ;;
+    esac
+
+    if ! command -v clang &>/dev/null; then
+        print_error "Clang installation failed"
+        return 1
+    fi
+
+    print_success "Clang $(clang --version | head -1) installed"
+    return 0
+}
+
 # Build FFmpeg 8.x with minimal audio-only configuration
 build_ffmpeg_8_minimal() {
     local version="$1"
@@ -302,6 +336,14 @@ build_ffmpeg_8_minimal() {
     print_info "Building FFmpeg $version (minimal audio-only)..."
 
     install_ffmpeg_8_build_deps
+
+    # Auto-install Clang + lld when LLVM=1 is set
+    if [ -n "$LLVM" ]; then
+        if ! install_clang_deps; then
+            print_error "Cannot build FFmpeg with LLVM=1 without Clang/lld"
+            return 1
+        fi
+    fi
 
     mkdir -p "$FFMPEG_BUILD_DIR"
     cd "$FFMPEG_BUILD_DIR"
@@ -352,6 +394,14 @@ build_ffmpeg_from_source() {
     print_info "Building FFmpeg $version from source..."
 
     install_ffmpeg_build_deps
+
+    # Auto-install Clang + lld when LLVM=1 is set
+    if [ -n "$LLVM" ]; then
+        if ! install_clang_deps; then
+            print_error "Cannot build FFmpeg with LLVM=1 without Clang/lld"
+            return 1
+        fi
+    fi
 
     mkdir -p "$FFMPEG_BUILD_DIR"
     cd "$FFMPEG_BUILD_DIR"
@@ -932,6 +982,11 @@ build_renderer() {
 
     MAKE_ARGS=("NOLOG=1")
     if [ -n "$LLVM" ]; then
+        # Auto-install Clang + lld when LLVM=1 is set
+        if ! install_clang_deps; then
+            print_error "Cannot build with LLVM=1 without Clang/lld"
+            return 1
+        fi
         MAKE_ARGS+=("LLVM=$LLVM")
     fi
     # Production build: NOLOG=1 disables SDK internal logging

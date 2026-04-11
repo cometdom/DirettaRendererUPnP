@@ -391,14 +391,18 @@ The installer provides an interactive menu with options for:
 GCC is the default compiler. Users who prefer Clang with Link-Time Optimization can use:
 
 ```bash
-# Install Clang and lld first
-sudo dnf install clang lld          # Fedora
-sudo apt install clang lld          # Debian/Ubuntu
-
-# Build with Clang + LTO
+# Build with Clang + LTO (auto-installs clang and lld)
 env LLVM=1 ./install.sh             # Interactive installer
 # or
-make LLVM=1                         # Direct build
+make LLVM=1                         # Direct build (requires clang/lld already installed)
+```
+
+When using `install.sh` with `LLVM=1`, `clang` and `lld` are installed automatically if not already present (supports Fedora, Debian/Ubuntu, Arch). When building directly with `make LLVM=1`, install them manually:
+
+```bash
+sudo dnf install clang lld          # Fedora
+sudo apt install clang lld          # Debian/Ubuntu
+sudo pacman -S clang lld            # Arch
 ```
 
 Clang+LTO is opt-in and may offer different performance and sound characteristics. (Added in v2.2.2, PR #64 by sheviks)
