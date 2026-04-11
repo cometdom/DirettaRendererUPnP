@@ -17,8 +17,9 @@
 
 ## What's New in v2.2.1
 
-**FFmpeg detection fix for modern builds.**
+**Larger remote buffer for CDN resilience, FFmpeg detection fix.**
 
+- **Larger PCM buffer for CDN resilience** — Remote streaming buffer tripled (1.0s → 3.0s) and prefill increased (150ms → 500ms) to absorb Qobuz/Tidal CDN hiccups. New adaptive rebuffer threshold at 50% for remote streams (vs 20% for local) avoids stuttering cycles after an underrun. For a 44.1/16/2 stream the buffer grows from ~520KB to ~1.5MB.
 - **FFmpeg version detection fix** (PR #63 by sheviks) — The install script now correctly detects FFmpeg versions from git-tagged builds (e.g., `ffmpeg version n8.1`) and supports the new `version_major.h` header introduced in recent FFmpeg releases.
 
 See [CHANGELOG.md](CHANGELOG.md) for details.
