@@ -17,9 +17,9 @@ else
     CXX = g++
     CC = gcc
 endif
-CXXFLAGS = -std=c++17 -Wall -Wextra -O2 -pthread
+CXXFLAGS = -std=c++17 -Wall -Wextra -O3 -pthread
 CFLAGS = -O3 -Wall
-LDFLAGS = -O2 -pthread
+LDFLAGS = -O3 -pthread
 ifdef LLVM
     CXXFLAGS += -flto
     CFLAGS += -flto
