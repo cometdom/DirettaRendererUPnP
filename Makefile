@@ -19,7 +19,7 @@ else
 endif
 CXXFLAGS = -std=c++17 -Wall -Wextra -O2 -pthread
 CFLAGS = -O3 -Wall
-LDFLAGS = -pthread
+LDFLAGS = -O2 -pthread
 ifdef LLVM
     CXXFLAGS += -flto
     CFLAGS += -flto
