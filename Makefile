@@ -103,6 +103,7 @@ ifeq ($(DIRETTA_ARCH),x64)
     ifneq (,$(findstring zen4,$(FULL_VARIANT)))
         CXXFLAGS += -march=znver4 -mtune=znver4
         CFLAGS += -march=znver4 -mtune=znver4
+        LDFLAGS += -march=znver4 -mtune=znver4
         COMPILE_AVX2 = 1
         $(info Compiler: Zen4 microarchitecture optimization enabled)
 
@@ -110,6 +111,7 @@ ifeq ($(DIRETTA_ARCH),x64)
     else ifneq (,$(findstring v4,$(FULL_VARIANT)))
         CXXFLAGS += -march=x86-64-v4 -mavx512f -mavx512bw -mavx512vl -mavx512dq
         CFLAGS += -march=x86-64-v4 -mavx512f -mavx512bw -mavx512vl -mavx512dq
+        LDFLAGS += -march=x86-64-v4 -mavx512f -mavx512bw -mavx512vl -mavx512dq
         COMPILE_AVX2 = 1
         $(info Compiler: x86-64-v4 (AVX-512) optimization enabled)
 
@@ -117,6 +119,7 @@ ifeq ($(DIRETTA_ARCH),x64)
     else ifneq (,$(findstring v3,$(FULL_VARIANT)))
         CXXFLAGS += -march=x86-64-v3 -mavx2 -mfma
         CFLAGS += -march=x86-64-v3 -mavx2 -mfma
+        LDFLAGS += -march=x86-64-v3 -mavx2 -mfma
         COMPILE_AVX2 = 1
         $(info Compiler: x86-64-v3 (AVX2) optimization enabled)
 
@@ -124,6 +127,7 @@ ifeq ($(DIRETTA_ARCH),x64)
     else
         CXXFLAGS += -march=x86-64-v2
         CFLAGS += -march=x86-64-v2
+        LDFLAGS += -march=x86-64-v2
         COMPILE_AVX2 = 0
         $(info Compiler: x86-64-v2 (baseline, no AVX2) optimization enabled)
     endif
@@ -132,6 +136,7 @@ ifeq ($(DIRETTA_ARCH),x64)
 else ifeq ($(DIRETTA_ARCH),aarch64)
     CXXFLAGS += -mcpu=native
     CFLAGS += -mcpu=native
+    LDFLAGS += -mcpu=native
     $(info Compiler: ARM64 native CPU optimization enabled)
 endif
 
