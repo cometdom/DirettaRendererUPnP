@@ -23,7 +23,7 @@ LDFLAGS = -O3 -pthread
 ifdef LLVM
     CXXFLAGS += -flto
     CFLAGS += -flto
-    LDFLAGS += -flto
+    LDFLAGS += -flto -fuse-ld=lld
 endif
 
 # ============================================
