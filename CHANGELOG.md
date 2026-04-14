@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.2.3] - 2026-04-12
+
+### Changed
+- **Build system optimization** (PR #65 by sheviks): LDFLAGS now propagate `-O` and `-march` flags to the linker when LTO is enabled, ensuring whole-program analysis uses architecture-specific optimizations (AVX2/AVX-512/Zen4/NEON) instead of falling back to generic instructions. Also forces `lld` as the linker with Clang (`-fuse-ld=lld`) and unifies all C++ files to `-O3` (was `-O2`, while C files were already `-O3`). Applied to both the main binary and the FFmpeg minimal build in `install.sh`.
+
+---
+
 ## [2.2.2] - 2026-04-11
 
 ### Added

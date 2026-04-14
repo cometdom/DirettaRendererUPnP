@@ -1,4 +1,4 @@
-# Diretta UPnP Renderer v2.2.2
+# Diretta UPnP Renderer v2.2.3
 
 **The world's first native UPnP/DLNA renderer with Diretta protocol support - Low-Latency Edition**
 
@@ -8,19 +8,18 @@
 
 ---
 
-![Version](https://img.shields.io/badge/version-2.2.2-blue.svg)
+![Version](https://img.shields.io/badge/version-2.2.3-blue.svg)
 ![Low Latency](https://img.shields.io/badge/Latency-Low-green.svg)
 ![SDK](https://img.shields.io/badge/SDK-DIRETTA::Sync-orange.svg)
 ![Audirvana](https://img.shields.io/badge/Audirvana-Compatible-green.svg)
 
 ---
 
-## What's New in v2.2.2
+## What's New in v2.2.3
 
-**Clang + LTO build support, 32-bit 768kHz playlist fix.**
+**Build system optimization.**
 
-- **Clang + LTO build support** (PR #64 by sheviks) — The Makefile and `install.sh` now support building DirettaRendererUPnP and FFmpeg with Clang and Link-Time Optimization as an alternative to GCC. Usage: `env LLVM=1 ./install.sh` or `make LLVM=1`. **Requires `clang` and `lld` to be installed** (e.g., `sudo dnf install clang lld` on Fedora, `sudo apt install clang lld` on Debian/Ubuntu). GCC remains the default. Clang+LTO may offer different performance and sound characteristics for users who build from source.
-- **32-bit 768kHz playlist fix** — Playlists with 32-bit 768kHz WAV files (from LMS/slim2UPnP) now advance to the next track correctly instead of stopping after the first one. FFmpeg's EIO error at end-of-stream (when served without Content-Length) is now treated as EOF. (Reported by abase)
+- **LDFLAGS propagation & -O3 unified** (PR #65 by sheviks) — LDFLAGS now propagate `-O` and `-march` flags to the linker when LTO is enabled, ensuring architecture-specific optimizations (AVX2/AVX-512/Zen4/NEON) are fully applied during whole-program analysis. Also forces `lld` as the linker with Clang and unifies all C++ files to `-O3`.
 
 See [CHANGELOG.md](CHANGELOG.md) for details.
 
@@ -28,6 +27,7 @@ See [CHANGELOG.md](CHANGELOG.md) for details.
 
 | Version | Highlights |
 |---------|-----------|
+| **v2.2.2** | Clang + LTO build support (sheviks), 32-bit 768kHz playlist fix (abase) |
 | **v2.2.1** | Larger PCM buffer for CDN resilience, FFmpeg detection fix (sheviks) |
 | **v2.2.0** | CPU affinity, AIFF support, MinimServer DSD transcoding fix |
 | **v2.1.11** | AIFF support (FFmpeg build config) |
@@ -866,4 +866,4 @@ This software is provided "as is" without warranty. While designed for high-qual
 
 **Enjoy bit-perfect, low-latency audio streaming!**
 
-*Last updated: 2026-04-11 (v2.2.2)*
+*Last updated: 2026-04-12 (v2.2.3)*
