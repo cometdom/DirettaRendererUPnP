@@ -371,7 +371,7 @@ build_ffmpeg_8_minimal() {
     configure_opts=$(get_ffmpeg_8_minimal_opts | tr '\n' ' ')
 
     if [ -n "$LLVM" ]; then
-        extra_flags="$extra_flags --cc=clang --cxx=clang++ --enable-lto --extra-ldflags=-flto"
+        extra_flags="$extra_flags --cc=clang --cxx=clang++ --enable-lto --extra-ldflags=-flto --extra-ldflags=-fuse-ld=lld"
     fi
 
     # Run configure
@@ -449,7 +449,7 @@ build_ffmpeg_from_source() {
     fi
 
     if [ -n "$LLVM" ]; then
-        extra_flags="$extra_flags --cc=clang --cxx=clang++ --enable-lto --extra-ldflags=-flto"
+        extra_flags="$extra_flags --cc=clang --cxx=clang++ --enable-lto --extra-ldflags=-flto --extra-ldflags=-fuse-ld=lld"
     fi
 
     # Run configure
