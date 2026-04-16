@@ -1,6 +1,6 @@
 # Changelog
 
-## [2.2.3] - 2026-04-14
+## [2.2.3] - 2026-04-16
 
 ### Fixed
 - **CPU affinity: main and log drain threads not pinned**: When `--cpu-other` was set, the main thread and the log drain thread were not pinned to the specified core, allowing them to migrate to cores 0/1 and interfere with audio isolation. Now both are pinned to `cpuOther` alongside the other non-critical threads. (Reported by progman)
