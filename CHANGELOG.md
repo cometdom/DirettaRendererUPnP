@@ -2,6 +2,9 @@
 
 ## [2.2.3] - 2026-04-14
 
+### Fixed
+- **CPU affinity: main and log drain threads not pinned**: When `--cpu-other` was set, the main thread and the log drain thread were not pinned to the specified core, allowing them to migrate to cores 0/1 and interfere with audio isolation. Now both are pinned to `cpuOther` alongside the other non-critical threads. (Reported by progman)
+
 ### Changed
 - **Build system optimization** (PR #65 by sheviks): LDFLAGS now propagate `-O` and `-march` flags to the linker when LTO is enabled, ensuring whole-program analysis uses architecture-specific optimizations (AVX2/AVX-512/Zen4/NEON) instead of falling back to generic instructions. Also forces `lld` as the linker with Clang (`-fuse-ld=lld`) and unifies all C++ files to `-O3` (was `-O2`, while C files were already `-O3`). Applied to both the main binary and the FFmpeg minimal build in `install.sh`.
 

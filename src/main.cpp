@@ -13,6 +13,8 @@
 #include <thread>
 #include <chrono>
 #include <iomanip>
+#include <pthread.h>
+#include <sched.h>
 
 #define RENDERER_VERSION "2.2.3"
 #define RENDERER_BUILD_DATE __DATE__
@@ -60,7 +62,24 @@ bool g_minimalUPnP = false;
 int g_rtPriority = 50;
 LogLevel g_logLevel = LogLevel::INFO;
 
+// Helper: pin current thread to a specific CPU core
+static bool pinCurrentThread(int core, const char* name) {
+    cpu_set_t cpuset;
+    CPU_ZERO(&cpuset);
+    CPU_SET(core, &cpuset);
+    if (pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset) == 0) {
+        std::cout << "[" << name << "] Pinned to CPU core " << core << std::endl;
+        return true;
+    }
+    std::cerr << "[" << name << "] Failed to pin to core " << core << std::endl;
+    return false;
+}
+
+// Global storage for cpuOther value (set from config in main, used by logDrainThread)
+static int g_cpuOther = -1;
+
 void logDrainThreadFunc() {
+    if (g_cpuOther >= 0) pinCurrentThread(g_cpuOther, "Log Drain Thread");
     LogEntry entry;
     while (!g_logDrainStop.load(std::memory_order_acquire)) {
         // Drain all pending log entries
@@ -301,6 +320,14 @@ int main(int argc, char* argv[]) {
         std::cerr << "Warning: --cpu-audio and --cpu-other are set to the same core ("
                   << config.cpuAudio << "). No thread isolation will occur." << std::endl;
     }
+
+    // Pin main thread to cpuOther core (keeps it off the audio core)
+    if (config.cpuOther >= 0) {
+        pinCurrentThread(config.cpuOther, "Main Thread");
+    }
+
+    // Store cpuOther for log drain thread (launched below)
+    g_cpuOther = config.cpuOther;
 
     // Initialize async logging ring buffer (A3 optimization)
     // Only active in verbose mode to avoid overhead in production
