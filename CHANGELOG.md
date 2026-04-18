@@ -1,6 +1,9 @@
 # Changelog
 
-## [2.2.3] - 2026-04-16
+## [2.2.3] - 2026-04-17
+
+### Added
+- **Web UI Stop button**: Added a Stop button alongside the existing Save & Restart and Restart Only buttons. Useful for users running DirettaRendererUPnP on their own Linux distributions to stop the service directly from the web UI — e.g., to release the Diretta target for another player or before maintenance. Includes a confirmation dialog.
 
 ### Fixed
 - **CPU affinity: main and log drain threads not pinned**: When `--cpu-other` was set, the main thread and the log drain thread were not pinned to the specified core, allowing them to migrate to cores 0/1 and interfere with audio isolation. Now both are pinned to `cpuOther` alongside the other non-critical threads. (Reported by progman)
