@@ -17,8 +17,9 @@
 
 ## What's New in v2.2.3
 
-**Complete CPU isolation, build system optimization.**
+**Complete CPU isolation, build system optimization, Web UI Stop button.**
 
+- **Web UI Stop button** — Added a Stop button next to Save & Restart and Restart Only. Useful for users running DirettaRendererUPnP on their own Linux distributions to stop the service directly from the web UI (e.g., to release the Diretta target for another player or before maintenance). Includes a confirmation dialog.
 - **Full thread isolation** — Main thread and log drain thread are now pinned to `--cpu-other` core, ensuring all non-audio threads stay off the audio core. libupnp internal threads also inherit the affinity automatically via thread inheritance. (Reported by progman, confirmed by sheviks)
 - **LDFLAGS propagation & -O3 unified** (PR #65 by sheviks) — LDFLAGS now propagate `-O` and `-march` flags to the linker when LTO is enabled, ensuring architecture-specific optimizations (AVX2/AVX-512/Zen4/NEON) are fully applied during whole-program analysis. Also forces `lld` as the linker with Clang and unifies all C++ files to `-O3`.
 
