@@ -1,6 +1,6 @@
 # Changelog
 
-## [2.2.3] - 2026-04-17
+## [2.2.3] - 2026-04-18
 
 ### Added
 - **Web UI Stop button**: Added a Stop button alongside the existing Save & Restart and Restart Only buttons. Useful for users running DirettaRendererUPnP on their own Linux distributions to stop the service directly from the web UI — e.g., to release the Diretta target for another player or before maintenance. Includes a confirmation dialog.
