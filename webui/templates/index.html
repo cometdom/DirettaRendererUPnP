@@ -21,6 +21,8 @@
             <div class="actions">
                 <button type="submit" class="btn btn-primary">Save &amp; Restart</button>
                 <button type="submit" class="btn btn-secondary" formaction="/restart">Restart Only</button>
+                <button type="submit" class="btn btn-danger" formaction="/stop"
+                        onclick="return confirm('Stop the service? The renderer will become unavailable until restarted.');">Stop</button>
             </div>
         </form>
 
