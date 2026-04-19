@@ -15,8 +15,11 @@
 #include <iomanip>
 #include <pthread.h>
 #include <sched.h>
+#include <vector>
+#include <sstream>
+#include <string>
 
-#define RENDERER_VERSION "2.2.3"
+#define RENDERER_VERSION "2.3.0"
 #define RENDERER_BUILD_DATE __DATE__
 #define RENDERER_BUILD_TIME __TIME__
 
@@ -62,24 +65,50 @@ bool g_minimalUPnP = false;
 int g_rtPriority = 50;
 LogLevel g_logLevel = LogLevel::INFO;
 
-// Helper: pin current thread to a specific CPU core
-static bool pinCurrentThread(int core, const char* name) {
+// Parse comma-separated core list
+static std::vector<int> parseCoreSpec(const std::string& spec) {
+    std::vector<int> cores;
+    if (spec.empty()) return cores;
+    std::stringstream ss(spec);
+    std::string token;
+    while (std::getline(ss, token, ',')) {
+        auto start = token.find_first_not_of(" \t");
+        auto end = token.find_last_not_of(" \t");
+        if (start == std::string::npos) continue;
+        token = token.substr(start, end - start + 1);
+        try {
+            int core = std::stoi(token);
+            if (core >= 0) cores.push_back(core);
+        } catch (...) {}
+    }
+    return cores;
+}
+
+// Helper: pin current thread to one or more CPU cores.
+static bool pinCurrentThread(const std::vector<int>& cores, const char* name) {
+    if (cores.empty()) return false;
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
-    CPU_SET(core, &cpuset);
+    for (int core : cores) CPU_SET(core, &cpuset);
     if (pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset) == 0) {
-        std::cout << "[" << name << "] Pinned to CPU core " << core << std::endl;
+        std::ostringstream oss;
+        for (size_t i = 0; i < cores.size(); i++) {
+            if (i > 0) oss << ",";
+            oss << cores[i];
+        }
+        std::cout << "[" << name << "] Pinned to CPU core(s) " << oss.str() << std::endl;
         return true;
     }
-    std::cerr << "[" << name << "] Failed to pin to core " << core << std::endl;
+    std::cerr << "[" << name << "] Failed to pin to cores" << std::endl;
     return false;
 }
 
 // Global storage for cpuOther value (set from config in main, used by logDrainThread)
-static int g_cpuOther = -1;
+static std::string g_cpuOther;
 
 void logDrainThreadFunc() {
-    if (g_cpuOther >= 0) pinCurrentThread(g_cpuOther, "Log Drain Thread");
+    auto cores = parseCoreSpec(g_cpuOther);
+    if (!cores.empty()) pinCurrentThread(cores, "Log Drain Thread");
     LogEntry entry;
     while (!g_logDrainStop.load(std::memory_order_acquire)) {
         // Drain all pending log entries
@@ -207,22 +236,50 @@ DirettaRenderer::Config parseArguments(int argc, char* argv[]) {
             }
         }
         else if (arg == "--cpu-audio" && i + 1 < argc) {
-            config.cpuAudio = std::atoi(argv[++i]);
+            config.cpuAudio = argv[++i];
+            // Validate all cores in the list
             int numCores = static_cast<int>(sysconf(_SC_NPROCESSORS_ONLN));
-            if (config.cpuAudio < 0 || config.cpuAudio >= numCores) {
-                std::cerr << "Warning: --cpu-audio " << config.cpuAudio
-                          << " is invalid (this system has cores 0-" << (numCores - 1) << ")" << std::endl;
-                config.cpuAudio = -1;
+            auto cores = parseCoreSpec(config.cpuAudio);
+            for (int c : cores) {
+                if (c >= numCores) {
+                    std::cerr << "Warning: --cpu-audio contains invalid core " << c
+                              << " (this system has cores 0-" << (numCores - 1) << ")" << std::endl;
+                    config.cpuAudio.clear();
+                    break;
+                }
             }
         }
         else if (arg == "--cpu-other" && i + 1 < argc) {
-            config.cpuOther = std::atoi(argv[++i]);
+            config.cpuOther = argv[++i];
             int numCores = static_cast<int>(sysconf(_SC_NPROCESSORS_ONLN));
-            if (config.cpuOther < 0 || config.cpuOther >= numCores) {
-                std::cerr << "Warning: --cpu-other " << config.cpuOther
-                          << " is invalid (this system has cores 0-" << (numCores - 1) << ")" << std::endl;
-                config.cpuOther = -1;
+            auto cores = parseCoreSpec(config.cpuOther);
+            for (int c : cores) {
+                if (c >= numCores) {
+                    std::cerr << "Warning: --cpu-other contains invalid core " << c
+                              << " (this system has cores 0-" << (numCores - 1) << ")" << std::endl;
+                    config.cpuOther.clear();
+                    break;
+                }
             }
+        }
+        // Buffer configuration (v2.3.0)
+        else if (arg == "--pcm-buffer-seconds" && i + 1 < argc) {
+            config.pcmBufferSeconds = static_cast<float>(std::atof(argv[++i]));
+        }
+        else if (arg == "--pcm-remote-buffer-seconds" && i + 1 < argc) {
+            config.pcmRemoteBufferSeconds = static_cast<float>(std::atof(argv[++i]));
+        }
+        else if (arg == "--dsd-buffer-seconds" && i + 1 < argc) {
+            config.dsdBufferSeconds = static_cast<float>(std::atof(argv[++i]));
+        }
+        else if (arg == "--pcm-prefill-ms" && i + 1 < argc) {
+            config.pcmPrefillMs = std::atoi(argv[++i]);
+        }
+        else if (arg == "--pcm-remote-prefill-ms" && i + 1 < argc) {
+            config.pcmRemotePrefillMs = std::atoi(argv[++i]);
+        }
+        else if (arg == "--dsd-prefill-ms" && i + 1 < argc) {
+            config.dsdPrefillMs = std::atoi(argv[++i]);
         }
         else if (arg == "--help" || arg == "-h") {
             std::cout << "Diretta UPnP Renderer (Simplified Architecture)\n\n"
@@ -255,8 +312,16 @@ DirettaRenderer::Config parseArguments(int argc, char* argv[]) {
                       << "  --rt-priority <1-99>       SCHED_FIFO real-time priority for worker thread (default: 50)\n"
                       << "\n"
                       << "CPU affinity (core isolation for audio quality):\n"
-                      << "  --cpu-audio <core>         Pin Diretta worker thread to CPU core (default: no pinning)\n"
-                      << "  --cpu-other <core>         Pin other threads (decode/UPnP) to CPU core (default: no pinning)\n"
+                      << "  --cpu-audio <cores>        Pin Diretta worker thread to CPU core(s), comma-separated (e.g., '3' or '3,4')\n"
+                      << "  --cpu-other <cores>        Pin other threads (decode/UPnP) to CPU core(s), comma-separated\n"
+                      << "\n"
+                      << "Buffer configuration (advanced — leave unset to use defaults):\n"
+                      << "  --pcm-buffer-seconds <s>       PCM local buffer size in seconds (default 0.5)\n"
+                      << "  --pcm-remote-buffer-seconds <s> PCM remote (Qobuz/Tidal) buffer in seconds (default 1.0)\n"
+                      << "  --dsd-buffer-seconds <s>       DSD buffer size in seconds (default 0.8)\n"
+                      << "  --pcm-prefill-ms <ms>          PCM prefill in ms (default 80)\n"
+                      << "  --pcm-remote-prefill-ms <ms>   PCM remote prefill in ms (default 150)\n"
+                      << "  --dsd-prefill-ms <ms>          DSD prefill in ms (default 200)\n"
                       << std::endl;
             exit(0);
         }
@@ -316,14 +381,26 @@ int main(int argc, char* argv[]) {
     DirettaRenderer::Config config = parseArguments(argc, argv);
 
     // Validate CPU affinity: warn if both cores are the same (no isolation)
-    if (config.cpuAudio >= 0 && config.cpuOther >= 0 && config.cpuAudio == config.cpuOther) {
-        std::cerr << "Warning: --cpu-audio and --cpu-other are set to the same core ("
-                  << config.cpuAudio << "). No thread isolation will occur." << std::endl;
+    // Warn if the two core sets overlap (no isolation)
+    if (!config.cpuAudio.empty() && !config.cpuOther.empty()) {
+        auto audioCores = parseCoreSpec(config.cpuAudio);
+        auto otherCores = parseCoreSpec(config.cpuOther);
+        for (int a : audioCores) {
+            for (int o : otherCores) {
+                if (a == o) {
+                    std::cerr << "Warning: --cpu-audio and --cpu-other share core "
+                              << a << ". Thread isolation may be reduced." << std::endl;
+                    goto skip_warn;
+                }
+            }
+        }
+        skip_warn:;
     }
 
-    // Pin main thread to cpuOther core (keeps it off the audio core)
-    if (config.cpuOther >= 0) {
-        pinCurrentThread(config.cpuOther, "Main Thread");
+    // Pin main thread to cpuOther core(s) (keeps it off the audio core)
+    if (!config.cpuOther.empty()) {
+        auto mainCores = parseCoreSpec(config.cpuOther);
+        if (!mainCores.empty()) pinCurrentThread(mainCores, "Main Thread");
     }
 
     // Store cpuOther for log drain thread (launched below)

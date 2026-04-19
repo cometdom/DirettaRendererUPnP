@@ -18,23 +18,62 @@
 #include <cstring>
 #include <pthread.h>
 #include <sched.h>
+#include <vector>
 
 // Logging: uses centralized LogLevel system from LogLevel.h (included via DirettaSync.h)
 // DEBUG_LOG kept as alias for backward compatibility within this file
 #define DEBUG_LOG(x) LOG_DEBUG(x)
 
-// Helper: pin current thread to a specific CPU core
-static bool pinThreadToCore(int core, const char* threadName) {
+// Parse comma-separated core list (e.g. "6,7,8") into a vector of ints.
+// Returns empty vector on parse error or empty input.
+static std::vector<int> parseCoreList(const std::string& spec) {
+    std::vector<int> cores;
+    if (spec.empty()) return cores;
+
+    std::stringstream ss(spec);
+    std::string token;
+    while (std::getline(ss, token, ',')) {
+        // Trim whitespace
+        auto start = token.find_first_not_of(" \t");
+        auto end = token.find_last_not_of(" \t");
+        if (start == std::string::npos) continue;
+        token = token.substr(start, end - start + 1);
+
+        try {
+            int core = std::stoi(token);
+            if (core >= 0) cores.push_back(core);
+        } catch (const std::exception&) {
+            // Ignore invalid tokens
+        }
+    }
+    return cores;
+}
+
+// Helper: pin current thread to one or more CPU cores.
+// When multiple cores are given, the kernel scheduler may move the thread
+// within that set. Returns true if pinning succeeded.
+static bool pinThreadToCores(const std::vector<int>& cores, const char* threadName) {
+    if (cores.empty()) return false;
+
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
-    CPU_SET(core, &cpuset);
+    for (int core : cores) {
+        CPU_SET(core, &cpuset);
+    }
+
     int ret = pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
     if (ret != 0) {
-        std::cerr << "[" << threadName << "] Failed to set CPU affinity to core "
-                  << core << ": " << strerror(ret) << std::endl;
+        std::cerr << "[" << threadName << "] Failed to set CPU affinity: "
+                  << strerror(ret) << std::endl;
         return false;
     }
-    std::cout << "[" << threadName << "] Pinned to CPU core " << core << std::endl;
+
+    std::ostringstream coreStr;
+    for (size_t i = 0; i < cores.size(); i++) {
+        if (i > 0) coreStr << ",";
+        coreStr << cores[i];
+    }
+    std::cout << "[" << threadName << "] Pinned to CPU core(s) " << coreStr.str() << std::endl;
     return true;
 }
 
@@ -177,11 +216,23 @@ bool DirettaRenderer::start(std::atomic<bool>* stopSignal) {
         if (m_config.targetProfileLimitTime >= 0)
             syncConfig.targetProfileLimitTime = static_cast<unsigned int>(m_config.targetProfileLimitTime);
 
-        // CPU affinity
-        if (m_config.cpuAudio >= 0)
-            syncConfig.cpuAudio = m_config.cpuAudio;
-        if (m_config.cpuOther >= 0)
-            syncConfig.cpuOther = m_config.cpuOther;
+        // CPU affinity (pass full core list to DirettaSync for worker thread pinning)
+        syncConfig.cpuAudio = m_config.cpuAudio;
+        syncConfig.cpuOther = m_config.cpuOther;
+
+        // Buffer configuration (passed to DirettaSync only if non-default)
+        if (m_config.pcmBufferSeconds > 0)
+            syncConfig.pcmBufferSeconds = m_config.pcmBufferSeconds;
+        if (m_config.pcmRemoteBufferSeconds > 0)
+            syncConfig.pcmRemoteBufferSeconds = m_config.pcmRemoteBufferSeconds;
+        if (m_config.dsdBufferSeconds > 0)
+            syncConfig.dsdBufferSeconds = m_config.dsdBufferSeconds;
+        if (m_config.pcmPrefillMs > 0)
+            syncConfig.pcmPrefillMs = static_cast<unsigned int>(m_config.pcmPrefillMs);
+        if (m_config.pcmRemotePrefillMs > 0)
+            syncConfig.pcmRemotePrefillMs = static_cast<unsigned int>(m_config.pcmRemotePrefillMs);
+        if (m_config.dsdPrefillMs > 0)
+            syncConfig.dsdPrefillMs = static_cast<unsigned int>(m_config.dsdPrefillMs);
 
         // Log non-default SDK settings
         if (m_config.threadMode >= 0)
@@ -199,10 +250,22 @@ bool DirettaRenderer::start(std::atomic<bool>* stopSignal) {
         if (m_config.targetProfileLimitTime >= 0)
             std::cout << "[DirettaRenderer] Target profile limit: " << syncConfig.targetProfileLimitTime
                       << " us (" << (syncConfig.targetProfileLimitTime > 0 ? "TargetProfile" : "SelfProfile") << ")" << std::endl;
-        if (m_config.cpuAudio >= 0)
-            std::cout << "[DirettaRenderer] CPU audio (Diretta worker): core " << m_config.cpuAudio << std::endl;
-        if (m_config.cpuOther >= 0)
-            std::cout << "[DirettaRenderer] CPU other (decode/UPnP): core " << m_config.cpuOther << std::endl;
+        if (!m_config.cpuAudio.empty())
+            std::cout << "[DirettaRenderer] CPU audio (Diretta worker): core(s) " << m_config.cpuAudio << std::endl;
+        if (!m_config.cpuOther.empty())
+            std::cout << "[DirettaRenderer] CPU other (decode/UPnP): core(s) " << m_config.cpuOther << std::endl;
+        if (m_config.pcmBufferSeconds > 0)
+            std::cout << "[DirettaRenderer] PCM buffer: " << m_config.pcmBufferSeconds << "s" << std::endl;
+        if (m_config.pcmRemoteBufferSeconds > 0)
+            std::cout << "[DirettaRenderer] PCM remote buffer: " << m_config.pcmRemoteBufferSeconds << "s" << std::endl;
+        if (m_config.dsdBufferSeconds > 0)
+            std::cout << "[DirettaRenderer] DSD buffer: " << m_config.dsdBufferSeconds << "s" << std::endl;
+        if (m_config.pcmPrefillMs > 0)
+            std::cout << "[DirettaRenderer] PCM prefill: " << m_config.pcmPrefillMs << "ms" << std::endl;
+        if (m_config.pcmRemotePrefillMs > 0)
+            std::cout << "[DirettaRenderer] PCM remote prefill: " << m_config.pcmRemotePrefillMs << "ms" << std::endl;
+        if (m_config.dsdPrefillMs > 0)
+            std::cout << "[DirettaRenderer] DSD prefill: " << m_config.dsdPrefillMs << "ms" << std::endl;
 
         if (!m_direttaSync->enable(syncConfig, stopSignal)) {
             std::cerr << "[DirettaRenderer] Failed to enable DirettaSync" << std::endl;
@@ -765,7 +828,8 @@ void DirettaRenderer::stop() {
 //=============================================================================
 
 void DirettaRenderer::upnpThreadFunc() {
-    if (m_config.cpuOther >= 0) pinThreadToCore(m_config.cpuOther, "UPnP Thread");
+    auto cores = parseCoreList(m_config.cpuOther);
+    if (!cores.empty()) pinThreadToCores(cores, "UPnP Thread");
     DEBUG_LOG("[UPnP Thread] Started");
 
     while (m_running) {
@@ -776,7 +840,8 @@ void DirettaRenderer::upnpThreadFunc() {
 }
 
 void DirettaRenderer::audioThreadFunc() {
-    if (m_config.cpuOther >= 0) pinThreadToCore(m_config.cpuOther, "Audio Thread");
+    auto cores = parseCoreList(m_config.cpuOther);
+    if (!cores.empty()) pinThreadToCores(cores, "Audio Thread");
     DEBUG_LOG("[Audio Thread] Started");
 
     // Buffer-level flow control thresholds (like MPD's Delay() approach)
@@ -873,7 +938,8 @@ void DirettaRenderer::audioThreadFunc() {
 }
 
 void DirettaRenderer::positionThreadFunc() {
-    if (m_config.cpuOther >= 0) pinThreadToCore(m_config.cpuOther, "Position Thread");
+    auto cores = parseCoreList(m_config.cpuOther);
+    if (!cores.empty()) pinThreadToCores(cores, "Position Thread");
     DEBUG_LOG("[Position Thread] Started");
 
     while (m_running) {

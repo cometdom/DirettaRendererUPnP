@@ -81,19 +81,71 @@
             "settings": [
                 {
                     "key": "CPU_AUDIO",
-                    "type": "number",
-                    "label": "Audio Core",
-                    "description": "Pin Diretta worker thread to this CPU core. Empty = no pinning.",
-                    "default": "",
-                    "min": 0
+                    "type": "text",
+                    "label": "Audio Core(s)",
+                    "description": "Pin Diretta worker thread to CPU core(s). Single core (e.g., '3') or comma-separated list (e.g., '3,4'). Empty = no pinning.",
+                    "default": ""
                 },
                 {
                     "key": "CPU_OTHER",
+                    "type": "text",
+                    "label": "Other Core(s)",
+                    "description": "Pin decode/UPnP threads to CPU core(s). Single core or comma-separated list (e.g., '6,7,8'). Empty = no pinning.",
+                    "default": ""
+                }
+            ]
+        },
+        {
+            "name": "Buffer Configuration (Advanced)",
+            "collapsed": true,
+            "settings": [
+                {
+                    "key": "PCM_BUFFER_SECONDS",
+                    "type": "text",
+                    "label": "PCM buffer (seconds)",
+                    "description": "Local PCM buffer size in seconds. Leave empty to use default (0.5).",
+                    "default": ""
+                },
+                {
+                    "key": "PCM_REMOTE_BUFFER_SECONDS",
+                    "type": "text",
+                    "label": "PCM remote buffer (seconds)",
+                    "description": "Remote (Qobuz/Tidal) PCM buffer size in seconds. Leave empty to use default (1.0).",
+                    "default": ""
+                },
+                {
+                    "key": "DSD_BUFFER_SECONDS",
+                    "type": "text",
+                    "label": "DSD buffer (seconds)",
+                    "description": "DSD buffer size in seconds. Leave empty to use default (0.8).",
+                    "default": ""
+                },
+                {
+                    "key": "PCM_PREFILL_MS",
                     "type": "number",
-                    "label": "Other Core",
-                    "description": "Pin decode/UPnP threads to this CPU core. Empty = no pinning.",
+                    "label": "PCM prefill (ms)",
+                    "description": "PCM prefill before starting playback. Leave empty to use default (80 ms).",
                     "default": "",
-                    "min": 0
+                    "min": 1,
+                    "max": 5000
+                },
+                {
+                    "key": "PCM_REMOTE_PREFILL_MS",
+                    "type": "number",
+                    "label": "PCM remote prefill (ms)",
+                    "description": "Remote PCM prefill. Leave empty to use default (150 ms).",
+                    "default": "",
+                    "min": 1,
+                    "max": 5000
+                },
+                {
+                    "key": "DSD_PREFILL_MS",
+                    "type": "number",
+                    "label": "DSD prefill (ms)",
+                    "description": "DSD prefill before starting playback. Leave empty to use default (200 ms).",
+                    "default": "",
+                    "min": 1,
+                    "max": 5000
                 }
             ]
         },

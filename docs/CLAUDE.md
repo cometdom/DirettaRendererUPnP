@@ -434,6 +434,8 @@ sudo apt install build-essential libavformat-dev libavcodec-dev libavutil-dev li
 - [x] Config variable alignment — `NAME`, `INTERFACE`, `MTU` (old names as fallback)
 - [x] AIFF support — added `aiff` demuxer + `pcm_s16be/s24be/s32be` decoders to FFmpeg build config
 - [x] CPU affinity (`--cpu-audio`, `--cpu-other`) — pin threads to dedicated cores via config/CLI/web UI
+- [x] Multi-core CPU affinity — `--cpu-audio`/`--cpu-other` accept comma-separated lists (e.g. `3,4`)
+- [x] Configurable buffer settings — PCM/DSD buffer seconds + prefill ms via config/CLI/web UI
 - [x] Clang + LTO build support (PR #64 by sheviks) — `env LLVM=1 ./install.sh` or `make LLVM=1`
 - [x] EIO→EOF fix — treat EIO after successful reads as normal EOF (fixes 32-bit 768kHz playlist advancement)
 
@@ -441,7 +443,6 @@ sudo apt install build-essential libavformat-dev libavcodec-dev libavutil-dev li
 - [ ] AVX-512 format conversions (currently only memcpy uses AVX-512)
 - [ ] Multi-producer ring buffer for multiple audio sources
 - [ ] Adaptive prefetch tuning based on cache behavior
-- [ ] Configurable buffer settings (PCM/DSD buffer seconds, prefill ms) via config file/CLI/web UI
 
 ## Format Transition Handling
 

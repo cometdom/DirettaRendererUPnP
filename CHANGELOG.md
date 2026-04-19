@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.3.0] - unreleased
+
+### Added
+- **Multi-core CPU affinity** (`--cpu-audio`, `--cpu-other`): Both options now accept either a single core (e.g. `3`) or a comma-separated list (e.g. `3,4` or `6,7,8`). When multiple cores are specified, the kernel scheduler can move the thread within that set. Config file variables `CPU_AUDIO` and `CPU_OTHER` accept the same syntax. Single-core values remain fully compatible with previous versions. (Requested by Vlad)
+- **Configurable buffers** (`--pcm-buffer-seconds`, `--pcm-remote-buffer-seconds`, `--dsd-buffer-seconds`, `--pcm-prefill-ms`, `--pcm-remote-prefill-ms`, `--dsd-prefill-ms`): All six buffer / prefill values are now exposable via CLI, config file (`PCM_BUFFER_SECONDS`, `PCM_REMOTE_BUFFER_SECONDS`, `DSD_BUFFER_SECONDS`, `PCM_PREFILL_MS`, `PCM_REMOTE_PREFILL_MS`, `DSD_PREFILL_MS`), and web UI under "Buffer Configuration (Advanced)". Leave empty to use defaults. Allows tuning latency vs stability for specific setups. (Requested by Vlad, previously planned on the roadmap)
+
+---
+
 ## [2.2.3] - 2026-04-18
 
 ### Added

@@ -42,9 +42,18 @@ public:
         int mtu = -1;             // MTU override in bytes (default: auto-detect)
         int targetProfileLimitTime = -1;  // 0=SelfProfile (stable, default), >0=TargetProfile limit in µs (experimental)
 
-        // CPU affinity (-1 = no pinning, default)
-        int cpuAudio = -1;        // Core for DirettaSync worker thread (critical hot path)
-        int cpuOther = -1;        // Core for other threads (UPnP, position, decode)
+        // CPU affinity (empty = no pinning, default)
+        // Accept one or more cores (comma-separated), e.g. "6" or "6,7,8"
+        std::string cpuAudio;     // Cores for DirettaSync worker thread (critical hot path)
+        std::string cpuOther;     // Cores for other threads (UPnP, position, decode)
+
+        // Buffer configuration (-1 = use defaults)
+        float pcmBufferSeconds = -1.0f;        // Default 0.5s
+        float pcmRemoteBufferSeconds = -1.0f;  // Default 1.0s
+        float dsdBufferSeconds = -1.0f;        // Default 0.8s
+        int pcmPrefillMs = -1;                 // Default 80ms
+        int pcmRemotePrefillMs = -1;           // Default 150ms
+        int dsdPrefillMs = -1;                 // Default 200ms
 
         Config();
     };

@@ -22,9 +22,18 @@ TRANSFER_MODE="${TRANSFER_MODE:-}"
 TARGET_PROFILE_LIMIT="${TARGET_PROFILE_LIMIT:-}"
 MTU="${MTU:-${MTU_OVERRIDE:-}}"
 
-# CPU affinity (no pinning by default)
+# CPU affinity (no pinning by default). Accepts single core or comma-separated list.
+# Examples: CPU_AUDIO=3  or  CPU_AUDIO="3,4,5"
 CPU_AUDIO="${CPU_AUDIO:-}"
 CPU_OTHER="${CPU_OTHER:-}"
+
+# Buffer configuration (leave empty to use defaults)
+PCM_BUFFER_SECONDS="${PCM_BUFFER_SECONDS:-}"
+PCM_REMOTE_BUFFER_SECONDS="${PCM_REMOTE_BUFFER_SECONDS:-}"
+DSD_BUFFER_SECONDS="${DSD_BUFFER_SECONDS:-}"
+PCM_PREFILL_MS="${PCM_PREFILL_MS:-}"
+PCM_REMOTE_PREFILL_MS="${PCM_REMOTE_PREFILL_MS:-}"
+DSD_PREFILL_MS="${DSD_PREFILL_MS:-}"
 
 # Process priority defaults
 NICE_LEVEL="${NICE_LEVEL:--10}"
@@ -112,6 +121,26 @@ fi
 
 if [ -n "$CPU_OTHER" ]; then
     CMD+=("--cpu-other" "$CPU_OTHER")
+fi
+
+# Buffer configuration
+if [ -n "$PCM_BUFFER_SECONDS" ]; then
+    CMD+=("--pcm-buffer-seconds" "$PCM_BUFFER_SECONDS")
+fi
+if [ -n "$PCM_REMOTE_BUFFER_SECONDS" ]; then
+    CMD+=("--pcm-remote-buffer-seconds" "$PCM_REMOTE_BUFFER_SECONDS")
+fi
+if [ -n "$DSD_BUFFER_SECONDS" ]; then
+    CMD+=("--dsd-buffer-seconds" "$DSD_BUFFER_SECONDS")
+fi
+if [ -n "$PCM_PREFILL_MS" ]; then
+    CMD+=("--pcm-prefill-ms" "$PCM_PREFILL_MS")
+fi
+if [ -n "$PCM_REMOTE_PREFILL_MS" ]; then
+    CMD+=("--pcm-remote-prefill-ms" "$PCM_REMOTE_PREFILL_MS")
+fi
+if [ -n "$DSD_PREFILL_MS" ]; then
+    CMD+=("--dsd-prefill-ms" "$DSD_PREFILL_MS")
 fi
 
 # Build exec prefix as array for process priority
