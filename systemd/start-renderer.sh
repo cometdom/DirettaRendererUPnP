@@ -32,7 +32,19 @@ IO_SCHED_CLASS="${IO_SCHED_CLASS:-realtime}"
 IO_SCHED_PRIORITY="${IO_SCHED_PRIORITY:-0}"
 RT_PRIORITY="${RT_PRIORITY:-50}"
 
+# Advanced network config
+TARGET_INTERFACE="${TARGET_INTERFACE:-}"
+TARGET_SPEED="${TARGET_SPEED:-100}"
+TARGET_DUPLEX="${TARGET_DUPLEX:-full}"
+
 RENDERER_BIN="/opt/diretta-renderer-upnp/DirettaRendererUPnP"
+
+# Advanced network interface settings
+if [ -n "$TARGET_INTERFACE" ]; then
+    echo "Set advanced target network settings: $TARGET_INTERFACE"
+    ethtool -s $TARGET_INTERFACE speed $TARGET_SPEED duplex $TARGET_DUPLEX
+    sleep 1
+fi
 
 # Build command as array (preserves arguments with spaces)
 CMD=("$RENDERER_BIN")

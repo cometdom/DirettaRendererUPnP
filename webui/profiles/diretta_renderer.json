@@ -76,6 +76,42 @@
             ]
         },
         {
+            "name": "Advanced Network Settings",
+            "collapsed": true,
+            "settings": [
+                {
+                    "key": "TARGET_INTERFACE",
+                    "type": "text",
+                    "label": "Target Network Interface",
+                    "description": "Interface name (eth0) for target connection. Empty = no change.",
+                    "default": ""
+                },
+                {
+                    "key": "TARGET_SPEED",
+                    "type": "select",
+                    "label": "Target Speed",
+                    "description": "Target network speed",
+                    "default": "100",
+                    "options": [
+                        {"value": "10", "label": "10Mbit"},
+                        {"value": "100", "label": "100Mbit"},
+                        {"value": "1000", "label": "1000Mbit"}
+                    ]
+                },
+                {
+                    "key": "TARGET_DUPLEX",
+                    "type": "select",
+                    "label": "Target Duplex Mode",
+                    "description": "Target network duplex mode",
+                    "default": "full",
+                    "options": [
+                        {"value": "half", "label": "half duplex"},
+                        {"value": "full", "label": "full duplex"}
+                    ]
+                }
+            ]
+        },
+        {
             "name": "CPU Affinity",
             "collapsed": true,
             "settings": [
