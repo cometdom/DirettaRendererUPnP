@@ -261,8 +261,13 @@ bool AudioDecoder::open(const std::string& url) {
 
         // Build a fresh options dict with only the demuxer parameters
         // (HTTP-layer options were consumed by avio_open2 above).
+        // FFmpeg 8.x deprecated `channels` in favour of `ch_layout`, and the
+        // default ch_layout for the PCM raw demuxer is "mono" — leaving the
+        // stream interleaved-stereo to play at half-speed if we don't override.
+        // Set both so we're correct on old and new FFmpeg builds.
         av_dict_free(&options);
         av_dict_set(&options, "sample_rate", "44100", 0);
+        av_dict_set(&options, "ch_layout", "stereo", 0);
         av_dict_set(&options, "channels", "2", 0);
 
         // URL=NULL because we've already attached the I/O via pb.
