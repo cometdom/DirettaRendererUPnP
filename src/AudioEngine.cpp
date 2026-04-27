@@ -115,6 +115,7 @@ bool AudioDecoder::open(const std::string& url) {
 
     // Detect format from URL extension (helps FFmpeg when Content-Type is missing/wrong)
     const AVInputFormat* inputFormat = nullptr;
+    bool isAudirvanaPCM = false;
     // Detect streaming service URLs proxied through local UPnP servers
     // (e.g., Audirvana relays Qobuz/Tidal via http://192.168.x.x/...qobuz...)
     // Use strcasestr() to avoid allocating a full URL copy for case-insensitive search
@@ -155,6 +156,21 @@ bool AudioDecoder::open(const std::string& url) {
                     std::cerr << "[AudioDecoder] WARNING: DSF demuxer not found in FFmpeg!" << std::endl;
                     std::cerr << "[AudioDecoder] Please rebuild FFmpeg with: --enable-demuxer=dsf" << std::endl;
                 }
+            } else if (ext == ".pcm" && strcasestr(urlCStr, "/audirvana/") != nullptr) {
+                // Audirvana internet radio relay: streams raw s16be PCM via
+                // Content-Type "audio/L16" but omits the mandatory rate= param
+                // (RFC 2586 violation). FFmpeg's strict MIME parser then rejects
+                // the stream. Force the s16be demuxer and inject 44100Hz/stereo
+                // defaults below so playback can proceed.
+                inputFormat = av_find_input_format("s16be");
+                if (inputFormat) {
+                    isAudirvanaPCM = true;
+                    std::cout << "[AudioDecoder] Audirvana PCM stream detected - "
+                              << "forcing s16be 44100Hz stereo (RFC 2586 fallback)"
+                              << std::endl;
+                } else {
+                    std::cerr << "[AudioDecoder] WARNING: s16be demuxer not found in FFmpeg!" << std::endl;
+                }
             }
         }
     }
@@ -189,6 +205,14 @@ bool AudioDecoder::open(const std::string& url) {
         av_dict_set(&options, "http_persistent", "1", 0);
         av_dict_set(&options, "multiple_requests", "1", 0);
         av_dict_set(&options, "ignore_eof", "1", 0);
+    }
+
+    if (isAudirvanaPCM) {
+        // Inject sample rate/channels because Audirvana's audio/L16 MIME lacks
+        // the rate= param. 44100Hz stereo covers the vast majority of internet
+        // radio streams Audirvana relays this way.
+        av_dict_set(&options, "sample_rate", "44100", 0);
+        av_dict_set(&options, "channels", "2", 0);
     }
 
     int ret = avformat_open_input(&m_formatContext, url.c_str(), inputFormat, &options);

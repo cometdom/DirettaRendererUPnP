@@ -17,10 +17,11 @@
 
 ## What's New in v2.3.0
 
-**Multi-core affinity, configurable buffers.**
+**Multi-core affinity, configurable buffers, Audirvana internet radio fix.**
 
 - **Multi-core CPU affinity** — `--cpu-audio` and `--cpu-other` now accept either a single core (e.g. `3`) or a comma-separated list (e.g. `3,4` or `6,7,8`). The kernel scheduler may move threads within the specified set, allowing load spread on systems with multiple P-cores while still isolating audio from other processes.
 - **Configurable buffers** — All six buffer / prefill values are now exposed via CLI, config file, and web UI (under "Buffer Configuration (Advanced)"): `PCM_BUFFER_SECONDS`, `PCM_REMOTE_BUFFER_SECONDS`, `DSD_BUFFER_SECONDS`, `PCM_PREFILL_MS`, `PCM_REMOTE_PREFILL_MS`, `DSD_PREFILL_MS`. Allows tuning latency vs stability for each specific setup.
+- **Audirvana internet radio fix** — Internet radio streams that Audirvana relays as raw PCM (`audio/L16` MIME without `rate=`) now play correctly. The renderer detects Audirvana's specific PCM URL pattern and applies a 44100Hz/stereo fallback per RFC 3551. Strictly scoped — no impact on mp3/aac/ogg/flac radio or other Audirvana flows. (Reported by grajaw)
 
 See [CHANGELOG.md](CHANGELOG.md) for details.
 
@@ -868,4 +869,4 @@ This software is provided "as is" without warranty. While designed for high-qual
 
 **Enjoy bit-perfect, low-latency audio streaming!**
 
-*Last updated: 2026-04-22 (v2.3.0)*
+*Last updated: 2026-04-27 (v2.3.0)*
