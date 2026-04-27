@@ -438,7 +438,7 @@ sudo apt install build-essential libavformat-dev libavcodec-dev libavutil-dev li
 - [x] Configurable buffer settings — PCM/DSD buffer seconds + prefill ms via config/CLI/web UI
 - [x] Clang + LTO build support (PR #64 by sheviks) — `env LLVM=1 ./install.sh` or `make LLVM=1`
 - [x] EIO→EOF fix — treat EIO after successful reads as normal EOF (fixes 32-bit 768kHz playlist advancement)
-- [x] Audirvana internet radio fix — detect `/audirvana/*.pcm` URL pattern, force `s16be` demuxer with 44100Hz/stereo (RFC 3551 fallback) when Audirvana relays radio with `audio/L16` MIME missing the `rate=` param (RFC 2586 violation)
+- [x] Audirvana internet radio fix — detect `/audirvana/*.pcm` URL pattern, open HTTP manually and wrap in a custom `AVIOContext` (no `mime_type` in its AVClass tree) so FFmpeg's `s16be` demuxer skips the strict RFC 2586 MIME check, then force 44100Hz + `ch_layout=stereo` (RFC 3551 fallback). FFmpeg minimal build also gets `pcm_s16be` demuxer added (was missing). Fixes "Invalid sample_rate found in mime_type 'audio/L16'" failure when Audirvana relays radio with non-conformant `audio/L16` headers.
 
 ### Potential Future Work
 - [ ] AVX-512 format conversions (currently only memcpy uses AVX-512)
