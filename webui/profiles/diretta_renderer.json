@@ -108,6 +108,20 @@
                         {"value": "half", "label": "half duplex"},
                         {"value": "full", "label": "full duplex"}
                     ]
+                },
+                {
+                    "key": "IRQ_INTERFACE",
+                    "type": "text",
+                    "label": "IRQ Affinity Interface",
+                    "description": "NIC name (eth0, enp1s0) whose hardware interrupts will be pinned to specific CPUs. Matches all related IRQs including MSI-X queues. Leave empty to disable IRQ pinning.",
+                    "default": ""
+                },
+                {
+                    "key": "IRQ_CPUS",
+                    "type": "text",
+                    "label": "IRQ Affinity CPU(s)",
+                    "description": "CPU list for NIC interrupts (e.g. '0-3', '0,2,4', '0-3,8-11'). Pick CPUs OUTSIDE your --cpu-audio core to keep network IRQ activity away from the audio worker. Some kernel-managed MSI-X queues may be read-only — they are reported as 'skipped' in the launcher log, which is normal.",
+                    "default": ""
                 }
             ]
         },

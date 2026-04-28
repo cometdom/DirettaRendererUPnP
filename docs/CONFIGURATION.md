@@ -389,17 +389,117 @@ cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
 
 #### 2. IRQ Affinity (Advanced)
 
-Bind network card IRQ to specific CPU:
+Network IRQ activity colliding with the audio worker thread is a measurable
+source of jitter on busy LANs. Pinning the NIC's interrupts to CPUs *outside*
+the one used by `--cpu-audio` keeps interrupt processing physically away from
+the audio thread.
+
+##### Built-in: IRQ_INTERFACE / IRQ_CPUS (since v2.4.0)
+
+The simplest way is to set two values in `/etc/default/diretta-renderer` (or
+via the web UI under **Advanced Network Settings**):
 
 ```bash
-# Find network card IRQ
-cat /proc/interrupts | grep enp4s0
-
-# Example: IRQ 16, bind to CPU 0
-echo 1 | sudo tee /proc/irq/16/smp_affinity
+IRQ_INTERFACE="enp4s0"   # NIC name; matches all related IRQs incl. MSI-X queues
+IRQ_CPUS="0-5"           # CPU list — pick CPUs OUTSIDE your --cpu-audio core
 ```
 
-#### 3. Process Priority
+At service start, `start-renderer.sh` walks `/proc/interrupts`, matches every
+line containing `IRQ_INTERFACE`, and writes `IRQ_CPUS` into each
+`/proc/irq/N/smp_affinity_list`. The launcher logs a summary like:
+
+```
+IRQ affinity for enp4s0 -> CPU(s) 0-5: 8 pinned, 1 skipped (managed/read-only)
+```
+
+Some MSI-X queues are kernel-managed and refuse runtime reassignment — those
+are counted as "skipped". This is normal and not a failure.
+
+##### Manual fallback
+
+For one-off tuning or non-systemd setups, you can pin a single IRQ by hand:
+
+```bash
+# Find network card IRQs (one line per MSI-X queue is normal)
+grep enp4s0 /proc/interrupts
+
+# Example: IRQ 16 -> CPU 0
+echo 0 | sudo tee /proc/irq/16/smp_affinity_list
+```
+
+#### 3. CPU Isolation with `isolcpus=` (Kernel Boot Parameter)
+
+`--cpu-audio` pins the Diretta worker thread to a specific core, but Linux's
+default scheduler can still place other userland tasks on that core. To
+*reserve* a core exclusively for DirettaRendererUPnP, add `isolcpus=` to the
+kernel boot command line — the scheduler will then leave that core untouched
+unless explicitly directed (which is exactly what `--cpu-audio` does).
+
+This is a **system-level setting that requires a reboot** and is not
+configurable from DirettaRendererUPnP itself.
+
+##### What to add to the kernel cmdline
+
+Pick the same CPU number you intend to use with `--cpu-audio` (e.g. `8` on a
+12-core CPU). A typical hardened triple looks like:
+
+```
+isolcpus=8 nohz_full=8 rcu_nocbs=8
+```
+
+- `isolcpus=8` — removes CPU 8 from the general scheduler load balancer.
+- `nohz_full=8` — disables the periodic scheduler tick on CPU 8 when only one
+  task is running (i.e. the Diretta worker), eliminating one more source of
+  jitter.
+- `rcu_nocbs=8` — moves RCU callback handling off CPU 8 to other cores.
+
+You can isolate multiple CPUs with comma lists or ranges:
+`isolcpus=8-11 nohz_full=8-11 rcu_nocbs=8-11`.
+
+##### How to apply (varies by bootloader)
+
+**GRUB (most distros: Fedora, Ubuntu, Debian, Arch, etc.)**:
+
+```bash
+# Edit /etc/default/grub and append to GRUB_CMDLINE_LINUX_DEFAULT
+sudo nano /etc/default/grub
+# Then regenerate the config:
+sudo grub2-mkconfig -o /boot/grub2/grub.cfg     # Fedora/RHEL/CentOS
+sudo update-grub                                # Ubuntu/Debian
+sudo grub-mkconfig -o /boot/grub/grub.cfg       # Arch
+sudo reboot
+```
+
+**systemd-boot (some Arch / Fedora Silverblue setups)**:
+
+```bash
+# Edit the relevant entry in /boot/loader/entries/*.conf, append to the
+# `options` line, then:
+sudo bootctl update
+sudo reboot
+```
+
+##### Verifying
+
+After reboot:
+
+```bash
+cat /proc/cmdline                       # confirm isolcpus is present
+cat /sys/devices/system/cpu/isolated    # should list the isolated CPU(s)
+```
+
+##### Caveats
+
+- **Test conservatively.** A typo in the kernel cmdline can prevent boot; if
+  that happens, edit the cmdline at the GRUB prompt (press `e` at the menu)
+  to recover.
+- **Don't isolate every core.** The kernel still needs CPUs to run system
+  tasks. On a 12-core CPU isolating 1-2 cores is the usual sweet spot.
+- **Pair with `--cpu-audio`.** `isolcpus` removes the core from the scheduler
+  *for non-pinned tasks*; the core only becomes useful for audio if you also
+  pin DRUP to it via `--cpu-audio`.
+
+#### 4. Process Priority
 
 The audio worker thread runs with SCHED_FIFO real-time priority (50) automatically.
 

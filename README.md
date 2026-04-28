@@ -17,9 +17,11 @@
 
 ## What's New in v2.4.0
 
-**Target network link tuning.**
+**Target network link tuning, IRQ affinity, isolcpus documentation.**
 
 - **Target network link tuning** (PR #67 by Daniel/Koala887) — New "Advanced Network Settings" section in the web UI to force the speed and duplex of the host NIC used to reach the Diretta target via `ethtool` (some audiophile users report perceived sound-quality differences when constraining the link, typically to 100 Mbit). Configurable via `TARGET_INTERFACE`, `TARGET_SPEED`, and `TARGET_DUPLEX`; leave the interface empty to keep the default behaviour. Bandwidth-vs-format reminder included so users don't accidentally pick a link speed too narrow for hi-res PCM or DSD.
+- **IRQ affinity for the target NIC** — New `IRQ_INTERFACE` / `IRQ_CPUS` config keys (also in the web UI) pin all hardware interrupts of the chosen NIC, including MSI-X queues, to a specific CPU list at service start. Used in conjunction with `--cpu-audio`, this keeps network IRQ activity off the audio worker core — a known source of jitter on busy LANs.
+- **isolcpus / nohz_full / rcu_nocbs documentation** — `docs/CONFIGURATION.md` now covers how to fully reserve a CPU core for the Diretta worker via the kernel cmdline, with bootloader-specific instructions (GRUB, systemd-boot) and recovery guidance.
 
 See [CHANGELOG.md](CHANGELOG.md) for details.
 
