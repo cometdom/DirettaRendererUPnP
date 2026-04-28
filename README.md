@@ -610,6 +610,20 @@ sudo sysctl -w net.core.wmem_max=16777216
 
 ### CPU Isolation & Tuning (Advanced)
 
+> ⚠️ **Heads-up — the tuner scripts predate DirettaRendererUPnP's native
+> CPU affinity (v2.2.0) and IRQ affinity (v2.4.0) features.** For most
+> users, configuring `CPU_AUDIO` / `CPU_OTHER` / `IRQ_INTERFACE` /
+> `IRQ_CPUS` via the web UI, plus the **Manual Setup** walkthrough below,
+> is simpler and avoids overlap. In particular, the tuner's post-start
+> thread distribution applies `taskset` round-robin to the renderer's
+> threads after launch, which **overrides** the per-thread pinning DRUP
+> performs natively. If you set `CPU_AUDIO=8` and then run the tuner, the
+> tuner will move the audio worker off CPU 8 to a different core. The
+> tuner scripts are kept for users who want a one-shot system-level
+> configuration on machines that aren't using the in-DRUP CPU affinity
+> options, but the **Manual Setup (Alternative to Tuner Scripts)** below
+> is the recommended path going forward.
+
 For maximum audio quality, you can isolate CPU cores for the renderer using the included tuner scripts. This prevents system tasks from interrupting audio processing.
 
 **Features:**
