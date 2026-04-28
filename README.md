@@ -673,6 +673,73 @@ sudo ./diretta-renderer-tuner.sh revert
 
 For a dedicated audio server, **nosmt** mode provides more consistent latency because each core has no resource contention from SMT siblings.
 
+#### Manual Setup (Alternative to Tuner Scripts)
+
+If you prefer to apply isolation by hand — for instance on appliance distros
+where the tuner scripts don't fit (GentooPlayer, AudioLinux), or to keep
+control over the exact cmdline — the following is the minimum viable recipe.
+
+**1. Pick the CPU you want dedicated to the Diretta worker.** This will be
+the same value you'll pass to `--cpu-audio`. On a Ryzen 9 5900X with SMT
+disabled, picking `8` (a CCD 1 core, away from CPU 0) is a common choice.
+
+**2. Add this to the kernel cmdline:**
+
+```
+isolcpus=8 nohz_full=8 rcu_nocbs=8
+```
+
+- `isolcpus=8` — removes CPU 8 from the general scheduler load balancer.
+- `nohz_full=8` — disables the periodic scheduler tick on CPU 8 when only
+  one task is running (i.e. the Diretta worker), eliminating one more
+  source of jitter.
+- `rcu_nocbs=8` — moves RCU callback handling off CPU 8.
+
+**3. Apply via your bootloader and reboot.**
+
+For GRUB (most distros — Fedora, Ubuntu, Debian, Arch):
+
+```bash
+# Edit /etc/default/grub and append the three params to GRUB_CMDLINE_LINUX_DEFAULT
+sudo nano /etc/default/grub
+
+# Regenerate the bootloader config (pick the line for your distro):
+sudo grub2-mkconfig -o /boot/grub2/grub.cfg     # Fedora/RHEL/CentOS
+sudo update-grub                                # Ubuntu/Debian
+sudo grub-mkconfig -o /boot/grub/grub.cfg       # Arch
+
+sudo reboot
+```
+
+**4. Verify after reboot:**
+
+```bash
+cat /proc/cmdline                       # confirm the three params are present
+cat /sys/devices/system/cpu/isolated    # should show: 8
+```
+
+**5. Tell DirettaRendererUPnP to use that core.** In the web UI (or
+`/etc/default/diretta-renderer`):
+
+```bash
+CPU_AUDIO=8           # pin Diretta worker to the isolated CPU
+CPU_OTHER=10,11       # decode/UPnP/position threads on neighbouring cores
+IRQ_INTERFACE=enp4s0  # NIC name (whichever talks to the target)
+IRQ_CPUS=0-5          # push NIC interrupts AWAY from CPU 8
+```
+
+**Caveats:**
+- A typo in the cmdline can prevent boot — if that happens, edit the cmdline
+  at the GRUB menu (press `e`) to recover, then fix `/etc/default/grub`.
+- Don't isolate every core. The kernel still needs CPUs to run system tasks.
+  On a 12-core CPU, isolating 1–2 cores is the usual sweet spot.
+- `isolcpus=` only *removes* the core from the default scheduler. The core
+  becomes useful for audio only once you also pin DRUP to it via
+  `--cpu-audio` / `CPU_AUDIO`.
+
+For systemd-boot setups, additional bootloader recipes, and recovery
+guidance, see [docs/CONFIGURATION.md](docs/CONFIGURATION.md#3-cpu-isolation-with-isolcpus-kernel-boot-parameter).
+
 ---
 
 ## Command Line Options
