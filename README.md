@@ -17,10 +17,11 @@
 
 ## What's New in v2.4.0
 
-**Target network link tuning, IRQ affinity, isolcpus documentation.**
+**Target network link tuning, IRQ affinity, SMT toggle, isolcpus documentation.**
 
 - **Target network link tuning** (PR #67 by Daniel/Koala887) — New "Advanced Network Settings" section in the web UI to force the speed and duplex of the host NIC used to reach the Diretta target via `ethtool` (some audiophile users report perceived sound-quality differences when constraining the link, typically to 100 Mbit). Configurable via `TARGET_INTERFACE`, `TARGET_SPEED`, and `TARGET_DUPLEX`; leave the interface empty to keep the default behaviour. Bandwidth-vs-format reminder included so users don't accidentally pick a link speed too narrow for hi-res PCM or DSD.
 - **IRQ affinity for the target NIC** — New `IRQ_INTERFACE` / `IRQ_CPUS` config keys (also in the web UI) pin all hardware interrupts of the chosen NIC, including MSI-X queues, to a specific CPU list at service start. Used in conjunction with `--cpu-audio`, this keeps network IRQ activity off the audio worker core — a known source of jitter on busy LANs.
+- **SMT (Hyper-Threading) toggle at service start** — New `SMT` config key (`on` / `off` / `forceoff`, also in the web UI under "CPU Affinity") writes the chosen value to `/sys/devices/system/cpu/smt/control` before launching DRUP. Lets dedicated audio machines disable SMT cleanly without BIOS reflashing or kernel cmdline edits, and the wrapper re-applies the setting on every service start. System-wide setting; review your `CPU_AUDIO` / `CPU_OTHER` values when toggling because the logical-CPU numbering changes.
 - **isolcpus / nohz_full / rcu_nocbs documentation** — `docs/CONFIGURATION.md` now covers how to fully reserve a CPU core for the Diretta worker via the kernel cmdline, with bootloader-specific instructions (GRUB, systemd-boot) and recovery guidance.
 
 See [CHANGELOG.md](CHANGELOG.md) for details.
@@ -508,7 +509,17 @@ Use cores on the same CCD (AMD) or same P-core cluster (Intel) and avoid core 0 
 
 #### Disable SMT (Hyperthreading)
 
-Simultaneous Multithreading (SMT/HT) shares physical core resources between two logical threads, which can introduce micro-jitter on the audio path. Disabling SMT ensures each core is fully dedicated:
+Simultaneous Multithreading (SMT/HT) shares physical core resources between two logical threads, which can introduce micro-jitter on the audio path. Disabling SMT ensures each core is fully dedicated.
+
+**Via DirettaRendererUPnP (v2.4.0+, recommended)** — set in the web UI under **CPU Affinity → SMT**, or in `/etc/default/diretta-renderer`:
+
+```ini
+SMT=off          # or "on", "forceoff", or empty for "no change"
+```
+
+The wrapper re-applies this on every service start, so the setting survives service restarts. Note that toggling SMT changes the logical-CPU numbering — if you also use `CPU_AUDIO` / `CPU_OTHER`, make sure those values reference logical CPUs that exist in the chosen state (e.g. a 12-core CPU exposes CPUs 0-23 with SMT on, 0-11 with SMT off).
+
+**Manual one-shot equivalent**:
 
 ```bash
 # Disable SMT (temporary, until reboot)
@@ -518,7 +529,7 @@ echo off | sudo tee /sys/devices/system/cpu/smt/control
 cat /sys/devices/system/cpu/smt/active   # Should show "0"
 ```
 
-For a permanent setting, add `nosmt` to your kernel boot parameters (in `/etc/default/grub`, then run `grub2-mkconfig`).
+**Permanent across reboots** — add `nosmt` to your kernel cmdline (in `/etc/default/grub`, then run `grub2-mkconfig`). This bypasses the BIOS default at boot and is the most robust option for a dedicated audio machine.
 
 #### Minimal UPnP Mode (v2.1.8+)
 

@@ -1222,6 +1222,9 @@ TARGET_DUPLEX="${TARGET_DUPLEX:-full}"
 IRQ_INTERFACE="${IRQ_INTERFACE:-}"
 IRQ_CPUS="${IRQ_CPUS:-}"
 
+# SMT control: on / off / forceoff / empty (no change)
+SMT="${SMT:-}"
+
 RENDERER_BIN="/opt/diretta-renderer-upnp/DirettaRendererUPnP"
 
 # Advanced network interface settings
@@ -1252,6 +1255,35 @@ if [ -n "$IRQ_INTERFACE" ] && [ -n "$IRQ_CPUS" ]; then
         fi
     done < <(grep -F "$IRQ_INTERFACE" /proc/interrupts)
     echo "IRQ affinity for $IRQ_INTERFACE -> CPU(s) $IRQ_CPUS: $pinned pinned, $skipped skipped (managed/read-only)"
+fi
+
+# SMT (Hyper-Threading) toggle. System-wide setting — must be applied BEFORE
+# launching DRUP so any subsequent CPU_AUDIO/CPU_OTHER pinning sees the right
+# topology. Non-persistent across reboots; the kernel resets to the BIOS
+# default unless 'nosmt' is also added to the GRUB cmdline.
+if [ -n "$SMT" ]; then
+    SMT_CTRL="/sys/devices/system/cpu/smt/control"
+    case "$SMT" in
+        on|off|forceoff)
+            if [ -w "$SMT_CTRL" ]; then
+                current=$(cat "$SMT_CTRL" 2>/dev/null || echo "?")
+                if [ "$current" != "$SMT" ]; then
+                    if echo "$SMT" > "$SMT_CTRL" 2>/dev/null; then
+                        echo "SMT: $current -> $SMT"
+                    else
+                        echo "WARNING: SMT change to '$SMT' refused (BIOS lock or kernel-restricted)" >&2
+                    fi
+                else
+                    echo "SMT already $current — no change"
+                fi
+            else
+                echo "WARNING: SMT control not available at $SMT_CTRL" >&2
+            fi
+            ;;
+        *)
+            echo "WARNING: invalid SMT value '$SMT' — use on/off/forceoff or leave empty" >&2
+            ;;
+    esac
 fi
 
 # Build command as array (preserves arguments with spaces)

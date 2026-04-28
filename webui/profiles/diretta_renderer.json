@@ -142,6 +142,19 @@
                     "label": "Other Core(s)",
                     "description": "Pin decode/UPnP threads to CPU core(s). Single core or comma-separated list (e.g., '6,7,8'). Empty = no pinning.",
                     "default": ""
+                },
+                {
+                    "key": "SMT",
+                    "type": "select",
+                    "label": "SMT (Hyper-Threading)",
+                    "description": "Toggle SMT system-wide at service start. WARNING: affects the whole machine, not just DRUP. Topology changes when SMT toggles — your Audio/Other Core(s) values must reference logical CPUs that exist in the chosen state (e.g., a 12-core CPU exposes CPUs 0-23 with SMT on, 0-11 with SMT off). Toggle is non-persistent across kernel reboots; the wrapper re-applies it on every service start. BIOS-level disable takes precedence. Leave on '(no change)' if unsure.",
+                    "default": "",
+                    "options": [
+                        {"value": "",         "label": "(no change)"},
+                        {"value": "on",       "label": "Enable (SMT on)"},
+                        {"value": "off",      "label": "Disable (SMT off)"},
+                        {"value": "forceoff", "label": "Force disable until reboot (forceoff)"}
+                    ]
                 }
             ]
         },
