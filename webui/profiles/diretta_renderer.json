@@ -112,8 +112,8 @@
                 {
                     "key": "IRQ_INTERFACE",
                     "type": "text",
-                    "label": "IRQ Affinity Interface",
-                    "description": "NIC name (eth0, enp1s0) whose hardware interrupts will be pinned to specific CPUs. Matches all related IRQs including MSI-X queues. Leave empty to disable IRQ pinning.",
+                    "label": "IRQ Affinity Interface(s)",
+                    "description": "NIC name (eth0, enp1s0) whose hardware interrupts will be pinned to specific CPUs. Comma-separated list supported (e.g. 'enp1s0,enp2s0') for setups with separate NICs for the upstream source and the Diretta target. Matches all related IRQs including MSI-X queues. Leave empty to disable IRQ pinning.",
                     "default": ""
                 },
                 {

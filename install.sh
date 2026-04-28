@@ -1238,22 +1238,30 @@ if [ -n "$TARGET_INTERFACE" ]; then
     fi
 fi
 
-# IRQ affinity: pin all IRQs whose name contains $IRQ_INTERFACE to the CPU
-# list $IRQ_CPUS. Useful to keep network interrupts off the audio worker core.
-# Some IRQs (managed/MSI-X) are read-only — those are counted as "skipped".
+# IRQ affinity: pin all IRQs whose name contains any of the interfaces listed
+# in $IRQ_INTERFACE (comma-separated, e.g. "enp1s0,enp2s0") to the CPU list
+# $IRQ_CPUS. Useful to keep network interrupts off the audio worker core,
+# including setups with separate NICs for the upstream source and the Diretta
+# target. Some IRQs (managed/MSI-X) are read-only — those are counted as
+# "skipped".
 if [ -n "$IRQ_INTERFACE" ] && [ -n "$IRQ_CPUS" ]; then
     pinned=0
     skipped=0
-    while IFS= read -r line; do
-        irq=$(echo "$line" | awk -F: '{print $1}' | tr -d ' ')
-        if [ -n "$irq" ] && [ -e "/proc/irq/$irq/smp_affinity_list" ]; then
-            if echo "$IRQ_CPUS" > "/proc/irq/$irq/smp_affinity_list" 2>/dev/null; then
-                pinned=$((pinned + 1))
-            else
-                skipped=$((skipped + 1))
+    IFS=',' read -ra IRQ_IFACE_LIST <<< "$IRQ_INTERFACE"
+    for iface in "${IRQ_IFACE_LIST[@]}"; do
+        iface=$(echo "$iface" | tr -d ' ')
+        [ -z "$iface" ] && continue
+        while IFS= read -r line; do
+            irq=$(echo "$line" | awk -F: '{print $1}' | tr -d ' ')
+            if [ -n "$irq" ] && [ -e "/proc/irq/$irq/smp_affinity_list" ]; then
+                if echo "$IRQ_CPUS" > "/proc/irq/$irq/smp_affinity_list" 2>/dev/null; then
+                    pinned=$((pinned + 1))
+                else
+                    skipped=$((skipped + 1))
+                fi
             fi
-        fi
-    done < <(grep -F "$IRQ_INTERFACE" /proc/interrupts)
+        done < <(grep -F "$iface" /proc/interrupts)
+    done
     echo "IRQ affinity for $IRQ_INTERFACE -> CPU(s) $IRQ_CPUS: $pinned pinned, $skipped skipped (managed/read-only)"
 fi
 
