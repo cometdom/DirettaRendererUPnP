@@ -175,6 +175,8 @@ def render_setting_input(setting, current_value):
             attrs += f' min="{setting["min"]}"'
         if 'max' in setting:
             attrs += f' max="{setting["max"]}"'
+        if 'step' in setting:
+            attrs += f' step="{setting["step"]}"'
         return f'<input {attrs}>'
 
     # Default: text input
