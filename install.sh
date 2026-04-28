@@ -113,6 +113,7 @@ install_base_dependencies() {
                 wget \
                 nasm \
                 yasm \
+                ethtool \
                 pkg-config
             ;;
         ubuntu|debian)
@@ -125,6 +126,7 @@ install_base_dependencies() {
                 wget \
                 nasm \
                 yasm \
+                ethtool \
                 pkg-config
             ;;
         arch|archarm|manjaro)
@@ -136,6 +138,7 @@ install_base_dependencies() {
                 wget \
                 nasm \
                 yasm \
+                ethtool \
                 pkgconf
             ;;
         *)
@@ -1219,9 +1222,13 @@ RENDERER_BIN="/opt/diretta-renderer-upnp/DirettaRendererUPnP"
 
 # Advanced network interface settings
 if [ -n "$TARGET_INTERFACE" ]; then
-    echo "Set advanced target network settings: $TARGET_INTERFACE"
-    ethtool -s $TARGET_INTERFACE speed $TARGET_SPEED duplex $TARGET_DUPLEX
-    sleep 1
+    if command -v ethtool >/dev/null 2>&1; then
+        echo "Set advanced target network settings: $TARGET_INTERFACE -> ${TARGET_SPEED}Mbit/${TARGET_DUPLEX}-duplex"
+        ethtool -s "$TARGET_INTERFACE" speed "$TARGET_SPEED" duplex "$TARGET_DUPLEX"
+        sleep 1
+    else
+        echo "WARNING: TARGET_INTERFACE set but ethtool is not installed — skipping link tuning." >&2
+    fi
 fi
 
 # Build command as array (preserves arguments with spaces)

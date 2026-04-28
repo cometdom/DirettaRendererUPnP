@@ -83,14 +83,14 @@
                     "key": "TARGET_INTERFACE",
                     "type": "text",
                     "label": "Target Network Interface",
-                    "description": "Interface name (eth0) for target connection. Empty = no change.",
+                    "description": "Interface name (eth0, enp1s0) for the link to the Diretta target. Leave empty to disable link tuning. Requires the ethtool package on the host.",
                     "default": ""
                 },
                 {
                     "key": "TARGET_SPEED",
                     "type": "select",
                     "label": "Target Speed",
-                    "description": "Target network speed",
+                    "description": "Forced link speed. WARNING: 100 Mbit may underrun on DSD512+ (~45 Mbps raw) and 10 Mbit is only safe up to ~96 kHz PCM. Stay on 1000 Mbit if you stream hi-res PCM or DSD.",
                     "default": "100",
                     "options": [
                         {"value": "10", "label": "10Mbit"},
@@ -102,7 +102,7 @@
                     "key": "TARGET_DUPLEX",
                     "type": "select",
                     "label": "Target Duplex Mode",
-                    "description": "Target network duplex mode",
+                    "description": "Forced duplex mode. Use 'full' unless you have a specific reason to test 'half'.",
                     "default": "full",
                     "options": [
                         {"value": "half", "label": "half duplex"},
