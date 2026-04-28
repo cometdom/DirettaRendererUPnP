@@ -439,6 +439,7 @@ sudo apt install build-essential libavformat-dev libavcodec-dev libavutil-dev li
 - [x] Clang + LTO build support (PR #64 by sheviks) — `env LLVM=1 ./install.sh` or `make LLVM=1`
 - [x] EIO→EOF fix — treat EIO after successful reads as normal EOF (fixes 32-bit 768kHz playlist advancement)
 - [x] Audirvana internet radio fix — detect `/audirvana/*.pcm` URL pattern, open HTTP manually and wrap in a custom `AVIOContext` (no `mime_type` in its AVClass tree) so FFmpeg's `s16be` demuxer skips the strict RFC 2586 MIME check, then force 44100Hz + `ch_layout=stereo` (RFC 3551 fallback). FFmpeg minimal build also gets `pcm_s16be` demuxer added (was missing). Fixes "Invalid sample_rate found in mime_type 'audio/L16'" failure when Audirvana relays radio with non-conformant `audio/L16` headers.
+- [x] Target network link tuning (PR #67 by Daniel/Koala887, v2.4.0) — `TARGET_INTERFACE` / `TARGET_SPEED` / `TARGET_DUPLEX` in the web UI force the host NIC speed/duplex via `ethtool` for audiophile users who perceive a sound-quality difference when constraining the link. Hardened with shell quoting, graceful skip when `ethtool` is missing, base-deps install, and bandwidth-vs-format warnings (10/100 Mbit not safe for hi-res PCM or DSD512+).
 
 ### Potential Future Work
 - [ ] AVX-512 format conversions (currently only memcpy uses AVX-512)

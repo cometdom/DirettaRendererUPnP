@@ -1,4 +1,4 @@
-# Diretta UPnP Renderer v2.3.0
+# Diretta UPnP Renderer v2.4.0
 
 **The world's first native UPnP/DLNA renderer with Diretta protocol support - Low-Latency Edition**
 
@@ -8,20 +8,18 @@
 
 ---
 
-![Version](https://img.shields.io/badge/version-2.3.0-blue.svg)
+![Version](https://img.shields.io/badge/version-2.4.0-blue.svg)
 ![Low Latency](https://img.shields.io/badge/Latency-Low-green.svg)
 ![SDK](https://img.shields.io/badge/SDK-DIRETTA::Sync-orange.svg)
 ![Audirvana](https://img.shields.io/badge/Audirvana-Compatible-green.svg)
 
 ---
 
-## What's New in v2.3.0
+## What's New in v2.4.0
 
-**Multi-core affinity, configurable buffers, Audirvana internet radio fix.**
+**Target network link tuning.**
 
-- **Multi-core CPU affinity** — `--cpu-audio` and `--cpu-other` now accept either a single core (e.g. `3`) or a comma-separated list (e.g. `3,4` or `6,7,8`). The kernel scheduler may move threads within the specified set, allowing load spread on systems with multiple P-cores while still isolating audio from other processes.
-- **Configurable buffers** — All six buffer / prefill values are now exposed via CLI, config file, and web UI (under "Buffer Configuration (Advanced)"): `PCM_BUFFER_SECONDS`, `PCM_REMOTE_BUFFER_SECONDS`, `DSD_BUFFER_SECONDS`, `PCM_PREFILL_MS`, `PCM_REMOTE_PREFILL_MS`, `DSD_PREFILL_MS`. Allows tuning latency vs stability for each specific setup.
-- **Audirvana internet radio fix** — Internet radio streams that Audirvana relays as raw PCM (`audio/L16` MIME without `rate=`) now play correctly. The renderer detects Audirvana's specific PCM URL pattern and applies a 44100Hz/stereo fallback per RFC 3551. Strictly scoped — no impact on mp3/aac/ogg/flac radio or other Audirvana flows. (Reported by grajaw)
+- **Target network link tuning** (PR #67 by Daniel/Koala887) — New "Advanced Network Settings" section in the web UI to force the speed and duplex of the host NIC used to reach the Diretta target via `ethtool` (some audiophile users report perceived sound-quality differences when constraining the link, typically to 100 Mbit). Configurable via `TARGET_INTERFACE`, `TARGET_SPEED`, and `TARGET_DUPLEX`; leave the interface empty to keep the default behaviour. Bandwidth-vs-format reminder included so users don't accidentally pick a link speed too narrow for hi-res PCM or DSD.
 
 See [CHANGELOG.md](CHANGELOG.md) for details.
 
@@ -29,6 +27,7 @@ See [CHANGELOG.md](CHANGELOG.md) for details.
 
 | Version | Highlights |
 |---------|-----------|
+| **v2.3.0** | Multi-core CPU affinity, configurable buffers, Audirvana internet radio fix (grajaw) |
 | **v2.2.3** | Complete CPU isolation, build system optimization, Web UI Stop button |
 | **v2.2.2** | Clang + LTO build support (sheviks), 32-bit 768kHz playlist fix (abase) |
 | **v2.2.1** | Larger PCM buffer for CDN resilience, FFmpeg detection fix (sheviks) |
@@ -869,4 +868,4 @@ This software is provided "as is" without warranty. While designed for high-qual
 
 **Enjoy bit-perfect, low-latency audio streaming!**
 
-*Last updated: 2026-04-28 (v2.3.0)*
+*Last updated: 2026-04-28 (v2.4.0)*
