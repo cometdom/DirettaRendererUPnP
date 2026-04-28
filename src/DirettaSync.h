@@ -329,8 +329,18 @@ struct DirettaConfig {
     unsigned int dacStabilizationMs = DirettaBuffer::DAC_STABILIZATION_MS;
     unsigned int onlineWaitMs = DirettaBuffer::ONLINE_WAIT_MS;
     unsigned int formatSwitchDelayMs = DirettaBuffer::FORMAT_SWITCH_DELAY_MS;
-    int cpuAudio = -1;   // CPU core for SDK sending thread (-1 = no pinning)
-    int cpuOther = -1;   // CPU core for SDK other thread (-1 = no pinning)
+
+    // CPU affinity (empty = no pinning). Accepts comma-separated cores: "6" or "6,7,8"
+    std::string cpuAudio;
+    std::string cpuOther;
+
+    // Buffer configuration (0 = use defaults from DirettaBuffer namespace)
+    float pcmBufferSeconds = 0.0f;
+    float pcmRemoteBufferSeconds = 0.0f;
+    float dsdBufferSeconds = 0.0f;
+    unsigned int pcmPrefillMs = 0;
+    unsigned int pcmRemotePrefillMs = 0;
+    unsigned int dsdPrefillMs = 0;
 };
 
 //=============================================================================

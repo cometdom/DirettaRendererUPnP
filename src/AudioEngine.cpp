@@ -115,6 +115,7 @@ bool AudioDecoder::open(const std::string& url) {
 
     // Detect format from URL extension (helps FFmpeg when Content-Type is missing/wrong)
     const AVInputFormat* inputFormat = nullptr;
+    bool isAudirvanaPCM = false;
     // Detect streaming service URLs proxied through local UPnP servers
     // (e.g., Audirvana relays Qobuz/Tidal via http://192.168.x.x/...qobuz...)
     // Use strcasestr() to avoid allocating a full URL copy for case-insensitive search
@@ -155,6 +156,21 @@ bool AudioDecoder::open(const std::string& url) {
                     std::cerr << "[AudioDecoder] WARNING: DSF demuxer not found in FFmpeg!" << std::endl;
                     std::cerr << "[AudioDecoder] Please rebuild FFmpeg with: --enable-demuxer=dsf" << std::endl;
                 }
+            } else if (ext == ".pcm" && strcasestr(urlCStr, "/audirvana/") != nullptr) {
+                // Audirvana internet radio relay: streams raw s16be PCM via
+                // Content-Type "audio/L16" but omits the mandatory rate= param
+                // (RFC 2586 violation). FFmpeg's strict MIME parser then rejects
+                // the stream. Force the s16be demuxer and inject 44100Hz/stereo
+                // defaults below so playback can proceed.
+                inputFormat = av_find_input_format("s16be");
+                if (inputFormat) {
+                    isAudirvanaPCM = true;
+                    std::cout << "[AudioDecoder] Audirvana PCM stream detected - "
+                              << "forcing s16be 44100Hz stereo (RFC 2586 fallback)"
+                              << std::endl;
+                } else {
+                    std::cerr << "[AudioDecoder] WARNING: s16be demuxer not found in FFmpeg!" << std::endl;
+                }
             }
         }
     }
@@ -191,7 +207,84 @@ bool AudioDecoder::open(const std::string& url) {
         av_dict_set(&options, "ignore_eof", "1", 0);
     }
 
-    int ret = avformat_open_input(&m_formatContext, url.c_str(), inputFormat, &options);
+    int ret;
+    AVIOContext* audirvanaWrap = nullptr;
+    if (isAudirvanaPCM) {
+        // FFmpeg's s16be demuxer reads the HTTP Content-Type via av_opt_get on
+        // pb, sees "audio/L16" without rate=, and returns AVERROR_INVALIDDATA
+        // before our sample_rate/channels options are even consulted. Workaround:
+        // open HTTP ourselves, then wrap it in a custom AVIOContext that has no
+        // mime_type option in its AVClass tree — av_opt_get returns NULL, the
+        // strict RFC 2586 check is skipped, and the demuxer falls through to
+        // use the options we set below.
+        ret = avio_open2(&m_audirvanaHttp, url.c_str(), AVIO_FLAG_READ, nullptr, &options);
+        if (ret < 0) {
+            char errbuf[AV_ERROR_MAX_STRING_SIZE];
+            av_strerror(ret, errbuf, sizeof(errbuf));
+            std::cerr << "[AudioDecoder] Failed to open HTTP for Audirvana PCM: " << errbuf << std::endl;
+            av_dict_free(&options);
+            avformat_free_context(m_formatContext);
+            m_formatContext = nullptr;
+            return false;
+        }
+
+        constexpr int kAudirvanaIOBufSize = 32768;
+        unsigned char* ioBuf = static_cast<unsigned char*>(av_malloc(kAudirvanaIOBufSize));
+        if (!ioBuf) {
+            std::cerr << "[AudioDecoder] Failed to allocate Audirvana IO buffer" << std::endl;
+            avio_closep(&m_audirvanaHttp);
+            av_dict_free(&options);
+            avformat_free_context(m_formatContext);
+            m_formatContext = nullptr;
+            return false;
+        }
+
+        audirvanaWrap = avio_alloc_context(
+            ioBuf, kAudirvanaIOBufSize, 0, m_audirvanaHttp,
+            [](void* opaque, uint8_t* buf, int buf_size) -> int {
+                int n = avio_read(static_cast<AVIOContext*>(opaque), buf, buf_size);
+                return (n == 0) ? AVERROR_EOF : n;
+            },
+            nullptr, nullptr);
+        if (!audirvanaWrap) {
+            std::cerr << "[AudioDecoder] Failed to allocate Audirvana wrapper IO" << std::endl;
+            av_free(ioBuf);
+            avio_closep(&m_audirvanaHttp);
+            av_dict_free(&options);
+            avformat_free_context(m_formatContext);
+            m_formatContext = nullptr;
+            return false;
+        }
+
+        m_formatContext->pb = audirvanaWrap;
+        m_formatContext->flags |= AVFMT_FLAG_CUSTOM_IO;
+
+        // Build a fresh options dict with only the demuxer parameters
+        // (HTTP-layer options were consumed by avio_open2 above).
+        // FFmpeg 8.x deprecated `channels` in favour of `ch_layout`, and the
+        // default ch_layout for the PCM raw demuxer is "mono" — leaving the
+        // stream interleaved-stereo to play at half-speed if we don't override.
+        // Set both so we're correct on old and new FFmpeg builds.
+        av_dict_free(&options);
+        av_dict_set(&options, "sample_rate", "44100", 0);
+        av_dict_set(&options, "ch_layout", "stereo", 0);
+        av_dict_set(&options, "channels", "2", 0);
+
+        // URL=NULL because we've already attached the I/O via pb.
+        ret = avformat_open_input(&m_formatContext, nullptr, inputFormat, &options);
+
+        if (ret < 0) {
+            // avformat_open_input nulled m_formatContext but did NOT free our
+            // custom pb (AVFMT_FLAG_CUSTOM_IO). Free wrapper + inner HTTP here
+            // before falling through to the common error log below.
+            unsigned char* buf = audirvanaWrap->buffer;
+            avio_context_free(&audirvanaWrap);
+            av_free(buf);
+            avio_closep(&m_audirvanaHttp);
+        }
+    } else {
+        ret = avformat_open_input(&m_formatContext, url.c_str(), inputFormat, &options);
+    }
     if (ret < 0) {
         char errbuf[AV_ERROR_MAX_STRING_SIZE];
         av_strerror(ret, errbuf, sizeof(errbuf));
@@ -853,7 +946,21 @@ void AudioDecoder::close() {
         avio_closep(&m_dffIO);
     }
     if (m_formatContext) {
+        // For Audirvana PCM, we set AVFMT_FLAG_CUSTOM_IO with a custom AVIOContext
+        // wrapping m_audirvanaHttp. avformat_close_input does NOT free the custom
+        // pb (per FFmpeg semantics), so capture and free its buffer + struct
+        // ourselves before closing the format context.
+        AVIOContext* customPb = (m_formatContext->flags & AVFMT_FLAG_CUSTOM_IO)
+                                ? m_formatContext->pb : nullptr;
         avformat_close_input(&m_formatContext);
+        if (customPb) {
+            unsigned char* buf = customPb->buffer;
+            avio_context_free(&customPb);
+            av_free(buf);
+        }
+    }
+    if (m_audirvanaHttp) {  // Close inner HTTP context (Audirvana PCM workaround)
+        avio_closep(&m_audirvanaHttp);
     }
     m_audioStreamIndex = -1;
     m_eof = false;

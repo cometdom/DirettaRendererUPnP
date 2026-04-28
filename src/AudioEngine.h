@@ -143,6 +143,12 @@ private:
     int64_t m_dffDataRemaining = 0;  // Bytes of DSD audio data left to read
     bool openDFF(const std::string& url);  // Custom DSDIFF parser
 
+    // Audirvana raw PCM mode (workaround for audio/L16 missing rate= param)
+    // Inner HTTP context wrapped by a custom AVIOContext (m_formatContext->pb)
+    // so the s16be demuxer cannot reach the HTTP mime_type option and skips
+    // its strict RFC 2586 check, allowing our forced sample_rate/channels.
+    AVIOContext* m_audirvanaHttp = nullptr;
+
     // DSD packet remainder ring buffer (O(1) push/pop, replaces O(n) memmove)
     // Stores leftover bytes when DSD packets don't align with request size
     // Layout: [leftChannel bytes][rightChannel bytes] - each channel has same count

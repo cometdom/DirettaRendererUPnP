@@ -1,5 +1,16 @@
 # Changelog
 
+## [2.3.0] - 2026-04-28
+
+### Added
+- **Multi-core CPU affinity** (`--cpu-audio`, `--cpu-other`): Both options now accept either a single core (e.g. `3`) or a comma-separated list (e.g. `3,4` or `6,7,8`). When multiple cores are specified, the kernel scheduler can move the thread within that set. Config file variables `CPU_AUDIO` and `CPU_OTHER` accept the same syntax. Single-core values remain fully compatible with previous versions. (Requested by Vlad)
+- **Configurable buffers** (`--pcm-buffer-seconds`, `--pcm-remote-buffer-seconds`, `--dsd-buffer-seconds`, `--pcm-prefill-ms`, `--pcm-remote-prefill-ms`, `--dsd-prefill-ms`): All six buffer / prefill values are now exposable via CLI, config file (`PCM_BUFFER_SECONDS`, `PCM_REMOTE_BUFFER_SECONDS`, `DSD_BUFFER_SECONDS`, `PCM_PREFILL_MS`, `PCM_REMOTE_PREFILL_MS`, `DSD_PREFILL_MS`), and web UI under "Buffer Configuration (Advanced)". Leave empty to use defaults. Allows tuning latency vs stability for specific setups. (Requested by Vlad, previously planned on the roadmap)
+
+### Fixed
+- **Audirvana internet radio playback failure** (`Invalid sample_rate found in mime_type "audio/L16"`): Audirvana Studio relays internet radio streams as raw s16be PCM via Content-Type `audio/L16` but omits the mandatory `rate=` parameter (RFC 2586 violation). FFmpeg's `s16be` demuxer parses the HTTP Content-Type before applying user-supplied options, sees `audio/L16` without `rate=`, and returns `AVERROR_INVALIDDATA` — so simply forcing `sample_rate=44100` and `channels=2` had no effect. The fix detects Audirvana's specific URL pattern (`/audirvana/*.pcm`), opens the HTTP connection manually, and wraps it in a custom `AVIOContext` whose AVClass tree exposes no `mime_type` option. The demuxer's `av_opt_get(pb, "mime_type", AV_OPT_SEARCH_CHILDREN)` then returns NULL, the strict RFC 2586 check is skipped, and the demuxer falls through to the supplied 44100Hz/stereo defaults (RFC 3551 fallback). Channel layout is set via both `ch_layout=stereo` (FFmpeg ≥ 6.x) and the deprecated `channels=2` (older builds) since the PCM raw demuxer's default is "mono", which would otherwise cause stereo radio streams to play at half-speed. Also adds the `pcm_s16be` (and matching `pcm_s24be`/`pcm_s32be`) raw PCM demuxers to both FFmpeg build configurations in `install.sh`, since they were absent from the minimal build. Strictly scoped — has no effect on mp3/aac/ogg/flac internet radio (which already worked) or any other Audirvana flow (Qobuz/Tidal proxy, local files). **Users who built FFmpeg via `install.sh` need to recompile FFmpeg** to enable Audirvana raw PCM radio support. (Reported by grajaw)
+
+---
+
 ## [2.2.3] - 2026-04-18
 
 ### Added

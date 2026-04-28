@@ -1,4 +1,4 @@
-# Diretta UPnP Renderer v2.2.3
+# Diretta UPnP Renderer v2.3.0
 
 **The world's first native UPnP/DLNA renderer with Diretta protocol support - Low-Latency Edition**
 
@@ -8,20 +8,20 @@
 
 ---
 
-![Version](https://img.shields.io/badge/version-2.2.3-blue.svg)
+![Version](https://img.shields.io/badge/version-2.3.0-blue.svg)
 ![Low Latency](https://img.shields.io/badge/Latency-Low-green.svg)
 ![SDK](https://img.shields.io/badge/SDK-DIRETTA::Sync-orange.svg)
 ![Audirvana](https://img.shields.io/badge/Audirvana-Compatible-green.svg)
 
 ---
 
-## What's New in v2.2.3
+## What's New in v2.3.0
 
-**Complete CPU isolation, build system optimization, Web UI Stop button.**
+**Multi-core affinity, configurable buffers, Audirvana internet radio fix.**
 
-- **Web UI Stop button** — Added a Stop button next to Save & Restart and Restart Only. Useful for users running DirettaRendererUPnP on their own Linux distributions to stop the service directly from the web UI (e.g., to release the Diretta target for another player or before maintenance). Includes a confirmation dialog.
-- **Full thread isolation** — Main thread and log drain thread are now pinned to `--cpu-other` core, ensuring all non-audio threads stay off the audio core. libupnp internal threads also inherit the affinity automatically via thread inheritance. (Reported by progman, confirmed by sheviks)
-- **LDFLAGS propagation & -O3 unified** (PR #65 by sheviks) — LDFLAGS now propagate `-O` and `-march` flags to the linker when LTO is enabled, ensuring architecture-specific optimizations (AVX2/AVX-512/Zen4/NEON) are fully applied during whole-program analysis. Also forces `lld` as the linker with Clang and unifies all C++ files to `-O3`.
+- **Multi-core CPU affinity** — `--cpu-audio` and `--cpu-other` now accept either a single core (e.g. `3`) or a comma-separated list (e.g. `3,4` or `6,7,8`). The kernel scheduler may move threads within the specified set, allowing load spread on systems with multiple P-cores while still isolating audio from other processes.
+- **Configurable buffers** — All six buffer / prefill values are now exposed via CLI, config file, and web UI (under "Buffer Configuration (Advanced)"): `PCM_BUFFER_SECONDS`, `PCM_REMOTE_BUFFER_SECONDS`, `DSD_BUFFER_SECONDS`, `PCM_PREFILL_MS`, `PCM_REMOTE_PREFILL_MS`, `DSD_PREFILL_MS`. Allows tuning latency vs stability for each specific setup.
+- **Audirvana internet radio fix** — Internet radio streams that Audirvana relays as raw PCM (`audio/L16` MIME without `rate=`) now play correctly. The renderer detects Audirvana's specific PCM URL pattern and applies a 44100Hz/stereo fallback per RFC 3551. Strictly scoped — no impact on mp3/aac/ogg/flac radio or other Audirvana flows. (Reported by grajaw)
 
 See [CHANGELOG.md](CHANGELOG.md) for details.
 
@@ -29,6 +29,7 @@ See [CHANGELOG.md](CHANGELOG.md) for details.
 
 | Version | Highlights |
 |---------|-----------|
+| **v2.2.3** | Complete CPU isolation, build system optimization, Web UI Stop button |
 | **v2.2.2** | Clang + LTO build support (sheviks), 32-bit 768kHz playlist fix (abase) |
 | **v2.2.1** | Larger PCM buffer for CDN resilience, FFmpeg detection fix (sheviks) |
 | **v2.2.0** | CPU affinity, AIFF support, MinimServer DSD transcoding fix |
@@ -868,4 +869,4 @@ This software is provided "as is" without warranty. While designed for high-qual
 
 **Enjoy bit-perfect, low-latency audio streaming!**
 
-*Last updated: 2026-04-18 (v2.2.3)*
+*Last updated: 2026-04-28 (v2.3.0)*
