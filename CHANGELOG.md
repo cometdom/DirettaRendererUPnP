@@ -1,6 +1,6 @@
 # Changelog
 
-## [2.3.0] - unreleased
+## [2.3.0] - 2026-04-28
 
 ### Added
 - **Multi-core CPU affinity** (`--cpu-audio`, `--cpu-other`): Both options now accept either a single core (e.g. `3`) or a comma-separated list (e.g. `3,4` or `6,7,8`). When multiple cores are specified, the kernel scheduler can move the thread within that set. Config file variables `CPU_AUDIO` and `CPU_OTHER` accept the same syntax. Single-core values remain fully compatible with previous versions. (Requested by Vlad)
