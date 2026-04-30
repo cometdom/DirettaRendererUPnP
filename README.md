@@ -1,4 +1,4 @@
-# Diretta UPnP Renderer v2.3.0
+# Diretta UPnP Renderer v2.4.0
 
 **The world's first native UPnP/DLNA renderer with Diretta protocol support - Low-Latency Edition**
 
@@ -8,20 +8,21 @@
 
 ---
 
-![Version](https://img.shields.io/badge/version-2.3.0-blue.svg)
+![Version](https://img.shields.io/badge/version-2.4.0-blue.svg)
 ![Low Latency](https://img.shields.io/badge/Latency-Low-green.svg)
 ![SDK](https://img.shields.io/badge/SDK-DIRETTA::Sync-orange.svg)
 ![Audirvana](https://img.shields.io/badge/Audirvana-Compatible-green.svg)
 
 ---
 
-## What's New in v2.3.0
+## What's New in v2.4.0
 
-**Multi-core affinity, configurable buffers, Audirvana internet radio fix.**
+**Target network link tuning, IRQ affinity, SMT toggle, isolcpus documentation.**
 
-- **Multi-core CPU affinity** — `--cpu-audio` and `--cpu-other` now accept either a single core (e.g. `3`) or a comma-separated list (e.g. `3,4` or `6,7,8`). The kernel scheduler may move threads within the specified set, allowing load spread on systems with multiple P-cores while still isolating audio from other processes.
-- **Configurable buffers** — All six buffer / prefill values are now exposed via CLI, config file, and web UI (under "Buffer Configuration (Advanced)"): `PCM_BUFFER_SECONDS`, `PCM_REMOTE_BUFFER_SECONDS`, `DSD_BUFFER_SECONDS`, `PCM_PREFILL_MS`, `PCM_REMOTE_PREFILL_MS`, `DSD_PREFILL_MS`. Allows tuning latency vs stability for each specific setup.
-- **Audirvana internet radio fix** — Internet radio streams that Audirvana relays as raw PCM (`audio/L16` MIME without `rate=`) now play correctly. The renderer detects Audirvana's specific PCM URL pattern and applies a 44100Hz/stereo fallback per RFC 3551. Strictly scoped — no impact on mp3/aac/ogg/flac radio or other Audirvana flows. (Reported by grajaw)
+- **Target network link tuning** (PR #67 by Daniel/Koala887) — New "Advanced Network Settings" section in the web UI to force the speed and duplex of the host NIC used to reach the Diretta target via `ethtool` (some audiophile users report perceived sound-quality differences when constraining the link, typically to 100 Mbit). Configurable via `TARGET_INTERFACE`, `TARGET_SPEED`, and `TARGET_DUPLEX`; leave the interface empty to keep the default behaviour. Bandwidth-vs-format reminder included so users don't accidentally pick a link speed too narrow for hi-res PCM or DSD.
+- **IRQ affinity for the target NIC(s)** — New `IRQ_INTERFACE` / `IRQ_CPUS` config keys (also in the web UI) pin all hardware interrupts of one or more NICs (single name or comma-separated list, e.g. `enp1s0,enp2s0`), including MSI-X queues, to a specific CPU list at service start. Multi-interface support covers hosts with one NIC for the upstream source and another for the Diretta target. Used in conjunction with `--cpu-audio`, this keeps network IRQ activity off the audio worker core — a known source of jitter on busy LANs.
+- **SMT (Hyper-Threading) toggle at service start** — New `SMT` config key (`on` / `off` / `forceoff`, also in the web UI under "CPU Affinity") writes the chosen value to `/sys/devices/system/cpu/smt/control` before launching DRUP. Lets dedicated audio machines disable SMT cleanly without BIOS reflashing or kernel cmdline edits, and the wrapper re-applies the setting on every service start. System-wide setting; review your `CPU_AUDIO` / `CPU_OTHER` values when toggling because the logical-CPU numbering changes.
+- **isolcpus / nohz_full / rcu_nocbs documentation** — `docs/CONFIGURATION.md` now covers how to fully reserve a CPU core for the Diretta worker via the kernel cmdline, with bootloader-specific instructions (GRUB, systemd-boot) and recovery guidance.
 
 See [CHANGELOG.md](CHANGELOG.md) for details.
 
@@ -29,6 +30,7 @@ See [CHANGELOG.md](CHANGELOG.md) for details.
 
 | Version | Highlights |
 |---------|-----------|
+| **v2.3.0** | Multi-core CPU affinity, configurable buffers, Audirvana internet radio fix (grajaw) |
 | **v2.2.3** | Complete CPU isolation, build system optimization, Web UI Stop button |
 | **v2.2.2** | Clang + LTO build support (sheviks), 32-bit 768kHz playlist fix (abase) |
 | **v2.2.1** | Larger PCM buffer for CDN resilience, FFmpeg detection fix (sheviks) |
@@ -507,7 +509,17 @@ Use cores on the same CCD (AMD) or same P-core cluster (Intel) and avoid core 0 
 
 #### Disable SMT (Hyperthreading)
 
-Simultaneous Multithreading (SMT/HT) shares physical core resources between two logical threads, which can introduce micro-jitter on the audio path. Disabling SMT ensures each core is fully dedicated:
+Simultaneous Multithreading (SMT/HT) shares physical core resources between two logical threads, which can introduce micro-jitter on the audio path. Disabling SMT ensures each core is fully dedicated.
+
+**Via DirettaRendererUPnP (v2.4.0+, recommended)** — set in the web UI under **CPU Affinity → SMT**, or in `/etc/default/diretta-renderer`:
+
+```ini
+SMT=off          # or "on", "forceoff", or empty for "no change"
+```
+
+The wrapper re-applies this on every service start, so the setting survives service restarts. Note that toggling SMT changes the logical-CPU numbering — if you also use `CPU_AUDIO` / `CPU_OTHER`, make sure those values reference logical CPUs that exist in the chosen state (e.g. a 12-core CPU exposes CPUs 0-23 with SMT on, 0-11 with SMT off).
+
+**Manual one-shot equivalent**:
 
 ```bash
 # Disable SMT (temporary, until reboot)
@@ -517,7 +529,7 @@ echo off | sudo tee /sys/devices/system/cpu/smt/control
 cat /sys/devices/system/cpu/smt/active   # Should show "0"
 ```
 
-For a permanent setting, add `nosmt` to your kernel boot parameters (in `/etc/default/grub`, then run `grub2-mkconfig`).
+**Permanent across reboots** — add `nosmt` to your kernel cmdline (in `/etc/default/grub`, then run `grub2-mkconfig`). This bypasses the BIOS default at boot and is the most robust option for a dedicated audio machine.
 
 #### Minimal UPnP Mode (v2.1.8+)
 
@@ -609,6 +621,20 @@ sudo sysctl -w net.core.wmem_max=16777216
 
 ### CPU Isolation & Tuning (Advanced)
 
+> ⚠️ **Heads-up — the tuner scripts predate DirettaRendererUPnP's native
+> CPU affinity (v2.2.0) and IRQ affinity (v2.4.0) features.** For most
+> users, configuring `CPU_AUDIO` / `CPU_OTHER` / `IRQ_INTERFACE` /
+> `IRQ_CPUS` via the web UI, plus the **Manual Setup** walkthrough below,
+> is simpler and avoids overlap. In particular, the tuner's post-start
+> thread distribution applies `taskset` round-robin to the renderer's
+> threads after launch, which **overrides** the per-thread pinning DRUP
+> performs natively. If you set `CPU_AUDIO=8` and then run the tuner, the
+> tuner will move the audio worker off CPU 8 to a different core. The
+> tuner scripts are kept for users who want a one-shot system-level
+> configuration on machines that aren't using the in-DRUP CPU affinity
+> options, but the **Manual Setup (Alternative to Tuner Scripts)** below
+> is the recommended path going forward.
+
 For maximum audio quality, you can isolate CPU cores for the renderer using the included tuner scripts. This prevents system tasks from interrupting audio processing.
 
 **Features:**
@@ -671,6 +697,73 @@ sudo ./diretta-renderer-tuner.sh revert
 | **Without SMT** | Physical cores only | Best | Dedicated audio machine |
 
 For a dedicated audio server, **nosmt** mode provides more consistent latency because each core has no resource contention from SMT siblings.
+
+#### Manual Setup (Alternative to Tuner Scripts)
+
+If you prefer to apply isolation by hand — for instance on appliance distros
+where the tuner scripts don't fit (GentooPlayer, AudioLinux), or to keep
+control over the exact cmdline — the following is the minimum viable recipe.
+
+**1. Pick the CPU you want dedicated to the Diretta worker.** This will be
+the same value you'll pass to `--cpu-audio`. On a Ryzen 9 5900X with SMT
+disabled, picking `8` (a CCD 1 core, away from CPU 0) is a common choice.
+
+**2. Add this to the kernel cmdline:**
+
+```
+isolcpus=8 nohz_full=8 rcu_nocbs=8
+```
+
+- `isolcpus=8` — removes CPU 8 from the general scheduler load balancer.
+- `nohz_full=8` — disables the periodic scheduler tick on CPU 8 when only
+  one task is running (i.e. the Diretta worker), eliminating one more
+  source of jitter.
+- `rcu_nocbs=8` — moves RCU callback handling off CPU 8.
+
+**3. Apply via your bootloader and reboot.**
+
+For GRUB (most distros — Fedora, Ubuntu, Debian, Arch):
+
+```bash
+# Edit /etc/default/grub and append the three params to GRUB_CMDLINE_LINUX_DEFAULT
+sudo nano /etc/default/grub
+
+# Regenerate the bootloader config (pick the line for your distro):
+sudo grub2-mkconfig -o /boot/grub2/grub.cfg     # Fedora/RHEL/CentOS
+sudo update-grub                                # Ubuntu/Debian
+sudo grub-mkconfig -o /boot/grub/grub.cfg       # Arch
+
+sudo reboot
+```
+
+**4. Verify after reboot:**
+
+```bash
+cat /proc/cmdline                       # confirm the three params are present
+cat /sys/devices/system/cpu/isolated    # should show: 8
+```
+
+**5. Tell DirettaRendererUPnP to use that core.** In the web UI (or
+`/etc/default/diretta-renderer`):
+
+```bash
+CPU_AUDIO=8           # pin Diretta worker to the isolated CPU
+CPU_OTHER=10,11       # decode/UPnP/position threads on neighbouring cores
+IRQ_INTERFACE=enp4s0  # NIC name (whichever talks to the target)
+IRQ_CPUS=0-5          # push NIC interrupts AWAY from CPU 8
+```
+
+**Caveats:**
+- A typo in the cmdline can prevent boot — if that happens, edit the cmdline
+  at the GRUB menu (press `e`) to recover, then fix `/etc/default/grub`.
+- Don't isolate every core. The kernel still needs CPUs to run system tasks.
+  On a 12-core CPU, isolating 1–2 cores is the usual sweet spot.
+- `isolcpus=` only *removes* the core from the default scheduler. The core
+  becomes useful for audio only once you also pin DRUP to it via
+  `--cpu-audio` / `CPU_AUDIO`.
+
+For systemd-boot setups, additional bootloader recipes, and recovery
+guidance, see [docs/CONFIGURATION.md](docs/CONFIGURATION.md#3-cpu-isolation-with-isolcpus-kernel-boot-parameter).
 
 ---
 
@@ -869,4 +962,4 @@ This software is provided "as is" without warranty. While designed for high-qual
 
 **Enjoy bit-perfect, low-latency audio streaming!**
 
-*Last updated: 2026-04-28 (v2.3.0)*
+*Last updated: 2026-04-30 (v2.4.0)*

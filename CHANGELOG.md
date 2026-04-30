@@ -1,5 +1,14 @@
 # Changelog
 
+## [2.4.0] - 2026-04-30
+
+### Added
+- **Target network link tuning** (PR #67 by Daniel/Koala887): New web UI section under "Advanced Network Settings" that forces the speed and duplex of the host NIC used to reach the Diretta target via `ethtool`. Some audiophile users report perceived sound-quality differences when constraining the link to a specific speed (typically 100 Mbit). Configurable via `TARGET_INTERFACE`, `TARGET_SPEED` (10 / 100 / 1000), and `TARGET_DUPLEX` (half / full) in the config file or web UI; leave `TARGET_INTERFACE` empty to keep the default behaviour. Requires the `ethtool` package, now added to the base dependency list installed by `install.sh` (dnf/apt/pacman). The launcher logs a clear warning and skips link tuning if `ethtool` is missing instead of failing silently. Web UI and `.conf` comments include a bandwidth-vs-format reminder so users don't accidentally pick a link speed too narrow for hi-res PCM or DSD (10 Mbit safe up to ~96 kHz PCM only; 100 Mbit comfortable through DSD256 but underruns from DSD512 onward; 1000 Mbit required for DSD1024).
+- **IRQ affinity for the target NIC(s)**: New `IRQ_INTERFACE` / `IRQ_CPUS` config keys (also exposed in the web UI under "Advanced Network Settings") that pin all hardware interrupts of one or more NICs — including MSI-X queues — to a specific CPU list at service start. `IRQ_INTERFACE` accepts either a single name (e.g. `enp1s0`) or a comma-separated list (e.g. `enp1s0,enp2s0`) to cover hosts with separate NICs for the upstream source (LMS/Roon) and the Diretta target. Pairs naturally with `--cpu-audio` to keep network IRQ activity off the audio worker core, a known source of jitter on busy LANs. The launcher walks `/proc/interrupts`, applies the affinity to every IRQ matching any listed interface name, and logs a summary like `IRQ affinity for enp1s0,enp2s0 -> CPU(s) 0-5: 12 pinned, 2 skipped (managed/read-only)`. Kernel-managed IRQs that refuse runtime reassignment are reported as "skipped" without failure. Documented alongside an expanded section on `isolcpus=` kernel cmdline tuning in `docs/CONFIGURATION.md`.
+- **SMT (Hyper-Threading) toggle at service start**: New `SMT` config key (also in the web UI under "CPU Affinity") accepting `on` / `off` / `forceoff` / empty (no change). The wrapper writes the chosen value to `/sys/devices/system/cpu/smt/control` before launching DRUP, so any subsequent `CPU_AUDIO` / `CPU_OTHER` pinning sees the right topology. Setting is system-wide and non-persistent across kernel reboots — the wrapper re-applies it on every service start. BIOS-level locks are detected and reported as a warning rather than a failure. The accompanying `.conf` and web UI text spell out the gotchas: the rest of the host shares this setting, and CPU lists referencing logical CPUs that disappear under SMT off must be reviewed.
+
+---
+
 ## [2.3.0] - 2026-04-28
 
 ### Added
