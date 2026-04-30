@@ -1,6 +1,6 @@
 # Changelog
 
-## [2.4.0] - unreleased
+## [2.4.0] - 2026-04-30
 
 ### Added
 - **Target network link tuning** (PR #67 by Daniel/Koala887): New web UI section under "Advanced Network Settings" that forces the speed and duplex of the host NIC used to reach the Diretta target via `ethtool`. Some audiophile users report perceived sound-quality differences when constraining the link to a specific speed (typically 100 Mbit). Configurable via `TARGET_INTERFACE`, `TARGET_SPEED` (10 / 100 / 1000), and `TARGET_DUPLEX` (half / full) in the config file or web UI; leave `TARGET_INTERFACE` empty to keep the default behaviour. Requires the `ethtool` package, now added to the base dependency list installed by `install.sh` (dnf/apt/pacman). The launcher logs a clear warning and skips link tuning if `ethtool` is missing instead of failing silently. Web UI and `.conf` comments include a bandwidth-vs-format reminder so users don't accidentally pick a link speed too narrow for hi-res PCM or DSD (10 Mbit safe up to ~96 kHz PCM only; 100 Mbit comfortable through DSD256 but underruns from DSD512 onward; 1000 Mbit required for DSD1024).
