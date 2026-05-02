@@ -1,0 +1,240 @@
+{
+    "product_name": "Diretta UPnP Renderer (Minimal)",
+    "service_name": "diretta-renderer",
+    "config_path": "/etc/default/diretta-renderer",
+    "config_type": "shell_vars",
+    "groups": [
+        {
+            "name": "General",
+            "collapsed": false,
+            "settings": [
+                {
+                    "key": "NAME",
+                    "type": "text",
+                    "label": "Renderer Name",
+                    "description": "UPnP friendly name visible to control points. Supports spaces (e.g., 'Devialet Target').",
+                    "default": ""
+                },
+                {
+                    "key": "TARGET",
+                    "type": "number",
+                    "label": "Diretta Target",
+                    "description": "Target device index (1 = first detected)",
+                    "default": "1",
+                    "min": 1
+                },
+                {
+                    "key": "PORT",
+                    "type": "number",
+                    "label": "UPnP Port",
+                    "description": "UPnP control port (HTTP server uses port+1)",
+                    "default": "4005",
+                    "min": 1024,
+                    "max": 65535
+                },
+                {
+                    "key": "GAPLESS",
+                    "type": "select",
+                    "label": "Gapless Playback",
+                    "description": "Seamless playback between tracks",
+                    "default": "",
+                    "options": [
+                        {"value": "", "label": "Enabled"},
+                        {"value": "--no-gapless", "label": "Disabled"}
+                    ]
+                },
+                {
+                    "key": "VERBOSE",
+                    "type": "select",
+                    "label": "Log Level",
+                    "description": "Logging verbosity",
+                    "default": "",
+                    "options": [
+                        {"value": "", "label": "Normal"},
+                        {"value": "--verbose", "label": "Verbose (debug)"},
+                        {"value": "--quiet", "label": "Quiet (errors only)"}
+                    ]
+                },
+                {
+                    "key": "INTERFACE",
+                    "type": "text",
+                    "label": "Network Interface",
+                    "description": "Interface name (eth0) or IP address. Empty = auto-detect.",
+                    "default": ""
+                },
+                {
+                    "key": "MINIMAL_UPNP",
+                    "type": "select",
+                    "label": "Minimal UPnP Mode",
+                    "description": "Disables position polling and event notifications for improved audio quality (reduced CPU overhead). Recommended for JPlay iOS, LMS/slim2UPnP (fixes position drift), and Roon. Progress bar may become approximate.",
+                    "default": "",
+                    "options": [
+                        {"value": "", "label": "Standard (full UPnP)"},
+                        {"value": "1", "label": "Minimal (no position/events)"}
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "CPU Affinity",
+            "collapsed": true,
+            "settings": [
+                {
+                    "key": "CPU_AUDIO",
+                    "type": "text",
+                    "label": "Audio Core(s)",
+                    "description": "Pin Diretta worker thread to CPU core(s). Single core (e.g., '3') or comma-separated list (e.g., '3,4'). Empty = no pinning.",
+                    "default": ""
+                },
+                {
+                    "key": "CPU_OTHER",
+                    "type": "text",
+                    "label": "Other Core(s)",
+                    "description": "Pin decode/UPnP threads to CPU core(s). Single core or comma-separated list (e.g., '6,7,8'). Empty = no pinning.",
+                    "default": ""
+                }
+            ]
+        },
+        {
+            "name": "Buffer Configuration (Advanced)",
+            "collapsed": true,
+            "settings": [
+                {
+                    "key": "PCM_BUFFER_SECONDS",
+                    "type": "text",
+                    "label": "PCM buffer (seconds)",
+                    "description": "Local PCM buffer size in seconds. Leave empty to use default (0.5).",
+                    "default": ""
+                },
+                {
+                    "key": "PCM_REMOTE_BUFFER_SECONDS",
+                    "type": "text",
+                    "label": "PCM remote buffer (seconds)",
+                    "description": "Remote (Qobuz/Tidal) PCM buffer size in seconds. Leave empty to use default (1.0).",
+                    "default": ""
+                },
+                {
+                    "key": "DSD_BUFFER_SECONDS",
+                    "type": "text",
+                    "label": "DSD buffer (seconds)",
+                    "description": "DSD buffer size in seconds. Leave empty to use default (0.8).",
+                    "default": ""
+                },
+                {
+                    "key": "PCM_PREFILL_MS",
+                    "type": "number",
+                    "label": "PCM prefill (ms)",
+                    "description": "PCM prefill before starting playback. Leave empty to use default (80 ms).",
+                    "default": "",
+                    "min": 1,
+                    "max": 5000
+                },
+                {
+                    "key": "PCM_REMOTE_PREFILL_MS",
+                    "type": "number",
+                    "label": "PCM remote prefill (ms)",
+                    "description": "Remote PCM prefill. Leave empty to use default (150 ms).",
+                    "default": "",
+                    "min": 1,
+                    "max": 5000
+                },
+                {
+                    "key": "DSD_PREFILL_MS",
+                    "type": "number",
+                    "label": "DSD prefill (ms)",
+                    "description": "DSD prefill before starting playback. Leave empty to use default (200 ms).",
+                    "default": "",
+                    "min": 1,
+                    "max": 5000
+                }
+            ]
+        },
+        {
+            "name": "Process Priority",
+            "collapsed": true,
+            "settings": [
+                {
+                    "key": "RT_PRIORITY",
+                    "type": "number",
+                    "label": "RT Priority (SCHED_FIFO)",
+                    "description": "Real-time priority for the audio worker thread (1-99). Higher = more priority. Default: 50. Translated to --rt-priority CLI; only affects DRUP's audio worker thread, not the rest of the system.",
+                    "default": "50",
+                    "min": 1,
+                    "max": 99
+                }
+            ]
+        },
+        {
+            "name": "Diretta SDK (Advanced)",
+            "collapsed": true,
+            "settings": [
+                {
+                    "key": "THREAD_MODE",
+                    "type": "number",
+                    "label": "Thread Mode",
+                    "description": "SDK thread scheduling bitmask: 1=Critical, 2=NoShortSleep, 4=NoSleep4Core, 8=SocketNoBlock, 16=Occupied, 2048=NoSleepForce, 8192=NoJumboFrame",
+                    "default": "",
+                    "min": 0,
+                    "max": 65535
+                },
+                {
+                    "key": "TRANSFER_MODE",
+                    "type": "select",
+                    "label": "Transfer Mode",
+                    "description": "Packet sizing and scheduling strategy",
+                    "default": "",
+                    "options": [
+                        {"value": "", "label": "Auto (default)"},
+                        {"value": "varmax", "label": "VarMax (packets filled to maximum)"},
+                        {"value": "varauto", "label": "VarAuto (adaptive packet timing)"},
+                        {"value": "fixauto", "label": "FixAuto (fixed packet timing)"},
+                        {"value": "random", "label": "Random (use with Cycle Min Time)"}
+                    ]
+                },
+                {
+                    "key": "CYCLE_TIME",
+                    "type": "number",
+                    "label": "Cycle Time (us)",
+                    "description": "Max packet transmission cycle time in microseconds. Empty = auto-calculated.",
+                    "default": "",
+                    "min": 333,
+                    "max": 10000
+                },
+                {
+                    "key": "CYCLE_MIN_TIME",
+                    "type": "number",
+                    "label": "Cycle Min Time (us)",
+                    "description": "Min cycle time in microseconds (random mode only)",
+                    "default": "",
+                    "min": 333,
+                    "max": 10000
+                },
+                {
+                    "key": "INFO_CYCLE",
+                    "type": "number",
+                    "label": "Info Cycle (us)",
+                    "description": "Info packet cycle time in microseconds (default: 100000 = 100ms)",
+                    "default": "",
+                    "min": 1000
+                },
+                {
+                    "key": "TARGET_PROFILE_LIMIT",
+                    "type": "number",
+                    "label": "Target Profile Limit (us)",
+                    "description": "0 = SelfProfile (host-side only), >0 = TargetProfile with auto-adaptation (default: 200)",
+                    "default": "",
+                    "min": 0
+                },
+                {
+                    "key": "MTU",
+                    "type": "number",
+                    "label": "MTU (bytes)",
+                    "description": "Force specific MTU. Empty = auto-detect. Common values: 1500, 4096, 9000",
+                    "default": "",
+                    "min": 1500,
+                    "max": 16128
+                }
+            ]
+        }
+    ]
+}
