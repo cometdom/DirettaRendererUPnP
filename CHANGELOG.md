@@ -4,6 +4,7 @@
 
 ### Added
 - **Minimal web UI profile** (`webui/profiles/diretta_renderer_minimal.json`): An alternative profile alongside the existing `diretta_renderer.json`, intended for downstream distributions that manage system-level tuning through their own framework (GentooPlayer, AudioLinux, etc.). The minimal profile drops everything that's wrapper-level system tuning — SMT toggle, NIC link tuning (`TARGET_INTERFACE` / `TARGET_SPEED` / `TARGET_DUPLEX`), IRQ affinity (`IRQ_INTERFACE` / `IRQ_CPUS`), and process priority shell vars except `RT_PRIORITY` (which is application-level via `--rt-priority` and remains exposed). It keeps everything that's strictly DirettaRendererUPnP application configuration: target, name, port, interface, gapless, minimal-UPnP, CPU affinity, buffer sizes, RT priority, and Diretta SDK options. Distributions can simply point their packaging at the `_minimal.json` profile instead of the default one. The full profile remains the default for self-install on a generic Linux distribution.
+- **2.5 GbE option in `TARGET_SPEED`**: The "Advanced Network Settings" web UI dropdown now includes a `2500 Mbit (2.5 GbE)` choice alongside the existing 10 / 100 / 1000 options, for hosts equipped with 2.5 GbE NICs (Realtek RTL8125, Intel I225/I226, etc.). `ethtool` will refuse the value if the underlying NIC doesn't support it, and the launcher already logs a warning in that case — no functional change to the wrapper itself. The `.conf` comment is updated accordingly.
 
 ---
 

@@ -90,12 +90,13 @@
                     "key": "TARGET_SPEED",
                     "type": "select",
                     "label": "Target Speed",
-                    "description": "Forced link speed. WARNING: 100 Mbit may underrun on DSD512+ (~45 Mbps raw) and 10 Mbit is only safe up to ~96 kHz PCM. Stay on 1000 Mbit if you stream hi-res PCM or DSD.",
+                    "description": "Forced link speed. WARNING: 100 Mbit may underrun on DSD512+ (~45 Mbps raw) and 10 Mbit is only safe up to ~96 kHz PCM. Stay on 1000 Mbit (or 2500 Mbit if your NIC supports it) for hi-res PCM or DSD. The launcher logs a warning if the chosen speed is rejected by ethtool (e.g. selecting 2500 on a 1 Gbit-only NIC).",
                     "default": "100",
                     "options": [
                         {"value": "10", "label": "10Mbit"},
                         {"value": "100", "label": "100Mbit"},
-                        {"value": "1000", "label": "1000Mbit"}
+                        {"value": "1000", "label": "1000Mbit"},
+                        {"value": "2500", "label": "2500Mbit (2.5 GbE)"}
                     ]
                 },
                 {
