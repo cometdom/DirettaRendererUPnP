@@ -604,6 +604,55 @@ cat /sys/devices/system/cpu/smt/active   # Should show "0"
 
 **Permanent across reboots** — add `nosmt` to your kernel cmdline (in `/etc/default/grub`, then run `grub2-mkconfig`). This bypasses the BIOS default at boot and is the most robust option for a dedicated audio machine.
 
+#### Reduce disk activity during playback (hybrid tmpfs)
+
+Even on a tuned system, residual disk I/O happens at idle: `journald` flushing logs, `/var/tmp` writes, atime updates, etc. Each disk write triggers SSD/NVMe controller activity, which some users perceive as a residual bruit on sensitive setups. Moving log/temp paths to RAM (tmpfs) eliminates this.
+
+> **Skip this if you run on GentooPlayer, AudioLinux, or any other audiophile-tuned distribution** — those already manage filesystem layout for low I/O. This guidance is for self-installs on Fedora, Ubuntu, Debian, Arch, etc.
+
+**Step 1 — make journald volatile (essential, no fstab edit needed):**
+
+```bash
+sudo mkdir -p /etc/systemd/journald.conf.d
+sudo tee /etc/systemd/journald.conf.d/audiophile.conf > /dev/null <<'EOF'
+[Journal]
+Storage=volatile
+RuntimeMaxUse=64M
+ForwardToSyslog=no
+EOF
+sudo rm -rf /var/log/journal/*   # clear stale on-disk journals
+sudo systemctl restart systemd-journald
+```
+
+After this, all logs live in `/run/log/journal/` (already a tmpfs) and are cleared on reboot. Verify with `ls -la /run/log/journal/<machine-id>/` — `.journal` files should be there, while `/var/log/journal/` is empty.
+
+**Step 2 — optional `/var/log` and `/var/tmp` in tmpfs**, for the few apps that don't use journald:
+
+Add to `/etc/fstab` (back it up first with `sudo cp /etc/fstab /etc/fstab.bak`):
+
+```
+tmpfs   /var/log    tmpfs   defaults,noatime,size=512M,mode=0755    0 0
+tmpfs   /var/tmp    tmpfs   defaults,noatime,size=1G,mode=1777      0 0
+```
+
+Reboot to apply. Note: `/tmp` is already a tmpfs by default on modern Fedora and many other distros.
+
+**Verification — measure disk activity during playback:**
+
+```bash
+iostat -x 2 5
+```
+
+After the first iteration (which shows historical averages since boot), the next iterations should show `r/s` and `w/s` very close to 0 on your audio machine while music is playing.
+
+**Revert:**
+
+```bash
+sudo rm /etc/systemd/journald.conf.d/audiophile.conf
+sudo cp /etc/fstab.bak /etc/fstab    # if you edited fstab
+sudo reboot
+```
+
 #### Minimal UPnP Mode (v2.1.8+)
 
 Reduces CPU wakeups during playback by disabling position polling and event notifications:
