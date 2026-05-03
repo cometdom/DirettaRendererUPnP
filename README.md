@@ -323,6 +323,8 @@ Then follow the [Quick Start](#quick-start) instructions for a fresh installatio
 
 ## Quick Start
 
+> **Note for downstream distributors (GentooPlayer, AudioLinux, etc.)**: starting with v2.4.1, each GitHub Release ships **two source tarballs** — the standard one and a `*-minimal.tar.gz` variant. The minimal tarball uses a stripped-down web UI profile that exposes only application-level configuration (target, name, port, interface, gapless, CPU affinity, buffer sizes, RT priority, Diretta SDK options). Wrapper-level system tuning (SMT toggle, NIC link tuning via `ethtool`, IRQ affinity, nice/ionice) is removed — distributions that already manage those concerns through their own framework can pick the minimal tarball and avoid configuration overlap with no packaging-side modification. The standard tarball remains the default for self-install on a generic Linux distribution.
+
 ### 1. Install Dependencies
 
 **Fedora:**
@@ -481,6 +483,76 @@ DSD conversion mode is selected once per track for optimal performance:
 | DSD Buffer | ~1000ms | ~800ms | Better stability |
 | PCM Prefill | 50ms | 30ms | Faster start |
 | Flow Control | 10ms sleep | 500µs wait | 96% less jitter |
+
+### Buffer Pipeline
+
+An audio sample travels through several stages between the upstream HTTP source and the Diretta target. Knowing where each buffer sits helps decide what to tune when something misbehaves.
+
+```
+                  Network (Audirvana, Roon, slim2UPnP, Qobuz/Tidal CDN…)
+                                       │
+                                       │  TCP (HTTP)
+                                       ▼
+   ┌───────────────────────────────────────────────────────────────────┐
+   │ HOST (DirettaRendererUPnP)                                        │
+   │                                                                   │
+   │  ┌──────────────────────────────────────────────────────────┐     │
+   │  │ ① Kernel socket receive buffer                           │     │
+   │  │    net.core.rmem_max = 16 MB (sysctl, global ceiling)    │     │
+   │  └─────────────────────────┬────────────────────────────────┘     │
+   │                            ▼                                      │
+   │  ┌──────────────────────────────────────────────────────────┐     │
+   │  │ ② FFmpeg AVIO buffer (per open stream)                   │     │
+   │  │    256 KB (LAN) / 512 KB (Internet)                      │     │
+   │  └─────────────────────────┬────────────────────────────────┘     │
+   │                            ▼  demux + decode                     │
+   │  ┌──────────────────────────────────────────────────────────┐     │
+   │  │ ③ Internal PCM FIFO                                      │     │
+   │  │    AVAudioFifo ~7K samples (resampler overflow / bypass) │     │
+   │  └─────────────────────────┬────────────────────────────────┘     │
+   │                            ▼  SIMD format conversion             │
+   │  ┌──────────────────────────────────────────────────────────┐     │
+   │  │ ④ DirettaRingBuffer (lock-free SPSC, the main buffer)    │     │
+   │  │    PCM local  : 0.5 s   (PCM_BUFFER_SECONDS)             │     │
+   │  │    PCM remote : 1.0 s   (PCM_REMOTE_BUFFER_SECONDS)      │     │
+   │  │    DSD        : 0.8 s   (DSD_BUFFER_SECONDS)             │     │
+   │  │    Prefill    : 80-200 ms before playback starts         │     │
+   │  └─────────────────────────┬────────────────────────────────┘     │
+   │                            ▼  getNewStream() SDK callback        │
+   │  ┌──────────────────────────────────────────────────────────┐     │
+   │  │ ⑤ Diretta SDK send queue (proprietary)                   │     │
+   │  │    MTU-sized packets, managed by DIRETTA::Sync           │     │
+   │  └─────────────────────────┬────────────────────────────────┘     │
+   │                            ▼                                      │
+   │  ┌──────────────────────────────────────────────────────────┐     │
+   │  │ ⑥ Kernel socket send buffer                              │     │
+   │  │    net.core.wmem_max = 16 MB (sysctl, global ceiling)    │     │
+   │  └─────────────────────────┬────────────────────────────────┘     │
+   └────────────────────────────┼──────────────────────────────────────┘
+                                │  Diretta protocol (UDP, MTU 1500-9000)
+                                ▼
+                       Diretta TARGET → DAC
+```
+
+**Role of each stage:**
+
+- **① Kernel RX socket** — absorbs network jitter on input. The `net.core.rmem_max=16 MB` sysctl is just a *ceiling*; each socket chooses how much it actually requests. Most useful for Internet streaming (Qobuz / Tidal CDN jitter).
+- **② FFmpeg AVIO** — feeds the demuxer. Larger for Internet (CDN jitter), smaller for LAN.
+- **③ PCM FIFO** — local buffer between decoder/resampler output and final format. Small, just to handle block-size mismatches.
+- **④ DirettaRingBuffer** — **the main buffer**, this is what determines audible latency and underrun resilience. The only one an audiophile actually tunes.
+- **⑤ Diretta SDK send queue** — internal to `DIRETTA::Sync`, MTU-sized packets ready to send. Not configurable from DRUP.
+- **⑥ Kernel TX socket** — symmetric to ①, ceiling for outbound UDP.
+
+**What to tune when:**
+
+| Symptom | Action |
+|---------|--------|
+| Drops on Internet radio / Qobuz / Tidal | Raise `PCM_REMOTE_BUFFER_SECONDS` (default 1.0 s → 2-3 s) and `PCM_REMOTE_PREFILL_MS` |
+| Too long a delay before sound starts | Reduce `PCM_PREFILL_MS` (default 80 ms) |
+| Underruns at DSD512+ | Raise `DSD_BUFFER_SECONDS` (default 0.8 s) |
+| 16 MB sysctl (`rmem_max` / `wmem_max`) | Generic, set once via `install.sh` and forget |
+
+The buffer at stage ④ (`DirettaRingBuffer`) is what really matters for the audiophile experience. Everything else either self-regulates or gets set once and left alone.
 
 ### SIMD Throughput
 
