@@ -1,4 +1,4 @@
-# Diretta UPnP Renderer v2.4.0
+# Diretta UPnP Renderer v2.4.1
 
 **The world's first native UPnP/DLNA renderer with Diretta protocol support - Low-Latency Edition**
 
@@ -8,21 +8,21 @@
 
 ---
 
-![Version](https://img.shields.io/badge/version-2.4.0-blue.svg)
+![Version](https://img.shields.io/badge/version-2.4.1-blue.svg)
 ![Low Latency](https://img.shields.io/badge/Latency-Low-green.svg)
 ![SDK](https://img.shields.io/badge/SDK-DIRETTA::Sync-orange.svg)
 ![Audirvana](https://img.shields.io/badge/Audirvana-Compatible-green.svg)
 
 ---
 
-## What's New in v2.4.0
+## What's New in v2.4.1
 
-**Target network link tuning, IRQ affinity, SMT toggle, isolcpus documentation.**
+**Minimal-flavor distribution, 2.5 GbE, web UI fixes, README enrichment.**
 
-- **Target network link tuning** (PR #67 by Daniel/Koala887) — New "Advanced Network Settings" section in the web UI to force the speed and duplex of the host NIC used to reach the Diretta target via `ethtool` (some audiophile users report perceived sound-quality differences when constraining the link, typically to 100 Mbit). Configurable via `TARGET_INTERFACE`, `TARGET_SPEED`, and `TARGET_DUPLEX`; leave the interface empty to keep the default behaviour. Bandwidth-vs-format reminder included so users don't accidentally pick a link speed too narrow for hi-res PCM or DSD.
-- **IRQ affinity for the target NIC(s)** — New `IRQ_INTERFACE` / `IRQ_CPUS` config keys (also in the web UI) pin all hardware interrupts of one or more NICs (single name or comma-separated list, e.g. `enp1s0,enp2s0`), including MSI-X queues, to a specific CPU list at service start. Multi-interface support covers hosts with one NIC for the upstream source and another for the Diretta target. Used in conjunction with `--cpu-audio`, this keeps network IRQ activity off the audio worker core — a known source of jitter on busy LANs.
-- **SMT (Hyper-Threading) toggle at service start** — New `SMT` config key (`on` / `off` / `forceoff`, also in the web UI under "CPU Affinity") writes the chosen value to `/sys/devices/system/cpu/smt/control` before launching DRUP. Lets dedicated audio machines disable SMT cleanly without BIOS reflashing or kernel cmdline edits, and the wrapper re-applies the setting on every service start. System-wide setting; review your `CPU_AUDIO` / `CPU_OTHER` values when toggling because the logical-CPU numbering changes.
-- **isolcpus / nohz_full / rcu_nocbs documentation** — `docs/CONFIGURATION.md` now covers how to fully reserve a CPU core for the Diretta worker via the kernel cmdline, with bootloader-specific instructions (GRUB, systemd-boot) and recovery guidance.
+- **Minimal source tarball** for downstream distributors — each GitHub Release now ships a `*-minimal.tar.gz` asset alongside the standard tarball. The minimal flavor uses a stripped-down web UI profile that exposes only application-level configuration (no SMT toggle, no NIC link tuning, no IRQ affinity, no nice/ionice). Targeted at GentooPlayer, AudioLinux and similar distributions that already manage system-level tuning through their own framework. The standard tarball remains the default for self-install on a generic Linux distribution.
+- **2.5 GbE option** in the `TARGET_SPEED` dropdown for hosts with 2.5 GbE NICs (Realtek RTL8125, Intel I225/I226, etc.).
+- **Web UI fix** — number inputs now honor the `step` attribute, so decimal values (e.g. 0.5 s for buffer settings) can be entered directly.
+- **README enrichment** — new "Buffer Pipeline" section under Performance with a diagram and per-stage tuning guide.
 
 See [CHANGELOG.md](CHANGELOG.md) for details.
 
@@ -30,6 +30,7 @@ See [CHANGELOG.md](CHANGELOG.md) for details.
 
 | Version | Highlights |
 |---------|-----------|
+| **v2.4.0** | Target network link tuning (Daniel/Koala887), IRQ affinity, SMT toggle, isolcpus documentation |
 | **v2.3.0** | Multi-core CPU affinity, configurable buffers, Audirvana internet radio fix (grajaw) |
 | **v2.2.3** | Complete CPU isolation, build system optimization, Web UI Stop button |
 | **v2.2.2** | Clang + LTO build support (sheviks), 32-bit 768kHz playlist fix (abase) |
@@ -1034,4 +1035,4 @@ This software is provided "as is" without warranty. While designed for high-qual
 
 **Enjoy bit-perfect, low-latency audio streaming!**
 
-*Last updated: 2026-04-30 (v2.4.0)*
+*Last updated: 2026-05-03 (v2.4.1)*

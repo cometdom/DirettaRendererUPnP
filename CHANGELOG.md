@@ -1,6 +1,6 @@
 # Changelog
 
-## [2.4.1] - unreleased
+## [2.4.1] - 2026-05-03
 
 ### Added
 - **Minimal web UI profile** (`webui/profiles/diretta_renderer_minimal.json`): An alternative profile alongside the existing `diretta_renderer.json`, intended for downstream distributions that manage system-level tuning through their own framework (GentooPlayer, AudioLinux, etc.). The minimal profile drops everything that's wrapper-level system tuning — SMT toggle, NIC link tuning (`TARGET_INTERFACE` / `TARGET_SPEED` / `TARGET_DUPLEX`), IRQ affinity (`IRQ_INTERFACE` / `IRQ_CPUS`), and process priority shell vars except `RT_PRIORITY` (which is application-level via `--rt-priority` and remains exposed). It keeps everything that's strictly DirettaRendererUPnP application configuration: target, name, port, interface, gapless, minimal-UPnP, CPU affinity, buffer sizes, RT priority, and Diretta SDK options. Distributions can simply point their packaging at the `_minimal.json` profile instead of the default one. The full profile remains the default for self-install on a generic Linux distribution.
