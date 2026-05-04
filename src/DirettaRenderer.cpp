@@ -49,6 +49,26 @@ static std::vector<int> parseCoreList(const std::string& spec) {
     return cores;
 }
 
+// Sets SCHED_FIFO real-time priority (requires root on Linux)
+static bool setRealtimePriority(int priority = 51) {
+    struct sched_param param;
+    param.sched_priority = priority;
+
+    int ret = pthread_setschedparam(pthread_self(), SCHED_FIFO, &param);
+    if (ret != 0) {
+        // Not fatal - may not have CAP_SYS_NICE or running as non-root
+        if (g_verbose) {
+            std::cerr << "[Audio Thread] Warning: Could not set SCHED_FIFO priority "
+                      << priority << " (error " << ret << ")" << std::endl;
+        }    
+        return false;
+    }
+    if (g_verbose) {
+        std::cout << "[Audio Thread] Audio thread set to SCHED_FIFO priority " << priority << std::endl;
+    }
+    return true;
+}
+
 // Helper: pin current thread to one or more CPU cores.
 // When multiple cores are given, the kernel scheduler may move the thread
 // within that set. Returns true if pinning succeeded.
@@ -252,8 +272,10 @@ bool DirettaRenderer::start(std::atomic<bool>* stopSignal) {
                       << " us (" << (syncConfig.targetProfileLimitTime > 0 ? "TargetProfile" : "SelfProfile") << ")" << std::endl;
         if (!m_config.cpuAudio.empty())
             std::cout << "[DirettaRenderer] CPU audio (Diretta worker): core(s) " << m_config.cpuAudio << std::endl;
+        if (!m_config.cpuDecode.empty())
+            std::cout << "[DirettaRenderer] CPU decode (Audio decode): core(s) " << m_config.cpuDecode << std::endl;
         if (!m_config.cpuOther.empty())
-            std::cout << "[DirettaRenderer] CPU other (decode/UPnP): core(s) " << m_config.cpuOther << std::endl;
+            std::cout << "[DirettaRenderer] CPU other (UPnP/Position): core(s) " << m_config.cpuOther << std::endl;
         if (m_config.pcmBufferSeconds > 0)
             std::cout << "[DirettaRenderer] PCM buffer: " << m_config.pcmBufferSeconds << "s" << std::endl;
         if (m_config.pcmRemoteBufferSeconds > 0)
@@ -840,8 +862,14 @@ void DirettaRenderer::upnpThreadFunc() {
 }
 
 void DirettaRenderer::audioThreadFunc() {
-    auto cores = parseCoreList(m_config.cpuOther);
-    if (!cores.empty()) pinThreadToCores(cores, "Audio Thread");
+    auto cores = parseCoreList(m_config.cpuDecode);
+    if (!cores.empty()) {
+	    pinThreadToCores(cores, "Audio Thread");
+	    setRealtimePriority(g_rtPriority);
+    } else {
+        auto cores = parseCoreList(m_config.cpuOther);
+        if (!cores.empty()) pinThreadToCores(cores, "Audio Thread");
+    }
     DEBUG_LOG("[Audio Thread] Started");
 
     // Buffer-level flow control thresholds (like MPD's Delay() approach)
