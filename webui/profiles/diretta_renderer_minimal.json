@@ -88,11 +88,10 @@
                 },
                 {
                     "key": "CPU_DECODE",
-                    "type": "number",
-                    "label": "Decode Core",
+                    "type": "text",
+                    "label": "Decode Core(s)",
                     "description": "Pin decode thread to CPU core(s). Single core or comma-separated list (e.g., '6,7,8'). Empty = no pinning.",
-                    "default": "",
-                    "min": 0
+                    "default": ""
                 },
                 {
                     "key": "CPU_OTHER",
