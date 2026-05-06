@@ -1,5 +1,15 @@
 # Changelog
 
+## [2.4.2] - unreleased
+
+### Added
+- **`--cpu-decode` option** (PR #68 by Daniel/Koala887): a third CPU-affinity granularity that pins the renderer's audio thread (HTTP receive + FFmpeg decode) to its own dedicated core, separate from the Diretta SDK worker (`--cpu-audio`) and from the lighter UPnP/position/main threads (`--cpu-other`). When `--cpu-decode` is set, the audio thread is also raised to `SCHED_FIFO` real-time priority (using `RT_PRIORITY`), since the dedicated core makes that safe. Falls back to `--cpu-other` when `--cpu-decode` is empty (no behavioural change for existing setups). Cross-core overlap warnings are emitted for all three combinations (audio/decode, audio/other, decode/other). Also exposed in the configuration file as `CPU_DECODE` and in the web UI (full and minimal profiles) under "CPU Affinity".
+
+### Fixed
+- **`ProtectKernelTunables=true` blocked IRQ affinity** (PR #68 by Daniel/Koala887): the systemd unit's `ProtectKernelTunables=true` directive prevented `start-renderer.sh` from writing to `/proc/irq/N/smp_affinity_list`, silently breaking the `IRQ_INTERFACE` / `IRQ_CPUS` feature shipped in v2.4.0. The directive is now commented out so the wrapper can apply the requested IRQ affinity. The other systemd hardening directives (ProtectKernelModules, ProtectKernelLogs, ProtectControlGroups, etc.) remain in place — only the kernel-tunables protection is relaxed, and only because the wrapper script genuinely needs to write to `/proc/irq/`.
+
+---
+
 ## [2.4.1] - 2026-05-03
 
 ### Added

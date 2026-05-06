@@ -862,13 +862,17 @@ void DirettaRenderer::upnpThreadFunc() {
 }
 
 void DirettaRenderer::audioThreadFunc() {
-    auto cores = parseCoreList(m_config.cpuDecode);
-    if (!cores.empty()) {
-	    pinThreadToCores(cores, "Audio Thread");
-	    setRealtimePriority(g_rtPriority);
+    // Prefer --cpu-decode for the audio thread when set; otherwise fall back
+    // to --cpu-other (legacy behaviour). When --cpu-decode is used, also raise
+    // the audio thread to SCHED_FIFO so it benefits from the same real-time
+    // policy as the Diretta worker — the dedicated core makes that safe.
+    auto decodeCores = parseCoreList(m_config.cpuDecode);
+    if (!decodeCores.empty()) {
+        pinThreadToCores(decodeCores, "Audio Thread");
+        setRealtimePriority(g_rtPriority);
     } else {
-        auto cores = parseCoreList(m_config.cpuOther);
-        if (!cores.empty()) pinThreadToCores(cores, "Audio Thread");
+        auto otherCores = parseCoreList(m_config.cpuOther);
+        if (!otherCores.empty()) pinThreadToCores(otherCores, "Audio Thread");
     }
     DEBUG_LOG("[Audio Thread] Started");
 

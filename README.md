@@ -570,13 +570,16 @@ For the best possible audio quality, the following system-level optimizations ar
 
 #### CPU Affinity (v2.2.0+)
 
-Pinning audio threads to dedicated CPU cores reduces jitter and improves soundstage clarity:
+Pinning audio threads to dedicated CPU cores reduces jitter and improves soundstage clarity. Three granularities are available, each accepting a single core or a comma-separated list:
 
 ```ini
 # In /etc/default/diretta-renderer
-CPU_AUDIO=2    # Diretta worker thread (critical hot path)
-CPU_OTHER=3    # Decode, UPnP, and other threads
+CPU_AUDIO=2    # Diretta SDK worker thread (critical hot path)
+CPU_DECODE=3   # Renderer audio thread: HTTP receive + FFmpeg decode (v2.4.2+)
+CPU_OTHER=4    # main, UPnP, position, log drain
 ```
+
+When `CPU_DECODE` is set (v2.4.2+), the audio thread is also raised to `SCHED_FIFO` real-time priority — the dedicated core makes that safe. If `CPU_DECODE` is left empty, the audio thread inherits `CPU_OTHER` as before, preserving v2.4.1 behaviour.
 
 Use cores on the same CCD (AMD) or same P-core cluster (Intel) and avoid core 0 (used by kernel/interrupts). Also configurable via the web UI under "CPU Affinity".
 
