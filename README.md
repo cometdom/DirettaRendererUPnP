@@ -1,4 +1,4 @@
-# Diretta UPnP Renderer v2.4.1
+# Diretta UPnP Renderer v2.4.2
 
 **The world's first native UPnP/DLNA renderer with Diretta protocol support - Low-Latency Edition**
 
@@ -8,21 +8,19 @@
 
 ---
 
-![Version](https://img.shields.io/badge/version-2.4.1-blue.svg)
+![Version](https://img.shields.io/badge/version-2.4.2-blue.svg)
 ![Low Latency](https://img.shields.io/badge/Latency-Low-green.svg)
 ![SDK](https://img.shields.io/badge/SDK-DIRETTA::Sync-orange.svg)
 ![Audirvana](https://img.shields.io/badge/Audirvana-Compatible-green.svg)
 
 ---
 
-## What's New in v2.4.1
+## What's New in v2.4.2
 
-**Minimal-flavor distribution, 2.5 GbE, web UI fixes, README enrichment.**
+**Three-tier CPU affinity, IRQ affinity bugfix.**
 
-- **Minimal source tarball** for downstream distributors — each GitHub Release now ships a `*-minimal.tar.gz` asset alongside the standard tarball. The minimal flavor uses a stripped-down web UI profile that exposes only application-level configuration (no SMT toggle, no NIC link tuning, no IRQ affinity, no nice/ionice). Targeted at GentooPlayer, AudioLinux and similar distributions that already manage system-level tuning through their own framework. The standard tarball remains the default for self-install on a generic Linux distribution.
-- **2.5 GbE option** in the `TARGET_SPEED` dropdown for hosts with 2.5 GbE NICs (Realtek RTL8125, Intel I225/I226, etc.).
-- **Web UI fix** — number inputs now honor the `step` attribute, so decimal values (e.g. 0.5 s for buffer settings) can be entered directly.
-- **README enrichment** — new "Buffer Pipeline" section under Performance with a diagram and per-stage tuning guide.
+- **`--cpu-decode` option** (PR #68 by Daniel/Koala887) — third CPU-affinity granularity that pins the audio/decode thread (HTTP receive + FFmpeg decode) to its own dedicated core, separate from `--cpu-audio` (Diretta SDK worker) and `--cpu-other` (UPnP/position/main). When set, that thread is also raised to `SCHED_FIFO` real-time priority — the dedicated core makes that safe. Falls back to `--cpu-other` when empty, preserving v2.4.1 behaviour.
+- **`ProtectKernelTunables` fix** (PR #68 by Daniel/Koala887) — the systemd unit's `ProtectKernelTunables=true` directive was preventing `start-renderer.sh` from writing to `/proc/irq/N/smp_affinity_list`, silently breaking the `IRQ_INTERFACE` / `IRQ_CPUS` feature shipped in v2.4.0. The directive is now commented out so the wrapper can apply the requested IRQ affinity. The other systemd hardening directives remain in place.
 
 See [CHANGELOG.md](CHANGELOG.md) for details.
 
@@ -30,6 +28,7 @@ See [CHANGELOG.md](CHANGELOG.md) for details.
 
 | Version | Highlights |
 |---------|-----------|
+| **v2.4.1** | Minimal-flavor distribution for downstream distros, 2.5 GbE option, web UI fixes, README enrichment |
 | **v2.4.0** | Target network link tuning (Daniel/Koala887), IRQ affinity, SMT toggle, isolcpus documentation |
 | **v2.3.0** | Multi-core CPU affinity, configurable buffers, Audirvana internet radio fix (grajaw) |
 | **v2.2.3** | Complete CPU isolation, build system optimization, Web UI Stop button |
@@ -1087,4 +1086,4 @@ This software is provided "as is" without warranty. While designed for high-qual
 
 **Enjoy bit-perfect, low-latency audio streaming!**
 
-*Last updated: 2026-05-03 (v2.4.1)*
+*Last updated: 2026-05-06 (v2.4.2)*
