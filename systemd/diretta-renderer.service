@@ -35,7 +35,7 @@ ReadWritePaths=/var/log
 
 # --- Device and kernel isolation ---
 PrivateDevices=true
-ProtectKernelTunables=true
+#ProtectKernelTunables=true -> removed so that the NIC IRQ affinity can be changed
 ProtectKernelModules=true
 ProtectKernelLogs=true
 ProtectControlGroups=true

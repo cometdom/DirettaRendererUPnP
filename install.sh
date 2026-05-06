@@ -1193,11 +1193,14 @@ setup_systemd_service() {
 set -e
 
 # Default values (can be overridden by config file)
+# v2.1.10: Aligned variable names with CLI (KEY → --key mapping)
+# Old names (RENDERER_NAME, NETWORK_INTERFACE, MTU_OVERRIDE) still supported as fallback
 TARGET="${TARGET:-1}"
 PORT="${PORT:-4005}"
 NAME="${NAME:-${RENDERER_NAME:-}}"
 GAPLESS="${GAPLESS:-}"
 VERBOSE="${VERBOSE:-}"
+MINIMAL_UPNP="${MINIMAL_UPNP:-}"
 INTERFACE="${INTERFACE:-${NETWORK_INTERFACE:-}}"
 THREAD_MODE="${THREAD_MODE:-}"
 CYCLE_TIME="${CYCLE_TIME:-}"
@@ -1206,6 +1209,20 @@ INFO_CYCLE="${INFO_CYCLE:-}"
 TRANSFER_MODE="${TRANSFER_MODE:-}"
 TARGET_PROFILE_LIMIT="${TARGET_PROFILE_LIMIT:-}"
 MTU="${MTU:-${MTU_OVERRIDE:-}}"
+
+# CPU affinity (no pinning by default). Accepts single core or comma-separated list.
+# Examples: CPU_AUDIO=3  or  CPU_AUDIO="3,4,5"
+CPU_AUDIO="${CPU_AUDIO:-}"
+CPU_DECODE="${CPU_DECODE:-}"
+CPU_OTHER="${CPU_OTHER:-}"
+
+# Buffer configuration (leave empty to use defaults)
+PCM_BUFFER_SECONDS="${PCM_BUFFER_SECONDS:-}"
+PCM_REMOTE_BUFFER_SECONDS="${PCM_REMOTE_BUFFER_SECONDS:-}"
+DSD_BUFFER_SECONDS="${DSD_BUFFER_SECONDS:-}"
+PCM_PREFILL_MS="${PCM_PREFILL_MS:-}"
+PCM_REMOTE_PREFILL_MS="${PCM_REMOTE_PREFILL_MS:-}"
+DSD_PREFILL_MS="${DSD_PREFILL_MS:-}"
 
 # Process priority defaults
 NICE_LEVEL="${NICE_LEVEL:--10}"
@@ -1327,6 +1344,11 @@ if [ -n "$VERBOSE" ]; then
     CMD+=($VERBOSE)
 fi
 
+# Minimal UPnP mode (no position polling, no events)
+if [ -n "$MINIMAL_UPNP" ] && [ "$MINIMAL_UPNP" = "1" ]; then
+    CMD+=("--minimal-upnp")
+fi
+
 # Advanced Diretta settings (only if specified)
 if [ -n "$THREAD_MODE" ]; then
     CMD+=("--thread-mode" "$THREAD_MODE")
@@ -1360,22 +1382,60 @@ if [ -n "$RT_PRIORITY" ] && [ "$RT_PRIORITY" != "50" ]; then
     CMD+=("--rt-priority" "$RT_PRIORITY")
 fi
 
+# CPU affinity
+if [ -n "$CPU_AUDIO" ]; then
+    CMD+=("--cpu-audio" "$CPU_AUDIO")
+fi
+
+if [ -n "$CPU_DECODE" ]; then
+    CMD+=("--cpu-decode" "$CPU_DECODE")
+fi
+
+if [ -n "$CPU_OTHER" ]; then
+    CMD+=("--cpu-other" "$CPU_OTHER")
+fi
+
+# Buffer configuration
+if [ -n "$PCM_BUFFER_SECONDS" ]; then
+    CMD+=("--pcm-buffer-seconds" "$PCM_BUFFER_SECONDS")
+fi
+if [ -n "$PCM_REMOTE_BUFFER_SECONDS" ]; then
+    CMD+=("--pcm-remote-buffer-seconds" "$PCM_REMOTE_BUFFER_SECONDS")
+fi
+if [ -n "$DSD_BUFFER_SECONDS" ]; then
+    CMD+=("--dsd-buffer-seconds" "$DSD_BUFFER_SECONDS")
+fi
+if [ -n "$PCM_PREFILL_MS" ]; then
+    CMD+=("--pcm-prefill-ms" "$PCM_PREFILL_MS")
+fi
+if [ -n "$PCM_REMOTE_PREFILL_MS" ]; then
+    CMD+=("--pcm-remote-prefill-ms" "$PCM_REMOTE_PREFILL_MS")
+fi
+if [ -n "$DSD_PREFILL_MS" ]; then
+    CMD+=("--dsd-prefill-ms" "$DSD_PREFILL_MS")
+fi
+
 # Build exec prefix as array for process priority
 EXEC_PREFIX=()
 
+# Apply nice level
 if [ -n "$NICE_LEVEL" ] && [ "$NICE_LEVEL" != "0" ]; then
     EXEC_PREFIX=("nice" "-n" "$NICE_LEVEL")
 fi
 
+# Apply I/O scheduling
 if [ -n "$IO_SCHED_CLASS" ]; then
+    # Map class name to ionice class number
     case "$IO_SCHED_CLASS" in
         realtime|1)  IONICE_CLASS=1 ;;
         best-effort|2) IONICE_CLASS=2 ;;
         idle|3)      IONICE_CLASS=3 ;;
         *)           IONICE_CLASS="" ;;
     esac
+
     if [ -n "$IONICE_CLASS" ]; then
         if [ "$IONICE_CLASS" = "3" ]; then
+            # idle class has no priority level
             EXEC_PREFIX=("ionice" "-c" "$IONICE_CLASS" "${EXEC_PREFIX[@]}")
         else
             EXEC_PREFIX=("ionice" "-c" "$IONICE_CLASS" "-n" "${IO_SCHED_PRIORITY:-0}" "${EXEC_PREFIX[@]}")
@@ -1442,7 +1502,7 @@ WRAPPER_EOF
         fi
 
         # Migrate settings from old config
-        local KNOWN_KEYS="TARGET PORT NAME RENDERER_NAME GAPLESS VERBOSE MINIMAL_UPNP INTERFACE NETWORK_INTERFACE THREAD_MODE CYCLE_TIME CYCLE_MIN_TIME INFO_CYCLE TRANSFER_MODE TARGET_PROFILE_LIMIT MTU MTU_OVERRIDE CPU_AUDIO CPU_OTHER PCM_BUFFER_SECONDS PCM_REMOTE_BUFFER_SECONDS DSD_BUFFER_SECONDS PCM_PREFILL_MS PCM_REMOTE_PREFILL_MS DSD_PREFILL_MS NICE_LEVEL IO_SCHED_CLASS IO_SCHED_PRIORITY RT_PRIORITY"
+        local KNOWN_KEYS="TARGET PORT NAME RENDERER_NAME GAPLESS VERBOSE MINIMAL_UPNP INTERFACE NETWORK_INTERFACE TARGET_INTERFACE TARGET_SPEED TARGET_DUPLEX THREAD_MODE CYCLE_TIME CYCLE_MIN_TIME INFO_CYCLE TRANSFER_MODE TARGET_PROFILE_LIMIT MTU MTU_OVERRIDE CPU_AUDIO CPU_DECODE CPU_OTHER PCM_BUFFER_SECONDS PCM_REMOTE_BUFFER_SECONDS DSD_BUFFER_SECONDS PCM_PREFILL_MS PCM_REMOTE_PREFILL_MS DSD_PREFILL_MS NICE_LEVEL IO_SCHED_CLASS IO_SCHED_PRIORITY RT_PRIORITY"
         local migrated_keys=""
         local obsolete_keys=""
 
@@ -1534,7 +1594,7 @@ ReadWritePaths=/var/log
 
 # --- Device and kernel isolation ---
 PrivateDevices=true
-ProtectKernelTunables=true
+#ProtectKernelTunables=true -> removed so that the NIC IRQ affinity can be changed
 ProtectKernelModules=true
 ProtectKernelLogs=true
 ProtectControlGroups=true
@@ -1555,7 +1615,7 @@ SystemCallArchitectures=native
 SystemCallFilter=~@mount @keyring @debug @module @swap @reboot @obsolete
 
 # --- Performance ---
-# Nice and IOScheduling are configurable via /etc/default/diretta-renderer
+# Nice and IOScheduling are now configurable via /etc/default/diretta-renderer
 # (NICE_LEVEL, IO_SCHED_CLASS, IO_SCHED_PRIORITY) and applied by start-renderer.sh
 
 [Install]

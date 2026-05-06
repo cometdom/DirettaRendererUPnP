@@ -45,7 +45,8 @@ public:
         // CPU affinity (empty = no pinning, default)
         // Accept one or more cores (comma-separated), e.g. "6" or "6,7,8"
         std::string cpuAudio;     // Cores for DirettaSync worker thread (critical hot path)
-        std::string cpuOther;     // Cores for other threads (UPnP, position, decode)
+        std::string cpuDecode;    // Cores for DirettaRenderer audio thread (decode)
+        std::string cpuOther;     // Cores for other threads (UPnP, position)
 
         // Buffer configuration (-1 = use defaults)
         float pcmBufferSeconds = -1.0f;        // Default 0.5s

@@ -249,6 +249,19 @@ DirettaRenderer::Config parseArguments(int argc, char* argv[]) {
                 }
             }
         }
+        else if (arg == "--cpu-decode" && i + 1 < argc) {
+            config.cpuDecode = argv[++i];
+            int numCores = static_cast<int>(sysconf(_SC_NPROCESSORS_ONLN));
+            auto cores = parseCoreSpec(config.cpuDecode);
+            for (int c : cores) {
+                if (c >= numCores) {
+                    std::cerr << "Warning: --cpu-decode contains invalid core " << c
+                              << " (this system has cores 0-" << (numCores - 1) << ")" << std::endl;
+                    config.cpuDecode.clear();
+                    break;
+                }
+            }
+        }
         else if (arg == "--cpu-other" && i + 1 < argc) {
             config.cpuOther = argv[++i];
             int numCores = static_cast<int>(sysconf(_SC_NPROCESSORS_ONLN));
@@ -313,7 +326,8 @@ DirettaRenderer::Config parseArguments(int argc, char* argv[]) {
                       << "\n"
                       << "CPU affinity (core isolation for audio quality):\n"
                       << "  --cpu-audio <cores>        Pin Diretta worker thread to CPU core(s), comma-separated (e.g., '3' or '3,4')\n"
-                      << "  --cpu-other <cores>        Pin other threads (decode/UPnP) to CPU core(s), comma-separated\n"
+                      << "  --cpu-decode <cores>       Pin DirettaRenderer Audio thread (decode) to CPU core(s), comma-separated\n"
+                      << "  --cpu-other <cores>        Pin other threads (UPnP/position) to CPU core(s), comma-separated\n"
                       << "\n"
                       << "Buffer configuration (advanced — leave unset to use defaults):\n"
                       << "  --pcm-buffer-seconds <s>       PCM local buffer size in seconds (default 0.5)\n"
@@ -390,11 +404,39 @@ int main(int argc, char* argv[]) {
                 if (a == o) {
                     std::cerr << "Warning: --cpu-audio and --cpu-other share core "
                               << a << ". Thread isolation may be reduced." << std::endl;
-                    goto skip_warn;
+                    goto skip_warn1;
                 }
             }
         }
-        skip_warn:;
+        skip_warn1:;
+    }
+    if (!config.cpuAudio.empty() && !config.cpuDecode.empty()) {
+        auto audioCores = parseCoreSpec(config.cpuAudio);
+        auto decodeCores = parseCoreSpec(config.cpuDecode);
+        for (int a : audioCores) {
+            for (int o : decodeCores) {
+                if (a == o) {
+                    std::cerr << "Warning: --cpu-audio and --cpu-decode share core "
+                              << a << ". Thread isolation may be reduced." << std::endl;
+                    goto skip_warn2;
+                }
+            }
+        }
+        skip_warn2:;
+    }
+    if (!config.cpuDecode.empty() && !config.cpuOther.empty()) {
+        auto decodeCores = parseCoreSpec(config.cpuDecode);
+        auto otherCores = parseCoreSpec(config.cpuOther);
+        for (int a : decodeCores) {
+            for (int o : otherCores) {
+                if (a == o) {
+                    std::cerr << "Warning: --cpu-decode and --cpu-other share core "
+                              << a << ". Thread isolation may be reduced." << std::endl;
+                    goto skip_warn3;
+                }
+            }
+        }
+        skip_warn3:;
     }
 
     // Pin main thread to cpuOther core(s) (keeps it off the audio core)

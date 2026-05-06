@@ -25,6 +25,7 @@ MTU="${MTU:-${MTU_OVERRIDE:-}}"
 # CPU affinity (no pinning by default). Accepts single core or comma-separated list.
 # Examples: CPU_AUDIO=3  or  CPU_AUDIO="3,4,5"
 CPU_AUDIO="${CPU_AUDIO:-}"
+CPU_DECODE="${CPU_DECODE:-}"
 CPU_OTHER="${CPU_OTHER:-}"
 
 # Buffer configuration (leave empty to use defaults)
@@ -196,6 +197,10 @@ fi
 # CPU affinity
 if [ -n "$CPU_AUDIO" ]; then
     CMD+=("--cpu-audio" "$CPU_AUDIO")
+fi
+
+if [ -n "$CPU_DECODE" ]; then
+    CMD+=("--cpu-decode" "$CPU_DECODE")
 fi
 
 if [ -n "$CPU_OTHER" ]; then
