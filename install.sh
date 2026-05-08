@@ -1156,7 +1156,7 @@ setup_systemd_service() {
     local BINARY_PATH="$SCRIPT_DIR/bin/DirettaRendererUPnP"
     local SYSTEMD_DIR="$SCRIPT_DIR/systemd"
     local service_active=false
-	
+
     # Check if binary exists
     if [ ! -f "$BINARY_PATH" ]; then
         print_error "Binary not found at: $BINARY_PATH"
@@ -1177,7 +1177,7 @@ setup_systemd_service() {
         print_info "Stopping diretta-renderer.service..."
         sudo systemctl stop diretta-renderer.service
     fi
-	
+
     print_info "1. Creating installation directory..."
     sudo mkdir -p "$INSTALL_DIR"
 
@@ -1642,7 +1642,7 @@ SERVICE_EOF
         print_info "8. Start diretta-renderer.service..."
         sudo systemctl start diretta-renderer.service
     fi
-	
+
     echo ""
     print_success "Systemd Service Installation Complete!"
     echo ""
