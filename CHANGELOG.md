@@ -1,6 +1,6 @@
 # Changelog
 
-## [2.4.2] - 2026-05-06
+## [2.4.2] - 2026-05-08
 
 ### Added
 - **`--cpu-decode` option** (PR #68 by Daniel/Koala887): a third CPU-affinity granularity that pins the renderer's audio thread (HTTP receive + FFmpeg decode) to its own dedicated core, separate from the Diretta SDK worker (`--cpu-audio`) and from the lighter UPnP/position/main threads (`--cpu-other`). When `--cpu-decode` is set, the audio thread is also raised to `SCHED_FIFO` real-time priority (using `RT_PRIORITY`), since the dedicated core makes that safe. Falls back to `--cpu-other` when `--cpu-decode` is empty (no behavioural change for existing setups). Cross-core overlap warnings are emitted for all three combinations (audio/decode, audio/other, decode/other). Also exposed in the configuration file as `CPU_DECODE` and in the web UI (full and minimal profiles) under "CPU Affinity".

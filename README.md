@@ -1086,4 +1086,4 @@ This software is provided "as is" without warranty. While designed for high-qual
 
 **Enjoy bit-perfect, low-latency audio streaming!**
 
-*Last updated: 2026-05-06 (v2.4.2)*
+*Last updated: 2026-05-08 (v2.4.2)*
