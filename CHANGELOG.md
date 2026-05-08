@@ -7,6 +7,7 @@
 
 ### Fixed
 - **`ProtectKernelTunables=true` blocked IRQ affinity** (PR #68 by Daniel/Koala887): the systemd unit's `ProtectKernelTunables=true` directive prevented `start-renderer.sh` from writing to `/proc/irq/N/smp_affinity_list`, silently breaking the `IRQ_INTERFACE` / `IRQ_CPUS` feature shipped in v2.4.0. The directive is now commented out so the wrapper can apply the requested IRQ affinity. The other systemd hardening directives (ProtectKernelModules, ProtectKernelLogs, ProtectControlGroups, etc.) remain in place — only the kernel-tunables protection is relaxed, and only because the wrapper script genuinely needs to write to `/proc/irq/`.
+- **Install script: stop service before replacing binary** (PR #69 by Daniel/Koala887): `install.sh` now detects whether `diretta-renderer.service` is currently running, stops it before copying the new binary into `/opt/diretta-renderer-upnp/`, and restarts it once the install completes. Previously, reinstalling on top of a running service silently failed because `cp` cannot overwrite a file held open by systemd, leaving the old binary in place until the next reboot.
 
 ---
 
