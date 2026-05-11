@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.4.3] - 2026-05-11
+
+### Changed
+- **FFmpeg 8 minimal build: drop `--enable-small`, add `--enable-lto`** (Issue #70 reported by sheviks): The minimal FFmpeg 8.x configure flags in `install.sh` previously included `--enable-small`, which silently downgrades compiler optimization from `-O3` to `-Os` (GCC) / `-Oz` (Clang). With all the `--disable-everything` + selective `--enable-*` already trimming the build, `--enable-small` provided negligible size benefit while measurably hurting performance in the audio hot path (FLAC/AAC/PCM decoders, format conversions). Replaced with `--enable-lto` to align with the legacy/full FFmpeg build configuration and give the decoders the same `-O3 + LTO` treatment. Users who built FFmpeg via `install.sh` should recompile to benefit from the change.
+
+---
+
 ## [2.4.2] - 2026-05-08
 
 ### Added

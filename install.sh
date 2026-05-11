@@ -256,7 +256,7 @@ get_ffmpeg_8_minimal_opts() {
 --libdir=$libdir
 --enable-shared
 --disable-static
---enable-small
+--enable-lto
 --enable-gpl
 --enable-version3
 --enable-gnutls

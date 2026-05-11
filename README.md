@@ -1,4 +1,4 @@
-# Diretta UPnP Renderer v2.4.2
+# Diretta UPnP Renderer v2.4.3
 
 **The world's first native UPnP/DLNA renderer with Diretta protocol support - Low-Latency Edition**
 
@@ -8,19 +8,18 @@
 
 ---
 
-![Version](https://img.shields.io/badge/version-2.4.2-blue.svg)
+![Version](https://img.shields.io/badge/version-2.4.3-blue.svg)
 ![Low Latency](https://img.shields.io/badge/Latency-Low-green.svg)
 ![SDK](https://img.shields.io/badge/SDK-DIRETTA::Sync-orange.svg)
 ![Audirvana](https://img.shields.io/badge/Audirvana-Compatible-green.svg)
 
 ---
 
-## What's New in v2.4.2
+## What's New in v2.4.3
 
-**Three-tier CPU affinity, IRQ affinity bugfix.**
+**FFmpeg 8 minimal build: better decoder performance.**
 
-- **`--cpu-decode` option** (PR #68 by Daniel/Koala887) — third CPU-affinity granularity that pins the audio/decode thread (HTTP receive + FFmpeg decode) to its own dedicated core, separate from `--cpu-audio` (Diretta SDK worker) and `--cpu-other` (UPnP/position/main). When set, that thread is also raised to `SCHED_FIFO` real-time priority — the dedicated core makes that safe. Falls back to `--cpu-other` when empty, preserving v2.4.1 behaviour.
-- **`ProtectKernelTunables` fix** (PR #68 by Daniel/Koala887) — the systemd unit's `ProtectKernelTunables=true` directive was preventing `start-renderer.sh` from writing to `/proc/irq/N/smp_affinity_list`, silently breaking the `IRQ_INTERFACE` / `IRQ_CPUS` feature shipped in v2.4.0. The directive is now commented out so the wrapper can apply the requested IRQ affinity. The other systemd hardening directives remain in place.
+- **Dropped `--enable-small`, added `--enable-lto` in the FFmpeg 8 minimal build** (Issue #70 reported by sheviks) — the minimal FFmpeg 8.x configure flags in `install.sh` previously included `--enable-small`, which silently downgrades compiler optimization from `-O3` to `-Os` (GCC) / `-Oz` (Clang). With all the `--disable-everything` + selective `--enable-*` already trimming the build, that flag offered negligible size benefit while measurably hurting performance in the audio hot path (FLAC/AAC/PCM decoders, format conversions). Replaced with `--enable-lto` to align with the legacy/full FFmpeg build and give the decoders the same `-O3 + LTO` treatment. **Users who built FFmpeg via `install.sh` should recompile to benefit.**
 
 See [CHANGELOG.md](CHANGELOG.md) for details.
 
@@ -28,6 +27,7 @@ See [CHANGELOG.md](CHANGELOG.md) for details.
 
 | Version | Highlights |
 |---------|-----------|
+| **v2.4.2** | Three-tier CPU affinity (`--cpu-decode`, Daniel/Koala887), `ProtectKernelTunables` IRQ-affinity fix, install.sh stop-before-replace |
 | **v2.4.1** | Minimal-flavor distribution for downstream distros, 2.5 GbE option, web UI fixes, README enrichment |
 | **v2.4.0** | Target network link tuning (Daniel/Koala887), IRQ affinity, SMT toggle, isolcpus documentation |
 | **v2.3.0** | Multi-core CPU affinity, configurable buffers, Audirvana internet radio fix (grajaw) |
@@ -1086,4 +1086,4 @@ This software is provided "as is" without warranty. While designed for high-qual
 
 **Enjoy bit-perfect, low-latency audio streaming!**
 
-*Last updated: 2026-05-08 (v2.4.2)*
+*Last updated: 2026-05-11 (v2.4.3)*
