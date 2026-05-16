@@ -117,11 +117,7 @@ public:
     bool isEOF() const { return m_eof; }
 
     /**
-     * @brief Check if a fatal decode error occurred (distinct from normal EOF).
-     * Set when avcodec_receive_frame() fails on a corrupt packet. Unlike isEOF(),
-     * this can be true even when readSamples() returned a non-zero count, because
-     * the error may occur after some samples were already successfully decoded in
-     * the same call. Read by AudioEngine::process() to trigger a clean stop.
+     * @brief True if avcodec_receive_frame() failed on a corrupt packet (distinct from EOF).
      * @return true if a fatal decode error was detected
      */
     bool hasDecodeError() const { return m_decodeError; }

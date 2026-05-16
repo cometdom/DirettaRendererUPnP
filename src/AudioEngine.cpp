@@ -1380,10 +1380,7 @@ size_t AudioDecoder::readSamples(AudioBuffer& buffer, size_t numSamples,
             } else if (ret < 0) {
                 std::cerr << "[AudioDecoder] Error receiving frame from decoder" << std::endl;
                 av_frame_unref(m_frame);
-                // Mark fatal decode error. Unlike m_eof this flag is set even when
-                // totalSamplesRead > 0 (corrupt packet after partial successful read).
-                // AudioEngine::process() checks AudioDecoder::hasDecodeError() and
-                // triggers a clean stop matching the normal EOF path.
+                // Set even when totalSamplesRead > 0 (error after partial read), unlike m_eof.
                 m_decodeError = true;
                 return totalSamplesRead;
             }
@@ -2178,21 +2175,21 @@ bool AudioEngine::process(size_t samplesNeeded) {
         m_samplesPlayed += samplesRead;
     }
 
-    // Detect fatal decoder error: avcodec_receive_frame() failed on a corrupt packet.
-    // This check must happen BEFORE the samplesRead == 0 check because the error can
-    // occur after some samples were already decoded in the same readSamples() call,
-    // meaning samplesRead > 0 while the decoder is nonetheless unrecoverable.
-    // Example: "Invalid PCM packet" from a radio stream sets AudioDecoder::m_decodeError
-    // even when partial samples were returned.
-    // Mirror the normal EOF path exactly (see m_silenceCount > 5 block below):
-    // set m_state = STOPPED first, then call m_trackEndCallback(). This ensures
-    // the UPnP controller sees the correct state before the callback fires,
-    // which is what Roon needs to transition from STOPPED to ready-to-play.
+    // Check before samplesRead == 0: error can occur after a partial read (samplesRead > 0).
     if (m_currentDecoder && m_currentDecoder->hasDecodeError()) {
-        std::cerr << "[AudioEngine] Fatal decoder error (corrupt packet), "
-                  << "triggering clean stop" << std::endl;
+        std::cerr << "[AudioEngine] Fatal decoder error (corrupt packet), triggering clean stop" << std::endl;
         m_silenceCount = 0;
         m_isDraining = false;
+        if (m_preloadRunning.load(std::memory_order_acquire)) {
+            lock.unlock();
+            waitForPreloadThread();
+            lock.lock();
+        }
+        m_nextDecoder.reset();
+        m_nextURI.clear();
+        m_nextMetadata.clear();
+        m_formatChangePending = false;
+        m_currentDecoder.reset();
         m_state = State::STOPPED;
         if (m_trackEndCallback) {
             m_trackEndCallback();
