@@ -95,6 +95,7 @@ AudioDecoder::~AudioDecoder() {
 
 bool AudioDecoder::open(const std::string& url) {
     std::cout << "[AudioDecoder] Opening: " << url.substr(0, 80) << "..." << std::endl;
+    m_decodeError = false;
 
     // Open input file
     m_formatContext = avformat_alloc_context();
@@ -1379,6 +1380,8 @@ size_t AudioDecoder::readSamples(AudioBuffer& buffer, size_t numSamples,
             } else if (ret < 0) {
                 std::cerr << "[AudioDecoder] Error receiving frame from decoder" << std::endl;
                 av_frame_unref(m_frame);
+                // Set even when totalSamplesRead > 0 (error after partial read), unlike m_eof.
+                m_decodeError = true;
                 return totalSamplesRead;
             }
 
@@ -2170,6 +2173,28 @@ bool AudioEngine::process(size_t samplesNeeded) {
         }
 
         m_samplesPlayed += samplesRead;
+    }
+
+    // Check before samplesRead == 0: error can occur after a partial read (samplesRead > 0).
+    if (m_currentDecoder && m_currentDecoder->hasDecodeError()) {
+        std::cerr << "[AudioEngine] Fatal decoder error (corrupt packet), triggering clean stop" << std::endl;
+        m_silenceCount = 0;
+        m_isDraining = false;
+        if (m_preloadRunning.load(std::memory_order_acquire)) {
+            lock.unlock();
+            waitForPreloadThread();
+            lock.lock();
+        }
+        m_nextDecoder.reset();
+        m_nextURI.clear();
+        m_nextMetadata.clear();
+        m_formatChangePending = false;
+        m_currentDecoder.reset();
+        m_state = State::STOPPED;
+        if (m_trackEndCallback) {
+            m_trackEndCallback();
+        }
+        return false;
     }
 
     // Check for actual end of data (no more samples can be read)
