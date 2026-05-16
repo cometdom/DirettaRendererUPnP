@@ -676,6 +676,28 @@ bool AudioDecoder::open(const std::string& url) {
         realBitDepth = 24;
     }
 
+    // Lossy codecs (AAC, MP3, Vorbis, Opus, AC-3, WMA, ...) are decoded by
+    // FFmpeg into float (FLT/FLTP), which the detection above maps to 32-bit.
+    // That float is FFmpeg's internal calculation buffer, NOT a real 32-bit
+    // source: a 192 kbps AAC web radio has far fewer than 16 effective bits.
+    // Reporting 32-bit makes configureSinkPCM() negotiate FMT_PCM_SIGNED_32
+    // with the sink; DACs that advertise 32-bit at the Diretta target level
+    // but are physically limited to 24-bit (e.g. TEAC UD-701N) then play
+    // silence/noise. Cap lossy sources at 24-bit — transparent, since their
+    // effective resolution is well below 24-bit and every DAC accepts 24-bit.
+    // Lossless codecs (FLAC/ALAC/PCM) are left untouched so genuine 24/32-bit
+    // files still negotiate their real depth.
+    const AVCodecDescriptor* codecDesc = avcodec_descriptor_get(codecpar->codec_id);
+    if (codecDesc &&
+        (codecDesc->props & AV_CODEC_PROP_LOSSY) &&
+        !(codecDesc->props & AV_CODEC_PROP_LOSSLESS) &&
+        realBitDepth > 24) {
+        DEBUG_LOG("[AudioDecoder] Lossy codec (" << codecDesc->name
+                  << ") detected as " << realBitDepth
+                  << "-bit (FFmpeg float decode buffer) - capping to 24-bit");
+        realBitDepth = 24;
+    }
+
     m_trackInfo.bitDepth = realBitDepth;
 
     // Detect S24 alignment hint for 24-bit content

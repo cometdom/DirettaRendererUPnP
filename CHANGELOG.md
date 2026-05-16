@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.4.4] - 2026-05-16
+
+### Fixed
+- **Lossy radio streams (AAC/MP3) silent on 24-bit-limited DACs** (reported by Dominique for a friend's TEAC UD-701N on AudioLinux): FFmpeg decodes lossy codecs (AAC, MP3, Vorbis, Opus, AC-3, WMA…) into a float buffer (`FLT`/`FLTP`), which the bit-depth detection in `AudioEngine.cpp` mapped to 32-bit. That float is FFmpeg's internal calculation format, not a real 32-bit source — a 192 kbps AAC web radio (e.g. France Musique `francemusique-hifi.aac`) has far fewer than 16 effective bits. The bogus 32-bit value made `configureSinkPCM()` negotiate `FMT_PCM_SIGNED_32` with the sink; DACs that advertise 32-bit at the Diretta target level but are physically limited to 24-bit (e.g. TEAC UD-701N) then played silence or noise. Lossy codecs are now capped at 24-bit (transparent — their effective resolution is well below 24-bit, and every DAC accepts 24-bit). Lossless codecs (FLAC/ALAC/PCM) are identified via FFmpeg's codec descriptor props (`AV_CODEC_PROP_LOSSY` without `AV_CODEC_PROP_LOSSLESS`) and left untouched, so genuine 24/32-bit files still negotiate their real depth.
+
+---
+
 ## [2.4.3] - 2026-05-11
 
 ### Changed

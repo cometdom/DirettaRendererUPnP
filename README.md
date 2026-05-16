@@ -1,4 +1,4 @@
-# Diretta UPnP Renderer v2.4.3
+# Diretta UPnP Renderer v2.4.4
 
 **The world's first native UPnP/DLNA renderer with Diretta protocol support - Low-Latency Edition**
 
@@ -8,18 +8,18 @@
 
 ---
 
-![Version](https://img.shields.io/badge/version-2.4.3-blue.svg)
+![Version](https://img.shields.io/badge/version-2.4.4-blue.svg)
 ![Low Latency](https://img.shields.io/badge/Latency-Low-green.svg)
 ![SDK](https://img.shields.io/badge/SDK-DIRETTA::Sync-orange.svg)
 ![Audirvana](https://img.shields.io/badge/Audirvana-Compatible-green.svg)
 
 ---
 
-## What's New in v2.4.3
+## What's New in v2.4.4
 
-**FFmpeg 8 minimal build: better decoder performance.**
+**Lossy radio (AAC/MP3) now plays on 24-bit-limited DACs.**
 
-- **Dropped `--enable-small`, added `--enable-lto` in the FFmpeg 8 minimal build** (Issue #70 reported by sheviks) — the minimal FFmpeg 8.x configure flags in `install.sh` previously included `--enable-small`, which silently downgrades compiler optimization from `-O3` to `-Os` (GCC) / `-Oz` (Clang). With all the `--disable-everything` + selective `--enable-*` already trimming the build, that flag offered negligible size benefit while measurably hurting performance in the audio hot path (FLAC/AAC/PCM decoders, format conversions). Replaced with `--enable-lto` to align with the legacy/full FFmpeg build and give the decoders the same `-O3 + LTO` treatment. **Users who built FFmpeg via `install.sh` should recompile to benefit.**
+- **Fixed silent AAC/MP3 web radio on 24-bit DACs** (reported for a TEAC UD-701N) — FFmpeg decodes lossy codecs into a float buffer, which the bit-depth detection mistook for a real 32-bit source. DRUP then negotiated 32-bit with the Diretta sink; DACs that advertise 32-bit but are physically 24-bit (e.g. TEAC UD-701N) played silence. Lossy codecs (AAC, MP3, Vorbis, Opus, AC-3, WMA…) are now capped at 24-bit — transparent, since their effective resolution is well below 24-bit. Lossless codecs (FLAC/ALAC/PCM) are detected via the FFmpeg codec descriptor and keep negotiating their real depth.
 
 See [CHANGELOG.md](CHANGELOG.md) for details.
 
@@ -27,6 +27,7 @@ See [CHANGELOG.md](CHANGELOG.md) for details.
 
 | Version | Highlights |
 |---------|-----------|
+| **v2.4.3** | FFmpeg 8 minimal build: drop `--enable-small`, add `--enable-lto` (Issue #70, sheviks) |
 | **v2.4.2** | Three-tier CPU affinity (`--cpu-decode`, Daniel/Koala887), `ProtectKernelTunables` IRQ-affinity fix, install.sh stop-before-replace |
 | **v2.4.1** | Minimal-flavor distribution for downstream distros, 2.5 GbE option, web UI fixes, README enrichment |
 | **v2.4.0** | Target network link tuning (Daniel/Koala887), IRQ affinity, SMT toggle, isolcpus documentation |
@@ -1086,4 +1087,4 @@ This software is provided "as is" without warranty. While designed for high-qual
 
 **Enjoy bit-perfect, low-latency audio streaming!**
 
-*Last updated: 2026-05-11 (v2.4.3)*
+*Last updated: 2026-05-16 (v2.4.4)*

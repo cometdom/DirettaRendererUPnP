@@ -19,7 +19,7 @@
 #include <sstream>
 #include <string>
 
-#define RENDERER_VERSION "2.4.3"
+#define RENDERER_VERSION "2.4.4"
 #define RENDERER_BUILD_DATE __DATE__
 #define RENDERER_BUILD_TIME __TIME__
 
