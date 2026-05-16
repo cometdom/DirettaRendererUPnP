@@ -1,4 +1,4 @@
-# Diretta UPnP Renderer v2.4.4
+# Diretta UPnP Renderer v2.4.5
 
 **The world's first native UPnP/DLNA renderer with Diretta protocol support - Low-Latency Edition**
 
@@ -8,18 +8,18 @@
 
 ---
 
-![Version](https://img.shields.io/badge/version-2.4.4-blue.svg)
+![Version](https://img.shields.io/badge/version-2.4.5-blue.svg)
 ![Low Latency](https://img.shields.io/badge/Latency-Low-green.svg)
 ![SDK](https://img.shields.io/badge/SDK-DIRETTA::Sync-orange.svg)
 ![Audirvana](https://img.shields.io/badge/Audirvana-Compatible-green.svg)
 
 ---
 
-## What's New in v2.4.4
+## What's New in v2.4.5
 
-**Lossy radio (AAC/MP3) now plays on 24-bit-limited DACs.**
+**Clean shutdown on corrupt PCM packet from radio stream.**
 
-- **Fixed silent AAC/MP3 web radio on 24-bit DACs** (reported for a TEAC UD-701N) — FFmpeg decodes lossy codecs into a float buffer, which the bit-depth detection mistook for a real 32-bit source. DRUP then negotiated 32-bit with the Diretta sink; DACs that advertise 32-bit but are physically 24-bit (e.g. TEAC UD-701N) played silence. Lossy codecs (AAC, MP3, Vorbis, Opus, AC-3, WMA…) are now capped at 24-bit — transparent, since their effective resolution is well below 24-bit. Lossless codecs (FLAC/ALAC/PCM) are detected via the FFmpeg codec descriptor and keep negotiating their real depth.
+- **Fixed renderer zombie state on corrupt PCM packet** — a corrupt packet mid-stream caused the decode error to be silently skipped when some samples had already been decoded, leaving the renderer producing silence and ignoring all UPnP commands. The fix detects the error regardless of partial reads, clears all next-track state, and triggers a clean stop matching the normal EOF path.
 
 See [CHANGELOG.md](CHANGELOG.md) for details.
 
@@ -1087,4 +1087,4 @@ This software is provided "as is" without warranty. While designed for high-qual
 
 **Enjoy bit-perfect, low-latency audio streaming!**
 
-*Last updated: 2026-05-16 (v2.4.4)*
+*Last updated: 2026-05-17 (v2.4.5)*
