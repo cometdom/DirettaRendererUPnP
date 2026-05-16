@@ -95,6 +95,7 @@ AudioDecoder::~AudioDecoder() {
 
 bool AudioDecoder::open(const std::string& url) {
     std::cout << "[AudioDecoder] Opening: " << url.substr(0, 80) << "..." << std::endl;
+    m_decodeError = false;
 
     // Open input file
     m_formatContext = avformat_alloc_context();
@@ -1379,6 +1380,11 @@ size_t AudioDecoder::readSamples(AudioBuffer& buffer, size_t numSamples,
             } else if (ret < 0) {
                 std::cerr << "[AudioDecoder] Error receiving frame from decoder" << std::endl;
                 av_frame_unref(m_frame);
+                // Mark fatal decode error. Unlike m_eof this flag is set even when
+                // totalSamplesRead > 0 (corrupt packet after partial successful read).
+                // AudioEngine::process() checks AudioDecoder::hasDecodeError() and
+                // triggers a clean stop matching the normal EOF path.
+                m_decodeError = true;
                 return totalSamplesRead;
             }
 
@@ -2170,6 +2176,28 @@ bool AudioEngine::process(size_t samplesNeeded) {
         }
 
         m_samplesPlayed += samplesRead;
+    }
+
+    // Detect fatal decoder error: avcodec_receive_frame() failed on a corrupt packet.
+    // This check must happen BEFORE the samplesRead == 0 check because the error can
+    // occur after some samples were already decoded in the same readSamples() call,
+    // meaning samplesRead > 0 while the decoder is nonetheless unrecoverable.
+    // Example: "Invalid PCM packet" from a radio stream sets AudioDecoder::m_decodeError
+    // even when partial samples were returned.
+    // Mirror the normal EOF path exactly (see m_silenceCount > 5 block below):
+    // set m_state = STOPPED first, then call m_trackEndCallback(). This ensures
+    // the UPnP controller sees the correct state before the callback fires,
+    // which is what Roon needs to transition from STOPPED to ready-to-play.
+    if (m_currentDecoder && m_currentDecoder->hasDecodeError()) {
+        std::cerr << "[AudioEngine] Fatal decoder error (corrupt packet), "
+                  << "triggering clean stop" << std::endl;
+        m_silenceCount = 0;
+        m_isDraining = false;
+        m_state = State::STOPPED;
+        if (m_trackEndCallback) {
+            m_trackEndCallback();
+        }
+        return false;
     }
 
     // Check for actual end of data (no more samples can be read)
