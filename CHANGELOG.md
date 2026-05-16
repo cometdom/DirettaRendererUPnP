@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.4.5] - 2026-05-17
+
+### Fixed
+- **Renderer zombie state on corrupt PCM packet from radio stream**: A corrupt packet mid-stream caused `avcodec_receive_frame()` to return an error after some samples had already been decoded in the same `readSamples()` call. Because the error check was guarded by `samplesRead == 0`, it was silently skipped, leaving the decoder flagged as failed while the renderer kept running — producing silence and ignoring all subsequent UPnP commands. The fix moves the decode-error check before the `samplesRead == 0` guard so it fires regardless of partial reads. On detection, the preload thread is joined, next-track state (`m_nextDecoder`, `m_nextURI`, `m_nextMetadata`, `m_formatChangePending`) is cleared, and `m_state` is set to `STOPPED` before firing `m_trackEndCallback()` — matching the normal EOF teardown path exactly and ensuring the UPnP controller (including Roon) sees the correct state before transitioning. (PR #1)
+
+---
+
 ## [2.4.4] - 2026-05-16
 
 ### Fixed
