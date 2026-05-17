@@ -19,7 +19,7 @@
 
 **Clean shutdown on corrupt PCM packet from radio stream.**
 
-- **Fixed renderer zombie state on corrupt PCM packet** — a corrupt packet mid-stream caused the decode error to be silently skipped when some samples had already been decoded, leaving the renderer producing silence and ignoring all UPnP commands. The fix detects the error regardless of partial reads, clears all next-track state, and triggers a clean stop matching the normal EOF path.
+- **Fixed renderer zombie state on corrupt PCM packet** (PR #72 by hoorna/Alfred) — a corrupt packet mid-stream caused the decode error to be silently skipped when some samples had already been decoded, leaving the renderer producing silence and ignoring all UPnP commands. The fix detects the error regardless of partial reads, clears all next-track state, and triggers a clean stop using the same state-then-callback ordering as the normal EOF path.
 
 See [CHANGELOG.md](CHANGELOG.md) for details.
 
