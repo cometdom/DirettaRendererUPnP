@@ -117,6 +117,12 @@ public:
     bool isEOF() const { return m_eof; }
 
     /**
+     * @brief True if avcodec_receive_frame() failed on a corrupt packet (distinct from EOF).
+     * @return true if a fatal decode error was detected
+     */
+    bool hasDecodeError() const { return m_decodeError; }
+
+    /**
      * @brief Seek to a specific position in the audio file
      * @param seconds Position in seconds
      * @return true if successful, false otherwise
@@ -130,6 +136,7 @@ private:
     int m_audioStreamIndex;
     TrackInfo m_trackInfo;
     bool m_eof;
+    bool m_decodeError = false;  // Set on avcodec_receive_frame() failure (not EAGAIN/EOF)
 
     // DSD Native Mode
     bool m_rawDSD;           // True if reading raw DSD packets (no decoding)
