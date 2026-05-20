@@ -17,8 +17,9 @@
 
 ## What's New in v2.4.5
 
-**Clean shutdown on corrupt PCM packet from radio stream.**
+**AAC/MP3 radio on 24-bit DACs — second fix, and clean shutdown on corrupt PCM packets.**
 
+- **Fixed lossy radio (AAC/MP3) white noise on 24-bit-only DACs — S24 alignment** (companion to v2.4.4, reported by Laurent for AAC web radio on a TEAC UD-701N via JPLAY iOS). v2.4.4 fixed the sink-negotiation side (DRUP correctly asks for 24-bit) but the S24 *alignment hint* was still being left as `Unknown` for lossy codecs, so the ring buffer auto-detected on first push and could pick the wrong alignment, producing white noise. Lossy codecs are now explicitly marked MSB-aligned (the resampler always outputs S32 with data in the upper 24 bits), using the same `AV_CODEC_PROP_LOSSY` check as the v2.4.4 cap.
 - **Fixed renderer zombie state on corrupt PCM packet** (PR #72 by hoorna/Alfred) — a corrupt packet mid-stream caused the decode error to be silently skipped when some samples had already been decoded, leaving the renderer producing silence and ignoring all UPnP commands. The fix detects the error regardless of partial reads, clears all next-track state, and triggers a clean stop using the same state-then-callback ordering as the normal EOF path.
 
 See [CHANGELOG.md](CHANGELOG.md) for details.
@@ -1087,4 +1088,4 @@ This software is provided "as is" without warranty. While designed for high-qual
 
 **Enjoy bit-perfect, low-latency audio streaming!**
 
-*Last updated: 2026-05-17 (v2.4.5)*
+*Last updated: 2026-05-20 (v2.4.5)*

@@ -730,6 +730,20 @@ bool AudioDecoder::open(const std::string& url) {
             m_trackInfo.s24Alignment = TrackInfo::S24Alignment::MsbAligned;
             DEBUG_LOG("[AudioDecoder] S24 hint: MSB-aligned (S32 format)");
         }
+        // Lossy codecs (AAC/MP3/Vorbis/Opus/AC-3/WMA), capped to 24-bit by the
+        // AV_CODEC_PROP_LOSSY block above, decode as float (FLT/FLTP) but the
+        // resampler converts that to AV_SAMPLE_FMT_S32 — so the 24-bit data
+        // sits in the upper 24 bits of S32, MSB-aligned. Without this hint the
+        // ring buffer auto-detects on first push and can pick LsbAligned on
+        // dynamic/silent content, producing white noise on 24-bit-only DACs
+        // (companion to the v2.4.4 sink-negotiation cap; reported by Laurent
+        // for France Musique AAC on TEAC UD-701N via JPLAY iOS).
+        else if (codecDesc &&
+                 (codecDesc->props & AV_CODEC_PROP_LOSSY) &&
+                 !(codecDesc->props & AV_CODEC_PROP_LOSSLESS)) {
+            m_trackInfo.s24Alignment = TrackInfo::S24Alignment::MsbAligned;
+            DEBUG_LOG("[AudioDecoder] S24 hint: MSB-aligned (lossy codec via S32 resampler)");
+        }
     }
 
     DEBUG_LOG("[AudioDecoder] PCM: " << m_trackInfo.codec

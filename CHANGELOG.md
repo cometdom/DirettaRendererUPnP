@@ -1,8 +1,9 @@
 # Changelog
 
-## [2.4.5] - 2026-05-17
+## [2.4.5] - 2026-05-20
 
 ### Fixed
+- **Lossy radio (AAC/MP3) white noise on 24-bit-limited DACs — S24 alignment** (companion to the v2.4.4 sink cap, reported by Laurent for France Musique AAC via JPLAY iOS on a TEAC UD-701N): the v2.4.4 cap fixed the sink negotiation (DRUP correctly asks for 24-bit) but the `s24Alignment` hint was still left as `Unknown` for lossy codecs — their decoder output is `AV_SAMPLE_FMT_FLTP` (float), which matches none of the three pre-existing branches (`PCM_S24LE/BE`, `FLAC/ALAC`, `sample_fmt == S32/S32P`). With the hint missing, `DirettaRingBuffer` had to auto-detect alignment on the first push and could pick `LsbAligned` on dynamic/silent content, producing white noise on 24-bit-only DACs. The resampler always converts a 24-bit lossy stream to `AV_SAMPLE_FMT_S32` (data in the upper 24 bits = MSB-aligned), so a 4th branch now marks such codecs as `MsbAligned` explicitly, using the same `AV_CODEC_PROP_LOSSY` codec-descriptor check as the v2.4.4 cap.
 - **Renderer zombie state on corrupt PCM packet from radio stream**: A corrupt packet mid-stream caused `avcodec_receive_frame()` to return an error after some samples had already been decoded in the same `readSamples()` call. Because the error check was guarded by `samplesRead == 0`, it was silently skipped, leaving the decoder flagged as failed while the renderer kept running — producing silence and ignoring all subsequent UPnP commands. The fix moves the decode-error check before the `samplesRead == 0` guard so it fires regardless of partial reads. On detection, the preload thread is joined, next-track state (`m_nextDecoder`, `m_nextURI`, `m_nextMetadata`, `m_formatChangePending`) is cleared, and `m_state` is set to `STOPPED` before firing `m_trackEndCallback()` — mirroring the normal EOF teardown's state-then-callback ordering (intentionally without the end-of-track drain delay, since a corrupt packet is not a clean end), so the UPnP controller (including Roon) sees the correct state before transitioning. (PR #72 by hoorna/Alfred)
 
 ---
