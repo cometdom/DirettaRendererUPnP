@@ -23,8 +23,15 @@ SyslogIdentifier=diretta-renderer
 # --- Capabilities ---
 # CAP_NET_RAW/CAP_NET_ADMIN: needed for Diretta raw sockets
 # CAP_SYS_NICE: needed for real-time thread priority (SCHED_FIFO)
-AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN CAP_SYS_NICE
-CapabilityBoundingSet=CAP_NET_RAW CAP_NET_ADMIN CAP_SYS_NICE
+# CAP_IPC_LOCK: needed for mlockall(MCL_CURRENT|MCL_FUTURE) at startup
+AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN CAP_SYS_NICE CAP_IPC_LOCK
+CapabilityBoundingSet=CAP_NET_RAW CAP_NET_ADMIN CAP_SYS_NICE CAP_IPC_LOCK
+
+# --- Resource limits ---
+# Unlimited memory locking so mlockall() can pin all current + future
+# process pages in RAM (no swap / no page-cache eviction / no page faults
+# on the audio path). Pairs with CAP_IPC_LOCK above.
+LimitMEMLOCK=infinity
 
 # --- Filesystem isolation ---
 ProtectSystem=strict

@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.5.0] - 2026-05-23
+
+### Added
+- **`mlockall` at startup**: DRUP now calls `mlockall(MCL_CURRENT | MCL_FUTURE)` early in `main()`, just after the CPU-affinity validation block and before the main thread is pinned / any worker is spawned. All of the process's pages — code, heap, stack, and every page allocated thereafter — are locked into RAM for the lifetime of the binary. No page of DRUP can be swapped out, evicted from the page cache, or trigger a major/minor page fault that would otherwise stall the audio thread despite SCHED_FIFO + CPU pinning + isolcpus. This is the same memory-locking discipline JACK and PipeWire perform in RT mode, and it closes the last non-deterministic source of stalls (memory pressure / cache reclaim) for a CONFIG_PREEMPT_RT + isolated-CPU host. On `EPERM` (e.g. CLI run without privileges), a `LOG_WARN` is emitted and the binary continues; no behavioural change otherwise. The "Memory locked in RAM (mlockall MCL_CURRENT|MCL_FUTURE)" line is visible in the journal on every successful startup. RSS becomes a hard floor for the process — on this binary that's a few MiB and entirely negligible on any host running DRUP.
+
+### Changed
+- **`systemd/diretta-renderer.service`**: added `CAP_IPC_LOCK` to both `AmbientCapabilities` and `CapabilityBoundingSet`, and added `LimitMEMLOCK=infinity`. Without these, `mlockall` would fail with `EPERM` even though the unit runs as root — `CapabilityBoundingSet` strips any capability not listed (the user-supplied root identity does not grant capabilities that are bounded out), and `LimitMEMLOCK` is checked before `CAP_IPC_LOCK` allows it to be ignored. Comment block reorganised to explain each capability and the new resource-limit section. New installs (and any user copying `systemd/diretta-renderer.service` to `/etc/systemd/system/` over an existing unit) will pick this up automatically; users running an older locally-modified unit need to merge in these lines and `systemctl daemon-reload`.
+
 ## [2.4.5] - 2026-05-20
 
 ### Fixed

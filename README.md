@@ -1,4 +1,4 @@
-# Diretta UPnP Renderer v2.4.5
+# Diretta UPnP Renderer v2.5.0
 
 **The world's first native UPnP/DLNA renderer with Diretta protocol support - Low-Latency Edition**
 
@@ -8,19 +8,18 @@
 
 ---
 
-![Version](https://img.shields.io/badge/version-2.4.5-blue.svg)
+![Version](https://img.shields.io/badge/version-2.5.0-blue.svg)
 ![Low Latency](https://img.shields.io/badge/Latency-Low-green.svg)
 ![SDK](https://img.shields.io/badge/SDK-DIRETTA::Sync-orange.svg)
 ![Audirvana](https://img.shields.io/badge/Audirvana-Compatible-green.svg)
 
 ---
 
-## What's New in v2.4.5
+## What's New in v2.5.0
 
-**AAC/MP3 radio on 24-bit DACs — second fix, and clean shutdown on corrupt PCM packets.**
+**`mlockall` at startup — the last non-deterministic stall source closed.**
 
-- **Fixed lossy radio (AAC/MP3) white noise on 24-bit-only DACs — S24 alignment** (companion to v2.4.4, reported by Laurent for AAC web radio on a TEAC UD-701N via JPLAY iOS). v2.4.4 fixed the sink-negotiation side (DRUP correctly asks for 24-bit) but the S24 *alignment hint* was still being left as `Unknown` for lossy codecs, so the ring buffer auto-detected on first push and could pick the wrong alignment, producing white noise. Lossy codecs are now explicitly marked MSB-aligned (the resampler always outputs S32 with data in the upper 24 bits), using the same `AV_CODEC_PROP_LOSSY` check as the v2.4.4 cap.
-- **Fixed renderer zombie state on corrupt PCM packet** (PR #72 by hoorna/Alfred) — a corrupt packet mid-stream caused the decode error to be silently skipped when some samples had already been decoded, leaving the renderer producing silence and ignoring all UPnP commands. The fix detects the error regardless of partial reads, clears all next-track state, and triggers a clean stop using the same state-then-callback ordering as the normal EOF path.
+- **Memory locked in RAM** (`mlockall(MCL_CURRENT | MCL_FUTURE)`): early in `main()`, just before any thread is created, all of the renderer's pages — code, heap, stack, and every page allocated thereafter — are pinned into RAM for the lifetime of the binary. No page of DRUP can be swapped out, evicted from the page cache, or trigger a major/minor page fault that would otherwise stall the audio thread despite SCHED_FIFO + CPU pinning + isolcpus. Same memory-locking discipline JACK and PipeWire perform in RT mode, and the last ingredient closing the gap between the userspace audio path and a fully deterministic CONFIG_PREEMPT_RT + isolated-CPU host. Permissions: `CAP_IPC_LOCK` is now in the unit's `AmbientCapabilities` + `CapabilityBoundingSet`, and `LimitMEMLOCK=infinity` is set — both ship with the v2.5.0 service file. On `EPERM` (e.g. CLI run without privileges) a `LOG_WARN` is emitted and the binary continues; no behavioural change otherwise. The "Memory locked in RAM (mlockall MCL_CURRENT|MCL_FUTURE)" line is visible in the journal on every successful startup. RSS becomes a hard floor for the process — on this binary that's a few MiB, entirely negligible on any host running DRUP.
 
 See [CHANGELOG.md](CHANGELOG.md) for details.
 
@@ -28,6 +27,7 @@ See [CHANGELOG.md](CHANGELOG.md) for details.
 
 | Version | Highlights |
 |---------|-----------|
+| **v2.4.5** | Lossy radio (AAC/MP3) S24 alignment fix on 24-bit-only DACs, zombie-state cleanup on corrupt PCM packets (hoorna/Alfred) |
 | **v2.4.3** | FFmpeg 8 minimal build: drop `--enable-small`, add `--enable-lto` (Issue #70, sheviks) |
 | **v2.4.2** | Three-tier CPU affinity (`--cpu-decode`, Daniel/Koala887), `ProtectKernelTunables` IRQ-affinity fix, install.sh stop-before-replace |
 | **v2.4.1** | Minimal-flavor distribution for downstream distros, 2.5 GbE option, web UI fixes, README enrichment |
@@ -1088,4 +1088,4 @@ This software is provided "as is" without warranty. While designed for high-qual
 
 **Enjoy bit-perfect, low-latency audio streaming!**
 
-*Last updated: 2026-05-20 (v2.4.5)*
+*Last updated: 2026-05-23 (v2.5.0)*

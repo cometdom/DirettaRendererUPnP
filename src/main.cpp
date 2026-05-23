@@ -15,11 +15,14 @@
 #include <iomanip>
 #include <pthread.h>
 #include <sched.h>
+#include <sys/mman.h>
 #include <vector>
 #include <sstream>
 #include <string>
+#include <cerrno>
+#include <cstring>
 
-#define RENDERER_VERSION "2.4.5"
+#define RENDERER_VERSION "2.5.0"
 #define RENDERER_BUILD_DATE __DATE__
 #define RENDERER_BUILD_TIME __TIME__
 
@@ -437,6 +440,17 @@ int main(int argc, char* argv[]) {
             }
         }
         skip_warn3:;
+    }
+
+    // Lock all process memory in RAM (current + future allocations) so no
+    // page fault can ever interrupt the audio thread. Standard for RT audio
+    // (JACK, PipeWire). Requires CAP_IPC_LOCK (running as root suffices) and
+    // LimitMEMLOCK=infinity in the systemd unit (see systemd/diretta-renderer.service).
+    if (mlockall(MCL_CURRENT | MCL_FUTURE) != 0) {
+        LOG_WARN("mlockall failed (" << std::strerror(errno) << ") — running "
+                 "without memory locking; expect possible page-fault jitter");
+    } else {
+        LOG_INFO("Memory locked in RAM (mlockall MCL_CURRENT|MCL_FUTURE)");
     }
 
     // Pin main thread to cpuOther core(s) (keeps it off the audio core)
