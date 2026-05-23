@@ -738,6 +738,19 @@ echo performance | sudo tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governo
 sudo setcap cap_sys_nice+ep ./bin/DirettaRendererUPnP
 ```
 
+### Memory Locking (mlockall)
+
+As of **v2.5.0**, the binary calls `mlockall(MCL_CURRENT | MCL_FUTURE)` at startup so no page of the process can be swapped out, evicted from the page cache, or page-fault on the audio path. Same memory-locking discipline JACK and PipeWire use in RT mode. On success the journal shows `Memory locked in RAM (mlockall MCL_CURRENT|MCL_FUTURE)`.
+
+**Running as root** (the default for the shipped systemd unit): works out of the box — root has `CAP_IPC_LOCK`, which makes `RLIMIT_MEMLOCK` irrelevant.
+
+**Other deployments — non-root user, custom init system, or restricted launcher** (downstream packagers please note): grant `CAP_IPC_LOCK` and raise the memory-lock limit.
+
+- **systemd** (e.g. AudioLinux, generic distros): set `LimitMEMLOCK=infinity` and add `CAP_IPC_LOCK` to `AmbientCapabilities` (and to `CapabilityBoundingSet` if you restrict the bounding set). The unit shipped with this repo does both already.
+- **OpenRC** (e.g. GentooPlayer): set `rc_ulimit="-l unlimited"` for the memory-lock limit; for the capability, either run as root, `setcap cap_ipc_lock+ep ./bin/DirettaRendererUPnP`, or `start-stop-daemon --capabilities CAP_IPC_LOCK ...`.
+
+On `EPERM` (e.g. CLI run as an unprivileged user without setcap), the binary emits a `LOG_WARN` and continues with no behavioural regression versus earlier releases — only the memory-locking benefit is lost.
+
 ### Network Tuning
 ```bash
 # Increase network buffers
