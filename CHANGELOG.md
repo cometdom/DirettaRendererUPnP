@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.5.1] - 2026-05-24
+
+### Fixed
+- **Permanent hang on live radio stream stall via Roon proxy** (reported by hoorna/Alfred for Mother Earth Radio Classic via Roon): When Roon serves an internet radio station via its local HTTP proxy, the TCP connection stays alive (keepalives) even when the upstream CDN or station stops sending audio. `av_read_frame()` blocks indefinitely on such a connection — the existing 30-second FFmpeg I/O timeout does not fire because TCP keepalives prevent a socket-level timeout. The ring buffer empties, `getNewStream()` enters rebuffering mode, and the renderer never recovers: Diretta Link LEDs keep blinking, the Roon playing-time counter runs on, and no UPnP command has any effect. The fix registers an `AVIOInterruptCB` on the `AVFormatContext` before `avformat_open_input()`. In each `readSamples()` call, a per-call deadline (`now + 20 s`) is written to an atomic before `av_read_frame()` and cleared to zero after it returns. The callback checks the deadline on every FFmpeg I/O poll; when `now >= deadline` it returns 1, causing `av_read_frame()` to abort with `AVERROR_EXIT`. A new `m_readTimeout` flag (analogous to v2.4.5's `m_decodeError`) is set, and `process()` detects it before the `samplesRead == 0` guard and triggers an immediate clean stop: preload thread joined, next-track state cleared, `m_state = STOPPED`, `m_trackEndCallback()` fired. The UPnP controller (Roon) receives the correct STOPPED state, the playing-time counter freezes, and the Diretta target is fully released — identical observable behaviour to the v2.4.5 corrupt-packet fix. The interrupt callback is zero-cost during normal playback (deadline is 0, first branch returns immediately). The `triggerFatalStop` lambda in `process()` is shared between the decode-error and read-timeout cases, eliminating the duplicate 14-line teardown.
+
 ## [2.5.0] - 2026-05-23
 
 ### Added
