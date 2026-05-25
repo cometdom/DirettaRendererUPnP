@@ -1,4 +1,4 @@
-# Diretta UPnP Renderer v2.5.0
+# Diretta UPnP Renderer v2.5.1
 
 **The world's first native UPnP/DLNA renderer with Diretta protocol support - Low-Latency Edition**
 
@@ -8,18 +8,18 @@
 
 ---
 
-![Version](https://img.shields.io/badge/version-2.5.0-blue.svg)
+![Version](https://img.shields.io/badge/version-2.5.1-blue.svg)
 ![Low Latency](https://img.shields.io/badge/Latency-Low-green.svg)
 ![SDK](https://img.shields.io/badge/SDK-DIRETTA::Sync-orange.svg)
 ![Audirvana](https://img.shields.io/badge/Audirvana-Compatible-green.svg)
 
 ---
 
-## What's New in v2.5.0
+## What's New in v2.5.1
 
-**`mlockall` at startup — the last non-deterministic stall source closed.**
+**Clean stop on live radio stream stall via local proxy.**
 
-- **Memory locked in RAM** (`mlockall(MCL_CURRENT | MCL_FUTURE)`): early in `main()`, just before any thread is created, all of the renderer's pages — code, heap, stack, and every page allocated thereafter — are pinned into RAM for the lifetime of the binary. No page of DRUP can be swapped out, evicted from the page cache, or trigger a major/minor page fault that would otherwise stall the audio thread despite SCHED_FIFO + CPU pinning + isolcpus. Same memory-locking discipline JACK and PipeWire perform in RT mode, and the last ingredient closing the gap between the userspace audio path and a fully deterministic CONFIG_PREEMPT_RT + isolated-CPU host. Permissions: `CAP_IPC_LOCK` is now in the unit's `AmbientCapabilities` + `CapabilityBoundingSet`, and `LimitMEMLOCK=infinity` is set — both ship with the v2.5.0 service file. On `EPERM` (e.g. CLI run without privileges) a `LOG_WARN` is emitted and the binary continues; no behavioural change otherwise. The "Memory locked in RAM (mlockall MCL_CURRENT|MCL_FUTURE)" line is visible in the journal on every successful startup. RSS becomes a hard floor for the process — on this binary that's a few MiB, entirely negligible on any host running DRUP.
+- **Fixed permanent hang on live radio stream stall** (PR #73 by hoorna/Alfred) — when Roon proxies an internet radio station via its local HTTP proxy and the upstream stops sending audio, the TCP connection stays alive (keepalives) so `av_read_frame()` blocked indefinitely. The fix registers an `AVIOInterruptCB` on the `AVFormatContext`: each `av_read_frame()` call now writes a `now + 20 s` deadline to an atomic before the call and clears it after; if the deadline expires the callback returns 1 and FFmpeg aborts the call with `AVERROR_EXIT`. A new `m_readTimeout` flag (analogous to v2.4.5's `m_decodeError`) is set and `process()` triggers an immediate clean stop via the same teardown ordering as the v2.4.5 corrupt-packet fix. Zero-cost during normal playback (deadline = 0 in the callback's hot branch). A `triggerFatalStop` lambda factors the 14-line teardown shared by both fatal conditions.
 
 See [CHANGELOG.md](CHANGELOG.md) for details.
 
@@ -27,6 +27,7 @@ See [CHANGELOG.md](CHANGELOG.md) for details.
 
 | Version | Highlights |
 |---------|-----------|
+| **v2.5.0** | `mlockall(MCL_CURRENT \| MCL_FUTURE)` at startup — closes the last non-deterministic stall source (page faults from swap, cache eviction, zero-fill on first write). Same discipline as JACK / PipeWire in RT mode. |
 | **v2.4.5** | Lossy radio (AAC/MP3) S24 alignment fix on 24-bit-only DACs, zombie-state cleanup on corrupt PCM packets (hoorna/Alfred) |
 | **v2.4.3** | FFmpeg 8 minimal build: drop `--enable-small`, add `--enable-lto` (Issue #70, sheviks) |
 | **v2.4.2** | Three-tier CPU affinity (`--cpu-decode`, Daniel/Koala887), `ProtectKernelTunables` IRQ-affinity fix, install.sh stop-before-replace |
@@ -1101,4 +1102,4 @@ This software is provided "as is" without warranty. While designed for high-qual
 
 **Enjoy bit-perfect, low-latency audio streaming!**
 
-*Last updated: 2026-05-23 (v2.5.0)*
+*Last updated: 2026-05-24 (v2.5.1)*
