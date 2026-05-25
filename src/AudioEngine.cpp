@@ -7,6 +7,7 @@
 #include "DirettaRingBuffer.h"  // For kBitReverseLUT
 #include <iostream>
 #include <thread>
+#include <chrono>
 #include <cstring>
 #include <algorithm>
 #include "memcpyfast_audio.h"
@@ -93,9 +94,19 @@ AudioDecoder::~AudioDecoder() {
     close();
 }
 
+int AudioDecoder::ffmpegReadInterruptCb(void* opaque) {
+    auto* self = static_cast<AudioDecoder*>(opaque);
+    int64_t deadline = self->m_readDeadlineNs.load(std::memory_order_relaxed);
+    if (deadline == 0) return 0;
+    int64_t now = std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count();
+    return (now >= deadline) ? 1 : 0;
+}
+
 bool AudioDecoder::open(const std::string& url) {
     std::cout << "[AudioDecoder] Opening: " << url.substr(0, 80) << "..." << std::endl;
     m_decodeError = false;
+    m_readTimeout = false;
 
     // Open input file
     m_formatContext = avformat_alloc_context();
@@ -103,6 +114,10 @@ bool AudioDecoder::open(const std::string& url) {
         std::cerr << "[AudioDecoder] Failed to allocate format context" << std::endl;
         return false;
     }
+    // Register interrupt callback so av_read_frame() can be aborted externally
+    // (e.g., when a live stream via Roon proxy stalls without closing the TCP connection)
+    m_formatContext->interrupt_callback.callback = ffmpegReadInterruptCb;
+    m_formatContext->interrupt_callback.opaque = this;
 
     // ═══════════════════════════════════════════════════════════
     // DFF/DSDIFF: Use custom parser (FFmpeg has no DSDIFF demuxer)
@@ -1021,7 +1036,7 @@ size_t AudioDecoder::readSamples(AudioBuffer& buffer, size_t numSamples,
     // ══════════════════════════════════════════════════════════════
 
     if (m_rawDSD) {
-        if (m_eof) {
+        if (m_eof || m_readTimeout) {
             return 0;
         }
 
@@ -1165,8 +1180,14 @@ size_t AudioDecoder::readSamples(AudioBuffer& buffer, size_t numSamples,
 
             // Read packets until we have enough data
             // DSF layout: each packet is [blockSize L][blockSize R]
-            while (leftOffset < bytesPerChannelNeeded && !m_eof) {
+            while (leftOffset < bytesPerChannelNeeded && !m_eof && !m_readTimeout) {
+                // Deadline: abort if av_read_frame() blocks > 20s (live stream proxy stall)
+                m_readDeadlineNs.store(
+                    std::chrono::duration_cast<std::chrono::nanoseconds>(
+                        (std::chrono::steady_clock::now() + std::chrono::seconds(READ_STALL_TIMEOUT_S)).time_since_epoch()
+                    ).count(), std::memory_order_relaxed);
                 int ret = av_read_frame(m_formatContext, m_packet);
+                m_readDeadlineNs.store(0, std::memory_order_relaxed);
                 if (ret < 0) {
                     if (ret == AVERROR_EOF) {
                         m_eof = true;
@@ -1178,8 +1199,8 @@ size_t AudioDecoder::readSamples(AudioBuffer& buffer, size_t numSamples,
                         std::cerr << "[AudioDecoder] DSD: Connection reset by server" << std::endl;
                         m_eof = true;
                     } else if (ret == AVERROR_EXIT) {
-                        std::cerr << "[AudioDecoder] DSD: Exit requested" << std::endl;
-                        m_eof = true;
+                        std::cerr << "[AudioDecoder] DSD: Read timeout — stream stalled (live proxy?)" << std::endl;
+                        m_readTimeout = true;
                     } else {
                         char errbuf[AV_ERROR_MAX_STRING_SIZE];
                         av_strerror(ret, errbuf, sizeof(errbuf));
@@ -1265,7 +1286,7 @@ size_t AudioDecoder::readSamples(AudioBuffer& buffer, size_t numSamples,
     // PCM MODE - Normal decoding with resampling
     // ══════════════════════════════════════════════════════════════
 
-    if (!m_codecContext || m_eof) {
+    if (!m_codecContext || m_eof || m_readTimeout) {
         return 0;
     }
 
@@ -1327,9 +1348,15 @@ size_t AudioDecoder::readSamples(AudioBuffer& buffer, size_t numSamples,
         return totalSamplesRead; // Retourner ce qu'on a déjà lu du buffer
     }
 
-    while (totalSamplesRead < numSamples && !m_eof) {
-        // Read packet
+    while (totalSamplesRead < numSamples && !m_eof && !m_readTimeout) {
+        // Read packet — set 20s deadline so av_read_frame() cannot block indefinitely
+        // (protects against live streams via proxy keeping TCP alive with no audio data)
+        m_readDeadlineNs.store(
+            std::chrono::duration_cast<std::chrono::nanoseconds>(
+                (std::chrono::steady_clock::now() + std::chrono::seconds(READ_STALL_TIMEOUT_S)).time_since_epoch()
+            ).count(), std::memory_order_relaxed);
         int ret = av_read_frame(m_formatContext, m_packet);
+        m_readDeadlineNs.store(0, std::memory_order_relaxed);
 
         if (ret < 0) {
             // Log position when EOF occurs
@@ -1351,8 +1378,8 @@ size_t AudioDecoder::readSamples(AudioBuffer& buffer, size_t numSamples,
                 std::cerr << "[AudioDecoder] Connection reset by server" << std::endl;
                 m_eof = true;
             } else if (ret == AVERROR_EXIT) {
-                std::cerr << "[AudioDecoder] Exit requested" << std::endl;
-                m_eof = true;
+                std::cerr << "[AudioDecoder] Read timeout — stream stalled (live proxy?)" << std::endl;
+                m_readTimeout = true;
             } else if (ret == AVERROR(EIO) && bytesRead > 0) {
                 // HTTP stream closed mid-chunk without Content-Length.
                 // FFmpeg reports "Stream ends prematurely" because total size
@@ -2189,9 +2216,11 @@ bool AudioEngine::process(size_t samplesNeeded) {
         m_samplesPlayed += samplesRead;
     }
 
-    // Check before samplesRead == 0: error can occur after a partial read (samplesRead > 0).
-    if (m_currentDecoder && m_currentDecoder->hasDecodeError()) {
-        std::cerr << "[AudioEngine] Fatal decoder error (corrupt packet), triggering clean stop" << std::endl;
+    // Fatal decoder conditions checked before samplesRead == 0 because an error
+    // can occur after a partial read (samplesRead > 0). Both trigger an immediate
+    // clean stop without drain delay — mirrors v2.4.5 teardown ordering.
+    auto triggerFatalStop = [&](const char* reason) {
+        std::cerr << "[AudioEngine] " << reason << std::endl;
         m_silenceCount = 0;
         m_isDraining = false;
         if (m_preloadRunning.load(std::memory_order_acquire)) {
@@ -2208,6 +2237,16 @@ bool AudioEngine::process(size_t samplesNeeded) {
         if (m_trackEndCallback) {
             m_trackEndCallback();
         }
+    };
+
+    if (m_currentDecoder && m_currentDecoder->hasDecodeError()) {
+        triggerFatalStop("Fatal decoder error (corrupt packet), triggering clean stop");
+        return false;
+    }
+
+    // Live stream stall: av_read_frame() hit the 20s interrupt deadline (v2.5.1).
+    if (m_currentDecoder && m_currentDecoder->hasReadTimeout()) {
+        triggerFatalStop("Stream read timeout (live proxy stall), triggering clean stop");
         return false;
     }
 
