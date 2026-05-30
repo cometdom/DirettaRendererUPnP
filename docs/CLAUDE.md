@@ -78,7 +78,7 @@ DirettaRendererUPnP-L is the **low-latency optimized** fork of DirettaRendererUP
 
 ## Diretta SDK Reference
 
-**SDK Location:** `../DirettaHostSDK_147_19/` (v1.47.19)
+**SDK Location:** auto-detected by the Makefile from `$HOME / . / .. / /opt` (latest `DirettaHostSDK_<version>/` directory wins, via `sort -V | tail -1`). Override with `DIRETTA_SDK_PATH=...`. Current SDK at the time of writing: v1.49.x.
 
 ### Key SDK Headers
 
@@ -354,7 +354,7 @@ sudo ./bin/DirettaRendererUPnP --target 1 --verbose
 
 ## SDK Library Variants
 
-Located in `../DirettaHostSDK_147_19/lib/`:
+Located in `<SDK>/lib/` (SDK path auto-detected, see above):
 
 | Pattern | Description |
 |---------|-------------|
@@ -367,6 +367,7 @@ Located in `../DirettaHostSDK_147_19/lib/`:
 | `riscv64-linux-15` | RISC-V 64-bit |
 | `*-musl*` | musl libc variants |
 | `*-nolog` | Logging disabled |
+| `*-win` (`x64-win`, `w32-win`, `arm64-win`) | Windows binaries — **present in the SDK but of unclear official status**: the SDK's own `memo_host.txt` explicitly states *« It only runs on Linux. It does not run on other operating systems. »* Ask Yu Harada before relying on the Windows libs for a real port. |
 
 ## Dependencies
 
@@ -483,7 +484,7 @@ sudo apt install build-essential libavformat-dev libavcodec-dev libavutil-dev li
 ## Key Constraints
 
 1. **No commercial use** - Diretta SDK is personal use only
-2. **Linux only** - No Windows/macOS support
+2. **Linux first-class** — DRUP / slim2Diretta currently only build and run on Linux. The SDK *ships* Windows libraries (`x64-win`, `w32-win`, `arm64-win`, see SDK Library Variants table) but the SDK's own `memo_host.txt` explicitly states *« It only runs on Linux »* — so their official status is unclear. A native Windows port of DRUP/S2D is technically feasible (same C++ API, FFmpeg/libupnp are portable, AVX2 intrinsics portable, `pthread`/`SCHED_FIFO`/`mlockall`/`systemd` to be replaced with their Windows equivalents — MMCSS, `VirtualLock`, Windows Service) but should be **preceded by clarification with Yu Harada** on whether the Windows libs are supported. macOS is not in scope (no SDK).
 3. **Root required** - Network operations need elevated privileges
 4. **Jumbo frames recommended** - 9000+ MTU for hi-res audio
 
