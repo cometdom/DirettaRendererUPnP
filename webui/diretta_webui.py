@@ -12,6 +12,7 @@ Usage:
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 from html import escape
@@ -74,12 +75,67 @@ def load_current_settings(profile):
     return ShellVarConfig.load(config_path)
 
 
+def _normalize_setting_value(value, rule):
+    """Normalize a setting's value according to a profile-declared rule.
+
+    Supported rules:
+        "comma_list" — strip whitespace around commas and outer whitespace,
+                       so 'a, b , c' becomes 'a,b,c'. Idempotent. Applied
+                       to comma-separated lists (CPU affinity, IRQ
+                       interface lists, etc.) so the saved value is
+                       canonical regardless of what the user typed in the
+                       form. Downstream shell parsers already strip
+                       whitespace defensively (start-renderer.sh trims
+                       with `tr -d ' '`), but a canonical on-disk value
+                       removes a class of cosmetic divergence and avoids
+                       breakage for any future consumer that reads
+                       /etc/default/diretta-renderer without trimming.
+
+    Returns the value unchanged when no rule applies or the value is not a
+    string (checkboxes are bool, numeric inputs may be coerced upstream).
+    """
+    if not isinstance(value, str) or not rule:
+        return value
+    if rule == "comma_list":
+        return re.sub(r'\s*,\s*', ',', value.strip())
+    return value
+
+
+def _profile_normalize_map(profile):
+    """Build {setting_key: normalize_rule} from the profile metadata.
+
+    Walks all groups and settings once; only settings whose JSON
+    declaration carries a "normalize" field end up in the map. Keys
+    without a "normalize" field are omitted and their values pass
+    through save_settings() unchanged.
+    """
+    out = {}
+    for g in profile.get('groups', []):
+        for s in g.get('settings', []):
+            rule = s.get('normalize')
+            if rule:
+                out[s['key']] = rule
+    return out
+
+
 def save_settings(profile, settings):
     """Write settings back to the config file.
 
     For cli_opts profiles with shell_vars groups, CLI opts are saved to the
     config variable and shell vars are saved as separate KEY=VALUE lines.
+
+    Settings whose profile declaration carries a "normalize" rule are
+    canonicalised before any save path picks them up — see
+    _normalize_setting_value() for the supported rules.
     """
+    # Normalize per profile metadata before splitting CLI opts from shell vars.
+    norm_map = _profile_normalize_map(profile)
+    if norm_map:
+        settings = {
+            k: _normalize_setting_value(v, norm_map.get(k))
+            for k, v in settings.items()
+        }
+
     config_path = profile['config_path']
     config_type = profile.get('config_type', 'shell_vars')
 
