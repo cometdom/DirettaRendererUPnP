@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.5.2] - 2026-06-04
+
+### Changed
+- **`install.sh`: `--allowerasing` on FFmpeg `dnf install` and low-RAM warning before LTO compile**. Two small UX improvements; no functional change to the DRUP binary itself. (1) `install_ffmpeg_rpm_fusion` and `install_ffmpeg_system` now pass `--allowerasing` to `dnf install` so dnf can cleanly swap between `ffmpeg-free` / `ffmpeg-free-devel` (Fedora's default packages) and `ffmpeg` / `ffmpeg-devel` (RPM Fusion) when the user re-runs the installer with a different choice — previously the install failed on a "conflicting requests" error that the user had to resolve by hand. (2) A new `check_compile_ram()` helper is invoked at the start of `build_ffmpeg_8_minimal` and `build_ffmpeg_from_source`. The FFmpeg 8 LTO link stage can peak around 4–6 GB; on a 4 GB box without swap the linker was silently OOM-killed and the build ended on a vague error. The helper warns (does not block) when `MemTotal < 8 GB` and prints the exact commands to create / activate / remove a temporary swap file. We don't create one automatically, on purpose — audiophile setups run swap-less by design.
+
+---
+
 ## [2.5.1] - 2026-05-24
 
 ### Fixed

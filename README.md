@@ -1,4 +1,4 @@
-# Diretta UPnP Renderer v2.5.1
+# Diretta UPnP Renderer v2.5.2
 
 **The world's first native UPnP/DLNA renderer with Diretta protocol support - Low-Latency Edition**
 
@@ -8,18 +8,19 @@
 
 ---
 
-![Version](https://img.shields.io/badge/version-2.5.1-blue.svg)
+![Version](https://img.shields.io/badge/version-2.5.2-blue.svg)
 ![Low Latency](https://img.shields.io/badge/Latency-Low-green.svg)
 ![SDK](https://img.shields.io/badge/SDK-DIRETTA::Sync-orange.svg)
 ![Audirvana](https://img.shields.io/badge/Audirvana-Compatible-green.svg)
 
 ---
 
-## What's New in v2.5.1
+## What's New in v2.5.2
 
-**Clean stop on live radio stream stall via local proxy.**
+**Smoother `install.sh` on Fedora.**
 
-- **Fixed permanent hang on live radio stream stall** (PR #73 by hoorna/Alfred) — when Roon proxies an internet radio station via its local HTTP proxy and the upstream stops sending audio, the TCP connection stays alive (keepalives) so `av_read_frame()` blocked indefinitely. The fix registers an `AVIOInterruptCB` on the `AVFormatContext`: each `av_read_frame()` call now writes a `now + 20 s` deadline to an atomic before the call and clears it after; if the deadline expires the callback returns 1 and FFmpeg aborts the call with `AVERROR_EXIT`. A new `m_readTimeout` flag (analogous to v2.4.5's `m_decodeError`) is set and `process()` triggers an immediate clean stop via the same teardown ordering as the v2.4.5 corrupt-packet fix. Zero-cost during normal playback (deadline = 0 in the callback's hot branch). A `triggerFatalStop` lambda factors the 14-line teardown shared by both fatal conditions.
+- **`--allowerasing` on the FFmpeg `dnf install` commands** — Fedora ships `ffmpeg-free` by default; switching to the RPM Fusion `ffmpeg` build (or the reverse) used to fail on a "conflicting requests" error that the user had to resolve by hand before re-running. `dnf` can now retire the conflicting package on its own, making `install.sh` re-runs idempotent across FFmpeg flavours.
+- **Low-RAM warning before the FFmpeg LTO compile** — the link stage can peak around 4–6 GB; on a 4 GB box without swap the linker was silently OOM-killed and the build ended on a vague error. `install.sh` now warns (non-blocking) when total RAM is below 8 GB and prints the exact commands to create and later remove a temporary swap file. No automatic swap creation, on purpose — audiophile setups run swap-less by design.
 
 See [CHANGELOG.md](CHANGELOG.md) for details.
 
@@ -27,6 +28,7 @@ See [CHANGELOG.md](CHANGELOG.md) for details.
 
 | Version | Highlights |
 |---------|-----------|
+| **v2.5.1** | `AVIOInterruptCB` to clean-stop on live radio stream stall via local proxy (PR #73 by hoorna/Alfred) |
 | **v2.5.0** | `mlockall(MCL_CURRENT \| MCL_FUTURE)` at startup — closes the last non-deterministic stall source (page faults from swap, cache eviction, zero-fill on first write). Same discipline as JACK / PipeWire in RT mode. |
 | **v2.4.5** | Lossy radio (AAC/MP3) S24 alignment fix on 24-bit-only DACs, zombie-state cleanup on corrupt PCM packets (hoorna/Alfred) |
 | **v2.4.3** | FFmpeg 8 minimal build: drop `--enable-small`, add `--enable-lto` (Issue #70, sheviks) |
@@ -1102,4 +1104,4 @@ This software is provided "as is" without warranty. While designed for high-qual
 
 **Enjoy bit-perfect, low-latency audio streaming!**
 
-*Last updated: 2026-05-24 (v2.5.1)*
+*Last updated: 2026-06-04 (v2.5.2)*
