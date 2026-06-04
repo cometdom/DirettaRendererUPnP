@@ -331,12 +331,38 @@ install_clang_deps() {
     return 0
 }
 
+# Warn (don't block) if total RAM is low for an LTO FFmpeg build.
+# Background: the link-time optimization pass in FFmpeg 8 can peak around
+# 4–6 GB of RAM. On a 4 GB host with no swap the linker is silently OOM-killed
+# and the build ends with an obscure error. We can't reliably distinguish
+# RAM+swap from "RAM only" in a portable way, so we just warn on low MemTotal
+# and tell the user how to add a temporary swap file. Audiophile setups
+# generally disable swap on purpose, so we don't create one automatically.
+check_compile_ram() {
+    local mem_kb mem_gb
+    mem_kb=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo 2>/dev/null || echo 0)
+    if [ -z "$mem_kb" ] || [ "$mem_kb" -eq 0 ]; then
+        return 0  # can't read, don't warn
+    fi
+    mem_gb=$(( mem_kb / 1024 / 1024 ))
+    if [ "$mem_gb" -lt 8 ]; then
+        print_warning "Low system memory detected: ${mem_gb} GB total."
+        print_warning "Building FFmpeg with LTO can peak at 4–6 GB; the linker may be OOM-killed without swap."
+        print_info    "If the build fails near the link stage, create a temporary 4 GB swap file:"
+        print_info    "  sudo fallocate -l 4G /swapfile && sudo chmod 600 /swapfile"
+        print_info    "  sudo mkswap /swapfile && sudo swapon /swapfile"
+        print_info    "Then re-run the install. After it succeeds:"
+        print_info    "  sudo swapoff /swapfile && sudo rm /swapfile"
+    fi
+}
+
 # Build FFmpeg 8.x with minimal audio-only configuration
 build_ffmpeg_8_minimal() {
     local version="$1"
     local extra_flags="${2:-}"
 
     print_info "Building FFmpeg $version (minimal audio-only)..."
+    check_compile_ram
 
     install_ffmpeg_8_build_deps
 
@@ -395,6 +421,7 @@ build_ffmpeg_from_source() {
     local extra_flags="${2:-}"
 
     print_info "Building FFmpeg $version from source..."
+    check_compile_ram
 
     install_ffmpeg_build_deps
 
@@ -584,8 +611,10 @@ install_ffmpeg_rpm_fusion() {
         "https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm" \
         2>/dev/null || true
 
-    # Install FFmpeg
-    sudo dnf install -y ffmpeg ffmpeg-devel
+    # Install FFmpeg. --allowerasing lets dnf retire conflicting packages
+    # (typically ffmpeg-free / ffmpeg-free-devel from Fedora's default repos)
+    # when switching to the RPM Fusion build.
+    sudo dnf install -y --allowerasing ffmpeg ffmpeg-devel
 
     print_success "RPM Fusion FFmpeg installed"
 }
@@ -595,10 +624,12 @@ install_ffmpeg_system() {
 
     case $OS in
         fedora|rhel|centos)
-            # Try ffmpeg-free first (Fedora repos)
-            if ! sudo dnf install -y ffmpeg-free-devel 2>/dev/null; then
+            # Try ffmpeg-free first (Fedora repos). --allowerasing lets
+            # dnf swap between ffmpeg-free* and ffmpeg* (RPM Fusion) cleanly
+            # when the user re-runs the installer with a different choice.
+            if ! sudo dnf install -y --allowerasing ffmpeg-free-devel 2>/dev/null; then
                 print_warning "ffmpeg-free not available, trying ffmpeg-devel..."
-                sudo dnf install -y ffmpeg-devel 2>/dev/null || {
+                sudo dnf install -y --allowerasing ffmpeg-devel 2>/dev/null || {
                     print_error "No FFmpeg package found in repositories"
                     print_info "Consider enabling RPM Fusion or building from source"
                     return 1
