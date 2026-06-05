@@ -1,4 +1,4 @@
-# Diretta UPnP Renderer v2.5.2
+# Diretta UPnP Renderer v2.5.3
 
 **The world's first native UPnP/DLNA renderer with Diretta protocol support - Low-Latency Edition**
 
@@ -8,19 +8,19 @@
 
 ---
 
-![Version](https://img.shields.io/badge/version-2.5.2-blue.svg)
+![Version](https://img.shields.io/badge/version-2.5.3-blue.svg)
 ![Low Latency](https://img.shields.io/badge/Latency-Low-green.svg)
 ![SDK](https://img.shields.io/badge/SDK-DIRETTA::Sync-orange.svg)
 ![Audirvana](https://img.shields.io/badge/Audirvana-Compatible-green.svg)
 
 ---
 
-## What's New in v2.5.2
+## What's New in v2.5.3
 
-**Smoother `install.sh` on Fedora.**
+**Cleaner web-UI persistence for comma-separated values.**
 
-- **`--allowerasing` on the FFmpeg `dnf install` commands** — Fedora ships `ffmpeg-free` by default; switching to the RPM Fusion `ffmpeg` build (or the reverse) used to fail on a "conflicting requests" error that the user had to resolve by hand before re-running. `dnf` can now retire the conflicting package on its own, making `install.sh` re-runs idempotent across FFmpeg flavours.
-- **Low-RAM warning before the FFmpeg LTO compile** — the link stage can peak around 4–6 GB; on a 4 GB box without swap the linker was silently OOM-killed and the build ended on a vague error. `install.sh` now warns (non-blocking) when total RAM is below 8 GB and prints the exact commands to create and later remove a temporary swap file. No automatic swap creation, on purpose — audiophile setups run swap-less by design.
+- **Whitespace around commas trimmed at save time** for the five known list-like fields (`IRQ_INTERFACE`, `IRQ_CPUS`, `CPU_AUDIO`, `CPU_DECODE`, `CPU_OTHER`). A user typing `eth-diretta, eth-lan` in the web UI now produces `IRQ_INTERFACE="eth-diretta,eth-lan"` on disk instead of the wider `"eth-diretta, eth-lan"`. Functionally identical (the shell wrappers already trim defensively with `tr -d ' '`), but eliminates a class of cosmetic divergence and protects any future consumer of `/etc/default/diretta-renderer` that reads the file without trimming.
+- **Profile-driven via a new `"normalize"` field** in the setting JSON declarations (`"normalize": "comma_list"`). Adding a future comma-list field is one line of metadata; no Python change needed.
 
 See [CHANGELOG.md](CHANGELOG.md) for details.
 
@@ -28,6 +28,7 @@ See [CHANGELOG.md](CHANGELOG.md) for details.
 
 | Version | Highlights |
 |---------|-----------|
+| **v2.5.2** | `install.sh`: `--allowerasing` on FFmpeg `dnf install`, low-RAM warning before the LTO compile |
 | **v2.5.1** | `AVIOInterruptCB` to clean-stop on live radio stream stall via local proxy (PR #73 by hoorna/Alfred) |
 | **v2.5.0** | `mlockall(MCL_CURRENT \| MCL_FUTURE)` at startup — closes the last non-deterministic stall source (page faults from swap, cache eviction, zero-fill on first write). Same discipline as JACK / PipeWire in RT mode. |
 | **v2.4.5** | Lossy radio (AAC/MP3) S24 alignment fix on 24-bit-only DACs, zombie-state cleanup on corrupt PCM packets (hoorna/Alfred) |
@@ -1104,4 +1105,4 @@ This software is provided "as is" without warranty. While designed for high-qual
 
 **Enjoy bit-perfect, low-latency audio streaming!**
 
-*Last updated: 2026-06-04 (v2.5.2)*
+*Last updated: 2026-06-05 (v2.5.3)*

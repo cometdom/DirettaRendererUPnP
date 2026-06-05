@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.5.3] - 2026-06-05
+
+### Fixed
+- **Web UI: comma-separated values are canonicalised at save time** (reported by Dominique while wiring `IRQ_INTERFACE` through the fedora-audiophile-setup stable-naming refactor on 2026-06-02). A user typing `eth-diretta, eth-lan` in the web UI used to persist that literal string — natural for free-text input but cosmetically inconsistent with the documented `enp1s0,enp2s0` form. The shell wrappers (`start-renderer.sh` and the same logic mirrored in `install.sh`) already trim defensively per-element (`tr -d ' '`), so this was not a functional bug; IRQ pinning worked regardless. The fix eliminates the cosmetic divergence on disk and protects any future consumer of `/etc/default/diretta-renderer` that reads the file without trimming. Applied to the five known comma-list fields: `IRQ_INTERFACE`, `IRQ_CPUS`, `CPU_AUDIO`, `CPU_DECODE`, `CPU_OTHER` (full profile); `CPU_AUDIO`, `CPU_DECODE`, `CPU_OTHER` (minimal profile — IRQ tuning belongs to the downstream distro on that flavour). Idempotent: values that are already canonical pass through unchanged, so configs only get rewritten when the user explicitly opens and saves the form. Symmetric fix shipped in slim2Diretta v1.4.2.
+
+### Changed
+- **Profile-driven normalization machinery in the web UI save handler** — setting JSON declarations gain an optional `"normalize"` field. Currently the only supported rule is `comma_list` (`re.sub(r'\s*,\s*', ',', value.strip())`), but the structure is in place for any future per-field input canonicalisation (e.g. lowercase MAC, trim whitespace, normalize boolean strings). Adding a future comma-list field to either profile is one line of JSON; no Python change needed.
+
 ## [2.5.2] - 2026-06-04
 
 ### Changed
