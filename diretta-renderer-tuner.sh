@@ -3,7 +3,7 @@
 # diretta-renderer-tuner.sh
 # CPU isolation and real-time tuning for diretta-renderer.service
 #
-# Auto-detects CPU topology for AMD and Intel processors.
+# Auto-detects CPU topology for AMD, Intel and ARM (aarch64) processors.
 # Supports any number of cores with or without SMT/Hyper-Threading.
 #
 # Features:
@@ -26,9 +26,19 @@ set -euo pipefail
 detect_cpu_topology() {
     echo "INFO: Detecting CPU topology..."
 
-    # Get CPU info
+    # Get CPU info (x86 fields; ARM /proc/cpuinfo has none of these)
     CPU_VENDOR=$(grep -m1 "vendor_id" /proc/cpuinfo | awk '{print $3}')
     CPU_MODEL=$(grep -m1 "model name" /proc/cpuinfo | cut -d: -f2 | sed 's/^ *//')
+    if [[ -z "$CPU_VENDOR" ]]; then
+        # ARM and other non-x86: no vendor_id line. Fall back to the CPU
+        # implementer (e.g. 0x41 = ARM) and the board model from devicetree.
+        CPU_VENDOR=$(grep -m1 "CPU implementer" /proc/cpuinfo | awk '{print $4}')
+        CPU_VENDOR=${CPU_VENDOR:-$(uname -m)}
+    fi
+    if [[ -z "$CPU_MODEL" ]]; then
+        CPU_MODEL=$(tr -d '\0' < /proc/device-tree/model 2>/dev/null)
+        CPU_MODEL=${CPU_MODEL:-unknown}
+    fi
 
     # Total logical CPUs
     TOTAL_CPUS=$(nproc)
@@ -36,8 +46,18 @@ detect_cpu_topology() {
     # Physical cores (unique core ids)
     PHYSICAL_CORES=$(grep "^cpu cores" /proc/cpuinfo | head -1 | awk '{print $4}')
     if [[ -z "$PHYSICAL_CORES" ]]; then
-        # Fallback: count unique physical id + core id combinations
+        # x86 fallback: count unique physical id + core id combinations
         PHYSICAL_CORES=$(cat /proc/cpuinfo | grep -E "^(physical id|core id)" | paste - - | sort -u | wc -l)
+    fi
+    if [[ -z "$PHYSICAL_CORES" || "$PHYSICAL_CORES" -eq 0 ]]; then
+        # ARM fallback: /proc/cpuinfo carries no topology lines, so derive the
+        # physical-core count from sysfs core ids (these parts have no SMT).
+        PHYSICAL_CORES=$(for f in /sys/devices/system/cpu/cpu[0-9]*/topology/core_id; do
+            cat "$f"; done 2>/dev/null | sort -u | wc -l)
+    fi
+    if [[ -z "$PHYSICAL_CORES" || "$PHYSICAL_CORES" -eq 0 ]]; then
+        # Last resort: assume no SMT (physical == logical).
+        PHYSICAL_CORES=$TOTAL_CPUS
     fi
 
     # Detect SMT (Hyper-Threading)
@@ -216,6 +236,7 @@ Supported CPUs:
   - AMD Ryzen (all generations)
   - Intel Core (all generations)
   - Any x86_64 CPU with or without SMT/Hyper-Threading
+  - ARM aarch64 (e.g. Raspberry Pi 5 / Cortex-A76, no SMT)
 EOF
 }
 
