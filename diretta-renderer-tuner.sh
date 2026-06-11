@@ -36,7 +36,10 @@ detect_cpu_topology() {
         CPU_VENDOR=${CPU_VENDOR:-$(uname -m)}
     fi
     if [[ -z "$CPU_MODEL" ]]; then
-        CPU_MODEL=$(tr -d '\0' < /proc/device-tree/model 2>/dev/null)
+        # Canonical devicetree path — /proc/device-tree is not always present
+        # on Fedora aarch64, and a failed '<' redirect would otherwise trip
+        # 'set -e' and abort the whole tuner mid-detection. '|| true' guards it.
+        CPU_MODEL=$(tr -d '\0' < /sys/firmware/devicetree/base/model 2>/dev/null || true)
         CPU_MODEL=${CPU_MODEL:-unknown}
     fi
 
