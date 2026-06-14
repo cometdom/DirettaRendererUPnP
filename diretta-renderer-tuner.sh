@@ -26,13 +26,18 @@ set -euo pipefail
 detect_cpu_topology() {
     echo "INFO: Detecting CPU topology..."
 
-    # Get CPU info (x86 fields; ARM /proc/cpuinfo has none of these)
-    CPU_VENDOR=$(grep -m1 "vendor_id" /proc/cpuinfo | awk '{print $3}')
-    CPU_MODEL=$(grep -m1 "model name" /proc/cpuinfo | cut -d: -f2 | sed 's/^ *//')
+    # Get CPU info (x86 fields; ARM /proc/cpuinfo has none of these).
+    # NOTE: every grep here can miss on a given arch. The script runs under
+    # `set -o pipefail`, so a missing field makes grep exit 1 and that status
+    # becomes the pipeline's (even though awk/cut/sed succeed) — which under
+    # `set -e` would silently abort the whole tuner before the ARM fallbacks
+    # below run. `|| true` on each assignment keeps detection going.
+    CPU_VENDOR=$(grep -m1 "vendor_id" /proc/cpuinfo | awk '{print $3}' || true)
+    CPU_MODEL=$(grep -m1 "model name" /proc/cpuinfo | cut -d: -f2 | sed 's/^ *//' || true)
     if [[ -z "$CPU_VENDOR" ]]; then
         # ARM and other non-x86: no vendor_id line. Fall back to the CPU
         # implementer (e.g. 0x41 = ARM) and the board model from devicetree.
-        CPU_VENDOR=$(grep -m1 "CPU implementer" /proc/cpuinfo | awk '{print $4}')
+        CPU_VENDOR=$(grep -m1 "CPU implementer" /proc/cpuinfo | awk '{print $4}' || true)
         CPU_VENDOR=${CPU_VENDOR:-$(uname -m)}
     fi
     if [[ -z "$CPU_MODEL" ]]; then
@@ -47,16 +52,16 @@ detect_cpu_topology() {
     TOTAL_CPUS=$(nproc)
 
     # Physical cores (unique core ids)
-    PHYSICAL_CORES=$(grep "^cpu cores" /proc/cpuinfo | head -1 | awk '{print $4}')
+    PHYSICAL_CORES=$(grep "^cpu cores" /proc/cpuinfo | head -1 | awk '{print $4}' || true)
     if [[ -z "$PHYSICAL_CORES" ]]; then
         # x86 fallback: count unique physical id + core id combinations
-        PHYSICAL_CORES=$(cat /proc/cpuinfo | grep -E "^(physical id|core id)" | paste - - | sort -u | wc -l)
+        PHYSICAL_CORES=$(cat /proc/cpuinfo | grep -E "^(physical id|core id)" | paste - - | sort -u | wc -l || true)
     fi
     if [[ -z "$PHYSICAL_CORES" || "$PHYSICAL_CORES" -eq 0 ]]; then
         # ARM fallback: /proc/cpuinfo carries no topology lines, so derive the
         # physical-core count from sysfs core ids (these parts have no SMT).
         PHYSICAL_CORES=$(for f in /sys/devices/system/cpu/cpu[0-9]*/topology/core_id; do
-            cat "$f"; done 2>/dev/null | sort -u | wc -l)
+            cat "$f"; done 2>/dev/null | sort -u | wc -l || true)
     fi
     if [[ -z "$PHYSICAL_CORES" || "$PHYSICAL_CORES" -eq 0 ]]; then
         # Last resort: assume no SMT (physical == logical).
