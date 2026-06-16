@@ -314,8 +314,10 @@ Description=Slice for Diretta Renderer audio service
 Before=slices.target
 
 [Slice]
-# Pin to isolated audio cores
-AllowedCPUs=${RENDERER_CPUS}
+# Allow housekeeping + renderer cores; renderer cores stay
+# isolated via isolcpus on the kernel cmdline. DRUP pins its
+# own threads at thread level (--cpu-audio/--cpu-decode/--cpu-other).
+AllowedCPUs=${HOUSEKEEPING_CPUS},${RENDERER_CPUS}
 # Allow full CPU usage
 CPUQuota=100%
 EOF
@@ -350,9 +352,6 @@ LimitMEMLOCK=infinity
 
 # Real-time priority limit
 LimitRTPRIO=99
-
-# Distribute threads across cores after startup
-ExecStartPost=${THREAD_DIST_SCRIPT_PATH} \$MAINPID
 EOF
 
     echo "SUCCESS: Service override created: ${override_dir}/10-isolation.conf"
