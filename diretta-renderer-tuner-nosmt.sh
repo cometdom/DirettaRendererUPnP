@@ -207,26 +207,29 @@ expand_cpu_list() {
 apply_grub_config() {
     echo "INFO: Applying GRUB kernel parameters (with nosmt)..."
 
-    # Remove any previous instances of these parameters
-    sed -i -E 's/ (isolcpus|nohz|nohz_full|rcu_nocbs|irqaffinity|nosmt)=[^"]*//g' "${GRUB_FILE}"
-    # Also remove standalone nosmt
-    sed -i -E 's/ nosmt([" ])/ \1/g' "${GRUB_FILE}"
-
-    # Build new kernel parameters
-    # nosmt disables SMT/Hyper-Threading at boot
+    # nosmt disables SMT/Hyper-Threading at boot, plus the isolation params.
     local grub_cmdline="nosmt isolcpus=${RENDERER_CPUS} nohz=on nohz_full=${RENDERER_CPUS} rcu_nocbs=${RENDERER_CPUS} irqaffinity=${HOUSEKEEPING_CPUS}"
 
-    # Append to GRUB_CMDLINE_LINUX
-    sed -i "s|^\(GRUB_CMDLINE_LINUX=\".*\)\"|\1 ${grub_cmdline}\"|" "${GRUB_FILE}"
-
-    # Update GRUB
-    if command -v update-grub &> /dev/null; then
-        update-grub
-    elif command -v grub2-mkconfig &> /dev/null; then
-        grub2-mkconfig -o /boot/grub2/grub.cfg
+    # Prefer grubby: on Fedora/RHEL the booted entry's cmdline is managed
+    # per-entry via grubby/BLS, NOT by regenerating grub.cfg from
+    # /etc/default/grub (editing that file has no effect on the active kernel —
+    # confirmed on a Pi 5). grubby works on x86_64 and aarch64.
+    if command -v grubby &> /dev/null; then
+        grubby --update-kernel=DEFAULT \
+            --remove-args="isolcpus nohz nohz_full rcu_nocbs irqaffinity nosmt" 2>/dev/null || true
+        grubby --update-kernel=DEFAULT --args="${grub_cmdline}"
+    elif [[ -f "${GRUB_FILE}" ]]; then
+        # Legacy fallback for non-grubby systems (Debian/Ubuntu).
+        sed -i -E 's/ (isolcpus|nohz|nohz_full|rcu_nocbs|irqaffinity|nosmt)=[^"]*//g' "${GRUB_FILE}"
+        sed -i -E 's/ nosmt([" ])/ \1/g' "${GRUB_FILE}"
+        sed -i "s|^\(GRUB_CMDLINE_LINUX=\".*\)\"|\1 ${grub_cmdline}\"|" "${GRUB_FILE}"
+        if command -v update-grub &> /dev/null; then
+            update-grub
+        elif command -v grub2-mkconfig &> /dev/null; then
+            grub2-mkconfig -o /boot/grub2/grub.cfg
+        fi
     else
-        echo "WARNING: Could not find update-grub or grub2-mkconfig."
-        echo "         Please update GRUB manually."
+        echo "WARNING: neither grubby nor ${GRUB_FILE} found. Add manually: ${grub_cmdline}"
     fi
 
     echo "SUCCESS: GRUB configuration updated (nosmt enabled)."
@@ -469,13 +472,17 @@ EOF
 revert_grub_config() {
     echo "INFO: Reverting GRUB kernel parameters..."
 
-    sed -i -E 's/ (isolcpus|nohz|nohz_full|rcu_nocbs|irqaffinity|nosmt)=[^"]*//g' "${GRUB_FILE}"
-    sed -i -E 's/ nosmt([" ])/ \1/g' "${GRUB_FILE}"
-
-    if command -v update-grub &> /dev/null; then
-        update-grub
-    elif command -v grub2-mkconfig &> /dev/null; then
-        grub2-mkconfig -o /boot/grub2/grub.cfg
+    if command -v grubby &> /dev/null; then
+        grubby --update-kernel=DEFAULT \
+            --remove-args="isolcpus nohz nohz_full rcu_nocbs irqaffinity nosmt" 2>/dev/null || true
+    elif [[ -f "${GRUB_FILE}" ]]; then
+        sed -i -E 's/ (isolcpus|nohz|nohz_full|rcu_nocbs|irqaffinity|nosmt)=[^"]*//g' "${GRUB_FILE}"
+        sed -i -E 's/ nosmt([" ])/ \1/g' "${GRUB_FILE}"
+        if command -v update-grub &> /dev/null; then
+            update-grub
+        elif command -v grub2-mkconfig &> /dev/null; then
+            grub2-mkconfig -o /boot/grub2/grub.cfg
+        fi
     fi
 
     echo "SUCCESS: GRUB configuration reverted (nosmt removed)."
