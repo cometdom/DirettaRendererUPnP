@@ -255,6 +255,48 @@ if [ -n "$IO_SCHED_CLASS" ]; then
     fi
 fi
 
+# --- CPU slice reconciliation -------------------------------------------------
+# The CPU tuner (diretta-renderer-tuner.sh) confines this service to a cpuset
+# slice whose AllowedCPUs is the set of isolated renderer cores. DRUP then pins
+# its own threads with --cpu-audio/--cpu-decode/--cpu-other. If any of those
+# references a core OUTSIDE the slice cpuset (typically a housekeeping core such
+# as CPU_OTHER=0), the kernel rejects the affinity call with EINVAL.
+#
+# Rather than slackening the slice to ALL cores at install time (which would
+# lose strict isolation — and on x86 pull in SMT siblings — even for users who
+# never set a --cpu-* flag), we reconcile the cpuset HERE, at every start: widen
+# it to exactly 'renderer cores + whatever CPU_* references'. Because this runs
+# on every (re)start, it always matches the live config — a web-UI change to
+# CPU_* takes effect on the next restart with no stale slice and no EINVAL.
+#
+# When no CPU_* is set, the slice keeps its strict tuner-baked cpuset untouched.
+reconcile_cpu_slice() {
+    command -v systemctl >/dev/null 2>&1 || return 0
+
+    local extra
+    extra=$(printf '%s %s %s' "$CPU_AUDIO" "$CPU_DECODE" "$CPU_OTHER" | tr ',' ' ')
+    # No --cpu-* flags → leave the strict tuner cpuset as-is.
+    [ -n "${extra// /}" ] || return 0
+
+    local slice
+    slice=$(systemctl show -p Slice --value diretta-renderer.service 2>/dev/null)
+    # Not confined to a dedicated slice (no tuner installed) → pinning is
+    # unrestricted anyway, nothing to do.
+    [ -n "$slice" ] && [ "$slice" != "-.slice" ] || return 0
+
+    local base
+    base=$(systemctl show -p AllowedCPUs --value "$slice" 2>/dev/null)
+    # Slice has no cpuset restriction → no EINVAL possible, nothing to widen.
+    [ -n "$base" ] || return 0
+
+    echo "Reconciling $slice AllowedCPUs: renderer cores [$base] + CPU_* [$extra]"
+    if ! systemctl set-property --runtime "$slice" AllowedCPUs="$base $extra" 2>/dev/null; then
+        echo "WARNING: could not widen $slice cpuset; pinning a thread onto a" >&2
+        echo "         core outside [$base] may fail with EINVAL." >&2
+    fi
+}
+reconcile_cpu_slice
+
 # Log the command being executed
 echo "════════════════════════════════════════════════════════"
 echo "  Starting Diretta UPnP Renderer"
