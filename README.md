@@ -1,4 +1,4 @@
-# Diretta UPnP Renderer v2.5.3
+# Diretta UPnP Renderer v2.5.5
 
 **The world's first native UPnP/DLNA renderer with Diretta protocol support - Low-Latency Edition**
 
@@ -8,19 +8,18 @@
 
 ---
 
-![Version](https://img.shields.io/badge/version-2.5.3-blue.svg)
+![Version](https://img.shields.io/badge/version-2.5.5-blue.svg)
 ![Low Latency](https://img.shields.io/badge/Latency-Low-green.svg)
 ![SDK](https://img.shields.io/badge/SDK-DIRETTA::Sync-orange.svg)
 ![Audirvana](https://img.shields.io/badge/Audirvana-Compatible-green.svg)
 
 ---
 
-## What's New in v2.5.3
+## What's New in v2.5.5
 
-**Cleaner web-UI persistence for comma-separated values.**
+**Fixes a hard crash on AMD Zen3/Zen2 "Ryzen 7000" mobile CPUs.**
 
-- **Whitespace around commas trimmed at save time** for the five known list-like fields (`IRQ_INTERFACE`, `IRQ_CPUS`, `CPU_AUDIO`, `CPU_DECODE`, `CPU_OTHER`). A user typing `eth-diretta, eth-lan` in the web UI now produces `IRQ_INTERFACE="eth-diretta,eth-lan"` on disk instead of the wider `"eth-diretta, eth-lan"`. Functionally identical (the shell wrappers already trim defensively with `tr -d ' '`), but eliminates a class of cosmetic divergence and protects any future consumer of `/etc/default/diretta-renderer` that reads the file without trimming.
-- **Profile-driven via a new `"normalize"` field** in the setting JSON declarations (`"normalize": "comma_list"`). Adding a future comma-list field is one line of metadata; no Python change needed.
+- **No more `SIGILL` (invalid opcode) on chips like the Ryzen 7 7730U or Ryzen 5 7520U** (reported by Didier/ds21 on a Topton FU02). AMD's mobile branding reuses the "Ryzen 7000" number for older silicon — the 7730U is Barcelo (Zen3, no AVX-512), the 7520U is Mendocino (Zen2) — but the Makefile's Zen4 auto-detection matched them by model name, selecting the AVX-512 SDK library + `-march=znver4`. The binary then core-dumped the instant the SDK connection object was constructed, restarting forever. A genuine Zen4 always has AVX-512, so the build now refuses to select the Zen4 variant on any CPU lacking the `avx512` flag and falls through to the AVX2 (`x64-linux-15v3`) build. Affected users: `git pull && ./install.sh`.
 
 See [CHANGELOG.md](CHANGELOG.md) for details.
 
@@ -28,6 +27,8 @@ See [CHANGELOG.md](CHANGELOG.md) for details.
 
 | Version | Highlights |
 |---------|-----------|
+| **v2.5.4** | CPU tuner: runtime cpuset reconciliation so `--cpu-*` thread pinning (incl. a housekeeping core) works without `EINVAL` while keeping strict isolation (PR #77); web-UI config-save dedup (PR #75, hoorna/Alfred) |
+| **v2.5.3** | Web UI: whitespace around commas trimmed at save time for list-like fields, via a profile-driven `"normalize"` field |
 | **v2.5.2** | `install.sh`: `--allowerasing` on FFmpeg `dnf install`, low-RAM warning before the LTO compile |
 | **v2.5.1** | `AVIOInterruptCB` to clean-stop on live radio stream stall via local proxy (PR #73 by hoorna/Alfred) |
 | **v2.5.0** | `mlockall(MCL_CURRENT \| MCL_FUTURE)` at startup — closes the last non-deterministic stall source (page faults from swap, cache eviction, zero-fill on first write). Same discipline as JACK / PipeWire in RT mode. |
@@ -1105,4 +1106,4 @@ This software is provided "as is" without warranty. While designed for high-qual
 
 **Enjoy bit-perfect, low-latency audio streaming!**
 
-*Last updated: 2026-06-12 (v2.5.3)*
+*Last updated: 2026-06-18 (v2.5.5)*
