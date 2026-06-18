@@ -255,6 +255,67 @@ if [ -n "$IO_SCHED_CLASS" ]; then
     fi
 fi
 
+# --- CPU slice reconciliation -------------------------------------------------
+# The CPU tuner (diretta-renderer-tuner.sh) confines this service to a cpuset
+# slice whose AllowedCPUs is the set of isolated renderer cores. DRUP then pins
+# its own threads with --cpu-audio/--cpu-decode/--cpu-other. If any of those
+# references a core OUTSIDE the slice cpuset (typically a housekeeping core such
+# as CPU_OTHER=0), the kernel rejects the affinity call with EINVAL.
+#
+# Rather than slackening the slice to ALL cores at install time (which would
+# lose strict isolation — and on x86 pull in SMT siblings — even for users who
+# never set a --cpu-* flag), we reconcile the cpuset HERE, at every start, to a
+# deterministic target: the tuner-baked renderer cores, plus exactly whatever
+# CPU_* references. Because this runs on every (re)start, it always matches the
+# live config — a web-UI change to CPU_* takes effect on the next restart with
+# no stale slice and no EINVAL.
+#
+# The base ("renderer cores") is read from the slice UNIT FILE (FragmentPath),
+# NOT from the live AllowedCPUs property: a previous start may have left a
+# 'set-property --runtime' override in place (it persists across
+# 'systemctl restart', only a reboot/daemon-reexec clears it), and the live
+# value would reflect that override. Reading the baked file value and always
+# re-asserting it makes the result independent of the previous run — so going
+# from "with CPU_*" back to "no CPU_*" within one boot correctly restores strict
+# isolation instead of leaving the widened cpuset behind. (Edge case found by
+# hoorna on a Pi 4.)
+reconcile_cpu_slice() {
+    command -v systemctl >/dev/null 2>&1 || return 0
+
+    local slice
+    slice=$(systemctl show -p Slice --value diretta-renderer.service 2>/dev/null)
+    # Not confined to a dedicated slice (no tuner installed) → pinning is
+    # unrestricted anyway, nothing to do.
+    [ -n "$slice" ] && [ "$slice" != "-.slice" ] || return 0
+
+    # Tuner-baked cpuset, straight from the unit file (immune to --runtime
+    # overrides from a previous start).
+    local frag base
+    frag=$(systemctl show -p FragmentPath --value "$slice" 2>/dev/null)
+    [ -n "$frag" ] && [ -r "$frag" ] || return 0
+    base=$(sed -n 's/^AllowedCPUs=//p' "$frag" | tail -n1)
+    # Slice file pins no cpuset → no EINVAL possible, nothing to reconcile.
+    [ -n "$base" ] || return 0
+
+    local extra target
+    extra=$(printf '%s %s %s' "$CPU_AUDIO" "$CPU_DECODE" "$CPU_OTHER" | tr ',' ' ')
+    if [ -n "${extra// /}" ]; then
+        target="$base $extra"
+        echo "Reconciling $slice AllowedCPUs: renderer cores [$base] + CPU_* [$extra]"
+    else
+        # No --cpu-* flags → re-assert the strict baked cpuset (this also undoes
+        # any widening a previous same-boot start may have applied).
+        target="$base"
+        echo "Reconciling $slice AllowedCPUs to baked renderer cores [$base] (no CPU_* set)"
+    fi
+
+    if ! systemctl set-property --runtime "$slice" AllowedCPUs="$target" 2>/dev/null; then
+        echo "WARNING: could not set $slice cpuset to [$target]; a thread pinned" >&2
+        echo "         onto a core outside it may fail with EINVAL." >&2
+    fi
+}
+reconcile_cpu_slice
+
 # Log the command being executed
 echo "════════════════════════════════════════════════════════"
 echo "  Starting Diretta UPnP Renderer"
