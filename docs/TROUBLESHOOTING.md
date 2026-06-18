@@ -502,6 +502,32 @@ echo "~/DirettaHostSDK_147/lib" | sudo tee /etc/ld.so.conf.d/diretta.conf
 sudo ldconfig
 ```
 
+### Crash on Startup: `SIGILL` / Invalid Opcode (AMD Zen3/Zen2 "Ryzen 7000" mobile)
+
+**Symptoms**: the service never stays up — `systemctl status` flips between `active (running)` and `activating (auto-restart) (Result: core-dump)`, the restart counter climbs quickly, and the kernel log shows:
+
+```
+kernel: traps: DirettaRenderer[...] trap invalid opcode ...
+systemd: diretta-renderer.service: Main process exited, code=dumped, status=4/ILL
+```
+
+A coredump stack trace points at the SDK connection constructor (`#0 _ZN7DIRETTA10ConnectionC2Ev`).
+
+**Cause**: before **v2.5.5**, the Makefile's CPU auto-detection selected the Zen4 (AVX-512) build variant for CPUs whose model number is in the "Ryzen 7000" range but which are actually **Zen3/Zen2 with no AVX-512** — e.g. **Ryzen 7 7730U** (Barcelo), **Ryzen 5 7520U** (Mendocino). The binary then executes AVX-512 the CPU cannot run → `SIGILL`. Confirm the CPU lacks AVX-512:
+
+```bash
+grep -o -E 'avx512[a-z0-9]*' /proc/cpuinfo | head   # no output = no AVX-512
+```
+
+**Fix**: use **v2.5.5 or later** — the build now refuses the Zen4 variant on any CPU without AVX-512 and falls back to the AVX2 (`x64-linux-15v3`) build.
+
+**Recovery on an already-affected machine — a full clean reinstall is the reliable path.** A bare `git pull` + rebuild can leave the old, crashing binary in place: the running service holds `/opt/diretta-renderer-upnp/DirettaRendererUPnP` open, so a plain copy over it can fail silently and the crash persists *even after a reboot* (the reboot just relaunches the same old binary).
+
+- **Via fedora-audiophile-setup**: re-run the full installation — it clones a fresh `main` (with the fix), stops the service, replaces the binary, and restarts cleanly. This is what reliably cleared it in the field.
+- **Manually**: `sudo systemctl stop diretta-renderer`, then `cd ~/DirettaRendererUPnP && git pull && ./install.sh`, then confirm `systemctl status diretta-renderer` stays `active (running)`.
+
+After recovery, the startup capabilities log (or `ldd`) should show the AVX2 (`x64-linux-15v3`) variant, not `zen4`.
+
 ---
 
 ## Performance Issues
