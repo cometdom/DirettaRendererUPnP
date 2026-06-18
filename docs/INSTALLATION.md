@@ -9,10 +9,11 @@ Complete step-by-step installation guide for the Diretta UPnP Renderer.
 3. [Installing Dependencies](#installing-dependencies)
 4. [Downloading Diretta SDK](#downloading-diretta-sdk)
 5. [Building the Renderer](#building-the-renderer)
-6. [Network Configuration](#network-configuration)
-7. [First Run](#first-run)
-8. [Creating a Systemd Service](#creating-a-systemd-service)
-9. [Listing and Selecting Diretta Targets](#listing-and-selecting-diretta-targets)
+6. [Choosing and Testing the FFmpeg Backend](#choosing-and-testing-the-ffmpeg-backend)
+7. [Network Configuration](#network-configuration)
+8. [First Run](#first-run)
+9. [Creating a Systemd Service](#creating-a-systemd-service)
+10. [Listing and Selecting Diretta Targets](#listing-and-selecting-diretta-targets)
 
 ---
 
@@ -236,6 +237,62 @@ ls -lh bin/DirettaRendererUPnP
 ldd bin/DirettaRendererUPnP
 # Should NOT show "not found" errors
 ```
+
+---
+
+## Choosing and Testing the FFmpeg Backend
+
+DRUP decodes audio through the **FFmpeg libraries** (`libavformat`, `libavcodec`, `libavutil`, `libswresample`). `install.sh` lets you pick which FFmpeg provides them:
+
+| Option | Version | Installs to | Notes |
+|--------|---------|-------------|-------|
+| 1 | FFmpeg 5.1.2 (source) | `/usr/local/lib` (`libav*.so.59`) | coexists with a system 8.x |
+| 2 | FFmpeg 7.1 (source) | `/usr/local/lib` (`libav*.so.61`) | coexists with a system 8.x |
+| 3 | FFmpeg 8.0.1 minimal (source, **recommended**) | **`/usr`** (`libav*.so.62`) | **overwrites** an RPM 8.x at the same path |
+| 4 | RPM Fusion (Fedora) | `/usr/lib64` (`libav*.so.62`) | full codec set, prebuilt |
+| 5 | system packages | `/usr/lib64` | fastest; may lack some codecs |
+
+### `ffmpeg -version` does NOT tell you what DRUP uses
+
+That command reports the **command-line `ffmpeg` binary**, which DRUP never calls. DRUP links the `libav*` **shared libraries**. To see what the **binary actually loads**:
+
+```bash
+ldd /opt/diretta-renderer-upnp/DirettaRendererUPnP | grep -E 'libav|libsw'
+#  /usr/local/lib/libavformat.so.59  -> FFmpeg 5.1
+#  /usr/local/lib/libavformat.so.61  -> FFmpeg 7.1
+#  /usr/lib64/libavformat.so.62      -> FFmpeg 8.x (RPM or minimal source)
+
+# For 8.x, tell the RPM build from a minimal source build:
+rpm -qf /usr/lib64/libavformat.so.62 || echo "(8.x, not RPM-owned -> minimal source build)"
+```
+
+DRUP does not log the libav version at startup, so `ldd` is the authoritative check.
+
+### A/B testing different backends
+
+Audiophiles sometimes want to compare versions by ear. For each candidate:
+
+```bash
+cd ~/DirettaRendererUPnP
+git pull
+./install.sh          # pick the FFmpeg option; let it rebuild DRUP and redeploy
+ldd /opt/diretta-renderer-upnp/DirettaRendererUPnP | grep libavformat   # confirm which one loaded
+sudo systemctl restart diretta-renderer
+systemctl status diretta-renderer   # must stay "active (running)"
+# listen
+```
+
+**Rebuilding DRUP is required** when changing FFmpeg **major** version: 5.x / 7.x / 8.x ship different library sonames (`.so.59` / `.so.61` / `.so.62`), and the binary is bound to the soname it was compiled against. Within the same major (e.g. 8.0.1 minimal vs 8.1.1 RPM, both `.so.62`) the libraries are ABI-compatible.
+
+### Pitfalls
+
+- **Option 3 (8.0.1 minimal) installs into `/usr`** and therefore **overwrites** an RPM Fusion 8.x. To return to the RPM afterwards: `sudo dnf reinstall ffmpeg ffmpeg-libs --allowerasing`, then re-run `./install.sh` (option 4) so DRUP is rebuilt against it.
+- Options 1 and 2 go to `/usr/local/lib` (registered via `/etc/ld.so.conf.d/ffmpeg-local.conf` + `ldconfig`) and **coexist** cleanly with an RPM 8.x — no overwrite.
+- Note the loaded `libavformat.so.XX` on every round; it is your only reliable record of what you are listening to.
+
+### A note on sound quality
+
+For **lossless** sources (FLAC, ALAC, WAV, DSD), FFmpeg decoders are deterministic — the decoded PCM/DSD samples are **bit-identical across versions**, so any audible difference is downstream or subjective rather than in the decode itself. Real differences are more plausible for **lossy** codecs (AAC, MP3, …) and on any path that goes through `libswresample` resampling. For a meaningful test: same track, matched level, ideally blind.
 
 ---
 
