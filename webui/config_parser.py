@@ -46,9 +46,18 @@ class ShellVarConfig:
     def save(path, settings):
         """Rewrite config file, updating existing keys and preserving structure.
 
-        - Lines with existing keys are updated in place
-        - Comments and blank lines are preserved
-        - Keys not present in the file are appended at the end
+        - Active lines with known keys are updated in place (first occurrence only)
+        - Comments and blank lines are preserved unchanged
+        - Duplicate active key lines after the first are dropped (deduplication)
+        - Keys not present as active lines are appended at the end
+
+        Bug fixed (vs original): the original regex '^#?\\s*([A-Z_][A-Z0-9_]*)='
+        also matched commented-out example lines such as '#CPU_AUDIO=2', which
+        combined with install.sh's sed migration (which also activates those same
+        comment lines) produced duplicate active entries on every webui save.
+        Additionally, the missing 'key not in written_keys' guard meant that when
+        a key appeared more than once, every occurrence was rewritten — causing
+        exponential duplication across saves.
         """
         if os.path.exists(path):
             with open(path, 'r') as f:
@@ -61,11 +70,15 @@ class ShellVarConfig:
 
         for line in lines:
             stripped = line.strip()
-            # Match active or commented-out assignment
-            m = re.match(r'^#?\s*([A-Z_][A-Z0-9_]*)=', stripped)
+            # Only match active (non-commented) key=value assignments.
+            # Commented-out lines (e.g. example blocks like #CPU_AUDIO=2) are
+            # preserved unchanged — they must not be mistaken for active settings.
+            is_comment_or_blank = not stripped or stripped.startswith('#')
+            m = re.match(r'^([A-Z_][A-Z0-9_]*)=', stripped) if not is_comment_or_blank else None
             if m:
                 key = m.group(1)
-                if key in settings:
+                if key in settings and key not in written_keys:
+                    # First active occurrence of a known key → update value
                     val = settings[key]
                     # Quote values that are empty or contain special chars
                     if val == '' or re.search(r'[\s#\-]', val):
@@ -73,12 +86,14 @@ class ShellVarConfig:
                     else:
                         new_lines.append(f'{key}={val}\n')
                     written_keys.add(key)
+                elif key in written_keys:
+                    pass  # Duplicate active line → drop (deduplication)
                 else:
-                    new_lines.append(line)
+                    new_lines.append(line)  # Unknown key → preserve
             else:
-                new_lines.append(line)
+                new_lines.append(line)  # Comment, blank, or non-matching → preserve
 
-        # Append any new keys not already in the file
+        # Append any new keys not already present as active lines
         for key, val in settings.items():
             if key not in written_keys:
                 if val == '' or re.search(r'[\s#\-]', val):

@@ -1557,9 +1557,14 @@ WRAPPER_EOF
 
                 # Check if this key is known in current version
                 if echo "$KNOWN_KEYS" | grep -qw "$key"; then
-                    # Apply to new config: replace commented or uncommented line
+                    # Apply to new config: replace only the FIRST occurrence of
+                    # the key (commented or uncommented). The 0,/pattern/ range
+                    # limits the substitution to the first match — without it,
+                    # sed would activate every '#KEY=...' example line, leaving
+                    # duplicate active entries that the webui save logic then
+                    # had to deduplicate on every subsequent save.
                     if sudo grep -q "^#\?${key}=" "$CONFIG_FILE" 2>/dev/null; then
-                        sudo sed -i "s|^#\?${key}=.*|${key}=${val}|" "$CONFIG_FILE"
+                        sudo sed -i "0,/^#\?${key}=/{s|^#\?${key}=.*|${key}=${val}|}" "$CONFIG_FILE"
                         migrated_keys="$migrated_keys $key"
                     fi
                 else
