@@ -528,6 +528,38 @@ grep -o -E 'avx512[a-z0-9]*' /proc/cpuinfo | head   # no output = no AVX-512
 
 After recovery, the startup capabilities log (or `ldd`) should show the AVX2 (`x64-linux-15v3`) variant, not `zen4`.
 
+### `Error while loading shared libraries` After a System Update
+
+**Symptoms**: DRUP refused to start right after a distro update, e.g.
+
+```
+error while loading shared libraries: libupnp.so.17.2.6: cannot open shared object file
+```
+
+(the same can happen with an FFmpeg `libav*.so.NN` after an FFmpeg update).
+
+**Cause**: DRUP is a source build linked against the **system** shared libraries (`libupnp`, FFmpeg's `libav*`) at compile time. A distro update can replace the exact library file the binary references, so the old binary can no longer find it. This is normal ABI/version drift for any locally-compiled program.
+
+**Fix — rebuild DRUP against the updated libraries** (no rollback needed), using the **same build flavour you originally installed with**:
+
+```bash
+cd ~/DirettaRendererUPnP
+git pull
+
+# Default GCC build:
+./install.sh
+
+# …or, if you originally built with Clang + LTO, rebuild the same way:
+env LLVM=1 ./install.sh
+
+sudo systemctl restart diretta-renderer
+```
+
+**Notes**:
+- **Fresh installs are not affected** — they compile against whatever library version is currently installed, so new users won't hit this; only an already-built binary breaks when a library is bumped underneath it.
+- If a library update is an **API** (source) change rather than just an ABI/file change, the symptom would be a **compilation error** during the rebuild rather than this load error — report it so the source can be adapted.
+- A binary that names the *fully-versioned* file (`libupnp.so.17.2.6`) rather than the soname (`libupnp.so.17`) indicates the distro's library was packaged without a standard soname; the rebuild still resolves it, and DRUP itself links via `-lupnp` (the correct, soname-based way).
+
 ---
 
 ## Performance Issues
