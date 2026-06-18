@@ -395,10 +395,13 @@ chmod +x install.sh
 
 The installer provides an interactive menu with options for:
 - Building the application (auto-detects architecture and SDK)
+- Choosing the FFmpeg backend (build 5.1 / 7.1 / 8.0.1 minimal from source, or use RPM Fusion / system packages)
 - Installing as a systemd service
 - Configuring automatic startup
 - Setting up the Diretta target
 - Installing the web configuration UI
+
+> **Picking or A/B-testing an FFmpeg version?** `ffmpeg -version` reports the command-line tool, **not** the libraries DRUP links — check with `ldd` instead. See [Choosing and Testing the FFmpeg Backend](docs/INSTALLATION.md#choosing-and-testing-the-ffmpeg-backend) for the verification commands, the per-version A/B procedure, and the pitfalls.
 
 #### Alternative: Build with Clang + LTO
 
