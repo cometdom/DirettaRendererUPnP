@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.5.5] - 2026-06-18
+
+### Fixed
+- **Build: hard `SIGILL` (invalid opcode) on Zen3/Zen2 "Ryzen 7000" mobile CPUs** (reported by Didier/ds21 on a Topton FU02 / Ryzen 7 7730U). The Makefile's Zen4 auto-detection used a model-name regex (`Ryzen.*(5|7|9).*7[0-9]{3}…`) to select the SDK library variant. AMD's mobile branding reuses the "Ryzen 7000" *number* for older silicon — the Ryzen 7 7730U is Barcelo (Zen3, no AVX-512), the Ryzen 5 7520U is Mendocino (Zen2) — so those chips matched the Zen4 rule and got the `x64-linux-15zen4` SDK lib plus `-march=znver4`, both of which emit AVX-512 instructions the CPU cannot execute. The process core-dumped with `status=4/ILL` the instant the SDK's `DIRETTA::Connection` constructor ran (stack trace `#0 _ZN7DIRETTA10ConnectionC2Ev`), before any audio or network activity, and systemd restart-looped it indefinitely (restart counter observed at 830). The fallback AVX-512 feature check that would have caught this was only consulted when the model-name regex returned 0, so it never ran for these parts. Fix: a genuine Zen4 always has AVX-512, so a hard guard now forces `IS_ZEN4=0` whenever `/proc/cpuinfo` lacks the `avx512` flag — such CPUs correctly fall through to the AVX2 (`x64-linux-15v3`) variant. Real Zen4 (7700X etc.), Intel AVX-512 (→ `v4`), and plain AVX2 boxes (→ `v3`) are all unaffected. Existing wizard/`install.sh` users on an affected CPU just need to `git pull` and re-run `./install.sh` (or rebuild once with `make ARCH_NAME=x64-linux-15v3`).
+
 ## [2.5.4] - 2026-06-18
 
 ### Fixed

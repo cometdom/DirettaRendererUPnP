@@ -57,6 +57,18 @@ ifeq ($(BASE_ARCH),x64)
         IS_ZEN4 := $(shell grep -q "avx512vbmi2" /proc/cpuinfo 2>/dev/null && grep -q "vaes" /proc/cpuinfo 2>/dev/null && echo 1 || echo 0)
     endif
 
+    # Hard guard: a genuine Zen4 ALWAYS has AVX-512. AMD's mobile branding
+    # reuses the "Ryzen 7000" number for Zen3/Zen2 silicon (e.g. Ryzen 7 7730U
+    # = Barcelo/Zen3, Ryzen 5 7520U = Mendocino/Zen2) which the model-name
+    # regex above wrongly matches. Without this guard those chips would select
+    # the zen4 SDK lib + -march=znver4 and crash with SIGILL (invalid opcode,
+    # AVX-512) the moment the SDK's DIRETTA::Connection constructor runs.
+    # Never treat a CPU lacking AVX-512 as Zen4. (Reported by Didier/ds21 on a
+    # Topton FU02 / Ryzen 7 7730U.)
+    ifeq ($(HAS_AVX512),0)
+        IS_ZEN4 := 0
+    endif
+
     ifeq ($(IS_ZEN4),1)
         DEFAULT_VARIANT = x64-linux-15zen4
     else ifeq ($(HAS_AVX512),1)
