@@ -307,7 +307,15 @@ bool DirettaRenderer::start(std::atomic<bool>* stopSignal) {
             std::cout << "[DirettaRenderer] Pre-connecting Diretta (warmup)..." << std::endl;
             if (m_direttaSync->open(warmupFmt)) {
                 m_direttaSync->stopPlayback(true);
-                std::cout << "[DirettaRenderer] Diretta pre-connected (warmup done)" << std::endl;
+
+                // Hold the SDK connection long enough for the Diretta Target to exit
+                // a stale idle-mode before we close, then leave it closed — the first
+                // real play will pay the cold-connect cost again, but the boot ends
+                // with Target in a usable state instead of stuck-claiming.
+                std::this_thread::sleep_for(std::chrono::seconds(6));
+                m_direttaSync->release();
+
+                std::cout << "[DirettaRenderer] Diretta warmup + target reset complete" << std::endl;
             } else {
                 std::cerr << "[DirettaRenderer] Warmup pre-connect failed (non-fatal)" << std::endl;
             }
