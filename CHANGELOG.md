@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.5.6] - 2026-06-24
+
+### Fixed
+- **Boot hang: Target stuck in stale idle-mode when powered on before DRUP** (PR #79 by hoorna/Alfred). When a Diretta Target has been idle for more than a few minutes before DRUP starts, it can enter a stuck idle-mode: it accepts the SDK connection but never reaches a streaming-capable state — LEDs blink fast indefinitely and no UPnP renderer can claim it. The only escape was an external UPnP `AVTransport:Stop` command, which triggered the idle-release timer (~5 s), which in turn called `release()` and let the Target reset. Root cause is a state-machine bug in the Target firmware (confirmed independently of OS, SD card, predecessor client, and shutdown cleanliness). The previous warmup (`open()` → `stopPlayback()`, commit `0d1279b`) left the SDK connection open after boot; if Target was already stuck when we connected, the warmup just trapped us in the same state. The fix holds the SDK connection open for 6 seconds then calls `release()` cleanly, which is sufficient for Target to exit the stuck mode. The first real play then does a fresh cold connect. Trade-off: boot is ~6 s longer, and the first play pays a small cold-connect cost (~500 ms–2.5 s observed); both are well under the original ~5 s first-play glitch that motivated the warmup. All other playback paths (track changes, quick-resume, idle release timer, renderer switching) are unaffected.
+
 ## [2.5.5] - 2026-06-18
 
 ### Fixed
