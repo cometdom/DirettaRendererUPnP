@@ -1,4 +1,4 @@
-# Diretta UPnP Renderer v2.5.5
+# Diretta UPnP Renderer v2.5.6
 
 **The world's first native UPnP/DLNA renderer with Diretta protocol support - Low-Latency Edition**
 
@@ -8,18 +8,18 @@
 
 ---
 
-![Version](https://img.shields.io/badge/version-2.5.5-blue.svg)
+![Version](https://img.shields.io/badge/version-2.5.6-blue.svg)
 ![Low Latency](https://img.shields.io/badge/Latency-Low-green.svg)
 ![SDK](https://img.shields.io/badge/SDK-DIRETTA::Sync-orange.svg)
 ![Audirvana](https://img.shields.io/badge/Audirvana-Compatible-green.svg)
 
 ---
 
-## What's New in v2.5.5
+## What's New in v2.5.6
 
-**Fixes a hard crash on AMD Zen3/Zen2 "Ryzen 7000" mobile CPUs.**
+**Fixes a boot hang when the Diretta Target has been idle for a few minutes before DRUP starts.**
 
-- **No more `SIGILL` (invalid opcode) on chips like the Ryzen 7 7730U or Ryzen 5 7520U** (reported by Didier/ds21 on a Topton FU02). AMD's mobile branding reuses the "Ryzen 7000" number for older silicon — the 7730U is Barcelo (Zen3, no AVX-512), the 7520U is Mendocino (Zen2) — but the Makefile's Zen4 auto-detection matched them by model name, selecting the AVX-512 SDK library + `-march=znver4`. The binary then core-dumped the instant the SDK connection object was constructed, restarting forever. A genuine Zen4 always has AVX-512, so the build now refuses to select the Zen4 variant on any CPU lacking the `avx512` flag and falls through to the AVX2 (`x64-linux-15v3`) build. Affected users: `git pull && ./install.sh`.
+- **Target stuck in stale idle-mode at boot** (PR #79 by hoorna/Alfred): when the Target is powered on several minutes before DRUP, it can enter a state where it accepts the SDK connection but never becomes stream-ready — LEDs blink fast indefinitely and no UPnP renderer can claim it. Root cause is a firmware-side state-machine bug (confirmed independent of OS, SD card, or predecessor client). The boot warmup now holds the SDK connection for 6 seconds then calls `release()` cleanly, which is enough for the Target to reset. The first real play then does a fresh cold connect (~500 ms–2.5 s observed). Boot is ~6 s longer; all other playback paths are unaffected.
 
 See [CHANGELOG.md](CHANGELOG.md) for details.
 
@@ -27,6 +27,7 @@ See [CHANGELOG.md](CHANGELOG.md) for details.
 
 | Version | Highlights |
 |---------|-----------|
+| **v2.5.5** | Build: hard `SIGILL` crash on AMD Zen3/Zen2 "Ryzen 7000" mobile CPUs fixed (Didier/ds21) — Makefile Zen4 auto-detection now requires actual AVX-512 support |
 | **v2.5.4** | CPU tuner: runtime cpuset reconciliation so `--cpu-*` thread pinning (incl. a housekeeping core) works without `EINVAL` while keeping strict isolation (PR #77); web-UI config-save dedup (PR #75, hoorna/Alfred) |
 | **v2.5.3** | Web UI: whitespace around commas trimmed at save time for list-like fields, via a profile-driven `"normalize"` field |
 | **v2.5.2** | `install.sh`: `--allowerasing` on FFmpeg `dnf install`, low-RAM warning before the LTO compile |
