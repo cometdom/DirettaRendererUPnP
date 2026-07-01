@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.5.8] - 2026-07-01
+
+### Added
+- **DoP (DSD over PCM) output mode** (`--dop` CLI flag, issue #80 requested by yama3kzh). For DACs that receive Diretta PCM but decode DoP natively (e.g., connected via I2S or S/PDIF passthrough at the target), `--dop` causes DSD streams to be transmitted over the Diretta PCM channel as standard 24-bit DoP frames instead of native Diretta DSD. Encoding: 2 DSD bytes per channel packed into a 24-bit PCM word with alternating 0x05/0xFA markers in the MSB byte (standard DoP v1.1 format). Sample rate mapping: DSD64→176.4kHz, DSD128→352.8kHz, DSD256→705.6kHz, DSD512→1.4MHz. Ring buffer operates in PCM mode (24-bit packed, silence=0x00); DoP marker state resets cleanly on each track start via `clear()`. No change to PCM or native DSD paths; the flag is a no-op when playing PCM. Format transition logic (DSD64→DSD128, DSD→PCM) uses the existing full close/reopen sequence since the underlying source format is still DSD.
+
 ## [2.5.7] - 2026-07-01
 
 ### Fixed

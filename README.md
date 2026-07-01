@@ -1,4 +1,4 @@
-# Diretta UPnP Renderer v2.5.7
+# Diretta UPnP Renderer v2.5.8
 
 **The world's first native UPnP/DLNA renderer with Diretta protocol support - Low-Latency Edition**
 
@@ -8,18 +8,18 @@
 
 ---
 
-![Version](https://img.shields.io/badge/version-2.5.7-blue.svg)
+![Version](https://img.shields.io/badge/version-2.5.8-blue.svg)
 ![Low Latency](https://img.shields.io/badge/Latency-Low-green.svg)
 ![SDK](https://img.shields.io/badge/SDK-DIRETTA::Sync-orange.svg)
 ![Audirvana](https://img.shields.io/badge/Audirvana-Compatible-green.svg)
 
 ---
 
-## What's New in v2.5.7
+## What's New in v2.5.8
 
-**Fixes FFmpeg 8.1+ build failure in `install.sh`.**
+**Adds DoP (DSD over PCM) output mode.**
 
-- **`install.sh`: FFmpeg 8.1+ configure now requires `udp` in the protocol list** (issue #81, reported by sheviks). Configuring without it caused a build error. Added `udp` to both the legacy 5.x and the 8.x minimal build paths. No change to the DRUP binary itself — existing installations are unaffected.
+- **`--dop` flag**: DSD streams are now transmittable as standard 24-bit DoP v1.1 PCM frames for DACs that decode DoP natively but do not expose native Diretta DSD. DSD64→176.4 kHz, DSD128→352.8 kHz, DSD256→705.6 kHz, DSD512→1.4 MHz. Enabled via `--dop` CLI flag or the new **DSD Output Mode** selector in the Web UI. No effect on PCM content; native DSD path unchanged when `--dop` is absent.
 
 See [CHANGELOG.md](CHANGELOG.md) for details.
 
@@ -27,6 +27,7 @@ See [CHANGELOG.md](CHANGELOG.md) for details.
 
 | Version | Highlights |
 |---------|-----------|
+| **v2.5.7** | `install.sh`: FFmpeg 8.1+ build failure fixed (`udp` protocol missing, issue #81 by sheviks); FFmpeg menu overhauled (5.x removed, 7.1.1 minimal added, 8.0.1→8.1.2) |
 | **v2.5.6** | Boot warmup: defensive Target reset to escape stale idle-mode (PR #79, hoorna/Alfred) |
 | **v2.5.5** | Build: hard `SIGILL` crash on AMD Zen3/Zen2 "Ryzen 7000" mobile CPUs fixed (Didier/ds21) — Makefile Zen4 auto-detection now requires actual AVX-512 support |
 | **v2.5.4** | CPU tuner: runtime cpuset reconciliation so `--cpu-*` thread pinning (incl. a housekeeping core) works without `EINVAL` while keeping strict isolation (PR #77); web-UI config-save dedup (PR #75, hoorna/Alfred) |
@@ -677,6 +678,23 @@ MINIMAL_UPNP=1
 
 Recommended for JPlay iOS, LMS via slim2UPnP, and Roon. See [Minimal UPnP Mode](#minimal-upnp-mode) for details.
 
+#### DoP Mode (v2.5.8+)
+
+Transmits DSD streams as 24-bit PCM with standard DoP v1.1 markers, for DACs that decode DoP natively:
+
+```ini
+DOP=1
+```
+
+| DSD rate | PCM output | When to use |
+|----------|-----------|-------------|
+| DSD64 | 176.4 kHz / 24-bit | DAC decodes DoP at 176.4 kHz |
+| DSD128 | 352.8 kHz / 24-bit | DAC decodes DoP at 352.8 kHz |
+| DSD256 | 705.6 kHz / 24-bit | DAC decodes DoP at 705.6 kHz |
+| DSD512 | 1.4112 MHz / 24-bit | DAC decodes DoP at 1.4 MHz |
+
+Has no effect on PCM content. The native Diretta DSD path is used when `DOP` is unset or empty.
+
 ### Network Requirements
 
 #### PCM Formats
@@ -928,6 +946,8 @@ guidance, see [docs/CONFIGURATION.md](docs/CONFIGURATION.md#3-cpu-isolation-with
 --verbose, -v           Enable verbose debug output (log level: DEBUG)
 --quiet, -q             Quiet mode - only errors and warnings (log level: WARN)
 --interface <name>      Bind to specific network interface
+--dop                   DoP mode: transmit DSD as 24-bit PCM (DSD over PCM)
+                        DSD64→176.4kHz, DSD128→352.8kHz, DSD256→705.6kHz
 ```
 
 ### Advanced Diretta SDK Settings
@@ -966,6 +986,9 @@ sudo ./bin/DirettaRendererUPnP --target 1 --interface eth0
 
 # Advanced: Custom thread mode and transfer mode
 sudo ./bin/DirettaRendererUPnP --target 1 --thread-mode 17 --transfer-mode fixauto
+
+# DoP mode: DSD transmitted as 24-bit PCM with DoP markers
+sudo ./bin/DirettaRendererUPnP --target 1 --dop
 ```
 
 ---

@@ -72,6 +72,17 @@
                         {"value": "", "label": "Standard (full UPnP)"},
                         {"value": "1", "label": "Minimal (no position/events)"}
                     ]
+                },
+                {
+                    "key": "DOP",
+                    "type": "select",
+                    "label": "DSD Output Mode",
+                    "description": "DoP (DSD over PCM): encodes DSD as 24-bit PCM with alternating 0x05/0xFA markers for DACs that decode DoP but do not support native Diretta DSD. DSD64→176.4kHz, DSD128→352.8kHz, DSD256→705.6kHz. Has no effect on PCM content.",
+                    "default": "",
+                    "options": [
+                        {"value": "", "label": "Native DSD (default)"},
+                        {"value": "1", "label": "DoP (DSD over PCM)"}
+                    ]
                 }
             ]
         },

@@ -181,6 +181,7 @@ public:
         m_s24Hint = S24PackMode::Unknown;
         m_s24DetectionConfirmed = false;
         m_deferredSampleCount = 0;
+        m_dopMarkerState = false;  // Reset DoP marker to 0x05
     }
 
     void fillWithSilence() {
@@ -505,6 +506,59 @@ public:
         }
 
         return writeToRing(m_stagingDSD, stagedBytes);
+    }
+
+    /**
+     * @brief Push DSD planar data encoded as DoP (DSD over PCM) 24-bit frames
+     *
+     * Packs 2 DSD bytes per channel into a 24-bit PCM sample:
+     *   byte[0] = DSD byte N   (bits 7:0)
+     *   byte[1] = DSD byte N+1 (bits 15:8)
+     *   byte[2] = marker byte  (bits 23:16, alternates 0x05 / 0xFA)
+     *
+     * Interleaved output order: L sample, R sample, L sample, R sample, ...
+     *
+     * @param data    Planar DSD input (L plane then R plane for stereo)
+     * @param inputSize Total input bytes (all channels combined)
+     * @param numChannels Number of audio channels
+     * @return Input bytes consumed
+     */
+    size_t pushDSDToDoP(const uint8_t* data, size_t inputSize, int numChannels) {
+        if (size_ == 0 || numChannels <= 0 || inputSize < static_cast<size_t>(numChannels) * 2) return 0;
+
+        size_t bytesPerChannel = inputSize / static_cast<size_t>(numChannels);
+        // Each pair of DSD bytes per channel becomes one 24-bit PCM sample (3 bytes)
+        size_t pcmFrames = bytesPerChannel / 2;
+        if (pcmFrames == 0) return 0;
+
+        size_t outputBytesPerFrame = static_cast<size_t>(numChannels) * 3;
+        size_t maxFramesByStaging = STAGING_SIZE / outputBytesPerFrame;
+        size_t free = getFreeSpace();
+        size_t maxFramesByFree = free / outputBytesPerFrame;
+
+        if (pcmFrames > maxFramesByStaging) pcmFrames = maxFramesByStaging;
+        if (pcmFrames > maxFramesByFree)   pcmFrames = maxFramesByFree;
+        if (pcmFrames == 0) return 0;
+
+        uint8_t* dst = m_stagingDSD;
+        size_t out = 0;
+
+        // DoP encoding: 24-bit PCM word (little-endian packed) per channel per frame
+        for (size_t k = 0; k < pcmFrames; k++) {
+            uint8_t marker = m_dopMarkerState ? 0xFA : 0x05;
+            m_dopMarkerState = !m_dopMarkerState;
+
+            for (int ch = 0; ch < numChannels; ch++) {
+                const uint8_t* srcCh = data + static_cast<size_t>(ch) * bytesPerChannel;
+                dst[out++] = srcCh[2 * k];      // DSD byte N   (LSB of PCM word)
+                dst[out++] = srcCh[2 * k + 1];  // DSD byte N+1 (mid byte)
+                dst[out++] = marker;             // DoP marker   (MSB of PCM word)
+            }
+        }
+
+        size_t written = writeToRing(dst, out);
+        size_t framesWritten = (outputBytesPerFrame > 0) ? (written / outputBytesPerFrame) : 0;
+        return framesWritten * 2 * static_cast<size_t>(numChannels);
     }
 
     //=========================================================================
@@ -1462,6 +1516,8 @@ private:
     bool m_s24DetectionConfirmed = false;
     size_t m_deferredSampleCount = 0;
     static constexpr size_t DEFERRED_TIMEOUT_SAMPLES = 48000;  // ~1 second at 48kHz
+
+    bool m_dopMarkerState = false;  // false=0x05, true=0xFA, alternates per DoP frame
 };
 
 #endif // DIRETTA_RING_BUFFER_H

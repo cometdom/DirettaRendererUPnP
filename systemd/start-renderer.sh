@@ -13,6 +13,7 @@ NAME="${NAME:-${RENDERER_NAME:-}}"
 GAPLESS="${GAPLESS:-}"
 VERBOSE="${VERBOSE:-}"
 MINIMAL_UPNP="${MINIMAL_UPNP:-}"
+DOP="${DOP:-}"
 INTERFACE="${INTERFACE:-${NETWORK_INTERFACE:-}}"
 THREAD_MODE="${THREAD_MODE:-}"
 CYCLE_TIME="${CYCLE_TIME:-}"
@@ -159,6 +160,11 @@ fi
 # Minimal UPnP mode (no position polling, no events)
 if [ -n "$MINIMAL_UPNP" ] && [ "$MINIMAL_UPNP" = "1" ]; then
     CMD+=("--minimal-upnp")
+fi
+
+# DoP: transmit DSD as 24-bit PCM with DoP markers
+if [ -n "$DOP" ] && [ "$DOP" = "1" ]; then
+    CMD+=("--dop")
 fi
 
 # Advanced Diretta settings (only if specified)

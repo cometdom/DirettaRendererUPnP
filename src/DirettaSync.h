@@ -106,6 +106,7 @@ extern LogRing* g_logRing;
 
 extern bool g_verbose;
 extern bool g_minimalUPnP;
+extern bool g_dopEnabled;
 extern int g_rtPriority;
 
 #ifdef NOLOG
@@ -521,7 +522,7 @@ private:
 
     void configureSinkPCM(int rate, int channels, int inputBits, int& acceptedBits);
     void configureSinkDSD(uint32_t dsdBitRate, int channels, const AudioFormat& format);
-    void configureRingPCM(int rate, int channels, int direttaBps, int inputBps);
+    void configureRingPCM(int rate, int channels, int direttaBps, int inputBps, bool isDoPMode = false);
     void configureRingDSD(uint32_t byteRate, int channels);
     void beginReconfigure();
     void endReconfigure();
@@ -620,6 +621,7 @@ private:
     std::atomic<bool> m_isDsdMode{false};
     std::atomic<bool> m_needDsdBitReversal{false};
     std::atomic<bool> m_needDsdByteSwap{false};  // For LITTLE endian targets
+    std::atomic<bool> m_isDoPMode{false};         // DoP (DSD over PCM) mode
     std::atomic<bool> m_isLowBitrate{false};
     std::atomic<bool> m_isRemoteStream{false};  // Remote streaming source (larger buffer)
 
@@ -635,6 +637,7 @@ private:
     // Protected by generation counter check - no race with configureRingXXX
     uint32_t m_cachedFormatGen{0};
     bool m_cachedDsdMode{false};
+    bool m_cachedDoPMode{false};
     bool m_cachedPack24bit{false};
     bool m_cachedUpsample16to32{false};
     bool m_cachedUpsample16to24{false};

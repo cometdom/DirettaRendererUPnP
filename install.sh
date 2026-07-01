@@ -565,7 +565,9 @@ test_ffmpeg_installation() {
 
     local required_demuxers="flac wav dsf mov"
     for dem in $required_demuxers; do
-        if echo "$demuxers" | grep -q " $dem "; then
+        # Match demuxer name followed by space or comma (FFmpeg 8.x lists aliases:
+        # "mov,mp4,m4a,3gp,3g2,mj2" — the trailing-space pattern misses these)
+        if echo "$demuxers" | grep -qE " ${dem}[ ,]"; then
             echo "  [OK] $dem"
         else
             echo "  [MISSING] $dem"
@@ -594,9 +596,11 @@ test_ffmpeg_installation() {
         print_warning "Some FFmpeg components are missing - audio playback may be limited"
     fi
 
-    # Quick decode test
+    # Quick decode test: pipe 8 silent PCM bytes through the s16le decoder.
+    # Does not require lavfi or sine (absent in minimal builds).
     print_info "Testing decoder functionality..."
-    if "$ffmpeg_bin" -f lavfi -i "sine=frequency=1000:duration=0.1" -f null - 2>/dev/null; then
+    if printf '\x00\x00\x00\x00\x00\x00\x00\x00' | \
+            "$ffmpeg_bin" -f s16le -ar 44100 -ac 1 -i pipe:0 -f null - 2>/dev/null; then
         print_success "FFmpeg decode test passed"
     else
         print_warning "FFmpeg decode test failed - there may be issues"
@@ -1033,6 +1037,15 @@ build_renderer() {
     fi
 
     print_success "Build successful!"
+
+    # If WebUI is already installed, refresh profiles so new settings
+    # (e.g. DoP, new config keys) are immediately visible without a separate
+    # --webui run.
+    local WEBUI_PROFILES_DST="/opt/diretta-renderer-upnp/webui/profiles"
+    if [ -d "$WEBUI_PROFILES_DST" ] && [ -d "$SCRIPT_DIR/webui/profiles" ]; then
+        sudo cp -r "$SCRIPT_DIR/webui/profiles" "/opt/diretta-renderer-upnp/webui/"
+        print_info "WebUI profiles refreshed"
+    fi
 }
 
 # =============================================================================
@@ -1954,6 +1967,7 @@ run_full_installation() {
     configure_network
     configure_firewall
     setup_systemd_service
+    setup_webui
 
     print_header "Installation Complete!"
 

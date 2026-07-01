@@ -22,7 +22,7 @@
 #include <cerrno>
 #include <cstring>
 
-#define RENDERER_VERSION "2.5.7"
+#define RENDERER_VERSION "2.5.8"
 #define RENDERER_BUILD_DATE __DATE__
 #define RENDERER_BUILD_TIME __TIME__
 
@@ -65,6 +65,7 @@ void statsSignalHandler(int /*signal*/) {
 
 bool g_verbose = false;
 bool g_minimalUPnP = false;
+bool g_dopEnabled = false;
 int g_rtPriority = 50;
 LogLevel g_logLevel = LogLevel::INFO;
 
@@ -200,6 +201,10 @@ DirettaRenderer::Config parseArguments(int argc, char* argv[]) {
             g_minimalUPnP = true;
             std::cout << "Minimal UPnP mode enabled (no position polling, no events)" << std::endl;
         }
+        else if (arg == "--dop") {
+            g_dopEnabled = true;
+            std::cout << "DoP mode enabled (DSD over PCM)" << std::endl;
+        }
         // Advanced Diretta SDK settings
         else if (arg == "--thread-mode" && i + 1 < argc) {
             config.threadMode = std::atoi(argv[++i]);
@@ -311,6 +316,8 @@ DirettaRenderer::Config parseArguments(int argc, char* argv[]) {
                       << "  --verbose, -v         Enable verbose debug output (log level: DEBUG)\n"
                       << "  --quiet, -q           Quiet mode - only errors and warnings (log level: WARN)\n"
                       << "  --minimal-upnp        Minimal UPnP mode (no position polling, no events)\n"
+                      << "  --dop                 DoP mode: encode DSD as 24-bit PCM (DSD over PCM)\n"
+                      << "                        DSD64->176.4kHz, DSD128->352.8kHz, DSD256->705.6kHz\n"
                       << "  --version, -V         Show version information\n"
                       << "  --help, -h            Show this help\n"
                       << "\n"
