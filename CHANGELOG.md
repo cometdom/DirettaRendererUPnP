@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.5.7] - 2026-07-01
+
+### Fixed
+- **`install.sh`: FFmpeg 8.1+ fails to configure without `udp` in the protocol list** (issue #81, reported by sheviks). FFmpeg 8.1+ introduced a compile-time dependency on the `udp` protocol (likely via `hls`); configuring without it caused the build to fail. Added `udp` to both `get_ffmpeg_configure_opts` (legacy 5.x build) and `get_ffmpeg_8_minimal_opts` (8.x minimal build). No change to the DRUP binary itself.
+
 ## [2.5.6] - 2026-06-24
 
 ### Fixed
