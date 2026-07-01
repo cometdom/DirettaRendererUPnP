@@ -19,6 +19,8 @@
 #include <vector>
 #include <sstream>
 #include <string>
+#include <set>
+#include <fstream>
 #include <cerrno>
 #include <cstring>
 
@@ -86,6 +88,41 @@ static std::vector<int> parseCoreSpec(const std::string& spec) {
         } catch (...) {}
     }
     return cores;
+}
+
+// Read /sys/devices/system/cpu/online and return the set of online CPU IDs.
+// Handles both ranges ("0-7") and lists ("0,2,4,6,8,10,12,14").
+// Falls back to 0..N-1 if the file is unreadable (containers, old kernels).
+static std::set<int> getOnlineCpus(std::string* desc = nullptr) {
+    std::set<int> online;
+    std::ifstream f("/sys/devices/system/cpu/online");
+    if (f.is_open()) {
+        std::string line;
+        std::getline(f, line);
+        while (!line.empty() && (line.back() == '\n' || line.back() == '\r' || line.back() == ' '))
+            line.pop_back();
+        if (desc) *desc = line;
+        std::stringstream ss(line);
+        std::string token;
+        while (std::getline(ss, token, ',')) {
+            auto dash = token.find('-');
+            if (dash != std::string::npos) {
+                try {
+                    int lo = std::stoi(token.substr(0, dash));
+                    int hi = std::stoi(token.substr(dash + 1));
+                    for (int i = lo; i <= hi; i++) online.insert(i);
+                } catch (...) {}
+            } else if (!token.empty()) {
+                try { online.insert(std::stoi(token)); } catch (...) {}
+            }
+        }
+        return online;
+    }
+    // Fallback: assume sequential 0..N-1
+    int n = static_cast<int>(sysconf(_SC_NPROCESSORS_ONLN));
+    for (int i = 0; i < n; i++) online.insert(i);
+    if (desc) *desc = "0-" + std::to_string(n - 1);
+    return online;
 }
 
 // Helper: pin current thread to one or more CPU cores.
@@ -245,13 +282,13 @@ DirettaRenderer::Config parseArguments(int argc, char* argv[]) {
         }
         else if (arg == "--cpu-audio" && i + 1 < argc) {
             config.cpuAudio = argv[++i];
-            // Validate all cores in the list
-            int numCores = static_cast<int>(sysconf(_SC_NPROCESSORS_ONLN));
+            std::string onlineDesc;
+            auto online = getOnlineCpus(&onlineDesc);
             auto cores = parseCoreSpec(config.cpuAudio);
             for (int c : cores) {
-                if (c >= numCores) {
+                if (online.find(c) == online.end()) {
                     std::cerr << "Warning: --cpu-audio contains invalid core " << c
-                              << " (this system has cores 0-" << (numCores - 1) << ")" << std::endl;
+                              << " (online CPUs: " << onlineDesc << ")" << std::endl;
                     config.cpuAudio.clear();
                     break;
                 }
@@ -259,12 +296,13 @@ DirettaRenderer::Config parseArguments(int argc, char* argv[]) {
         }
         else if (arg == "--cpu-decode" && i + 1 < argc) {
             config.cpuDecode = argv[++i];
-            int numCores = static_cast<int>(sysconf(_SC_NPROCESSORS_ONLN));
+            std::string onlineDesc;
+            auto online = getOnlineCpus(&onlineDesc);
             auto cores = parseCoreSpec(config.cpuDecode);
             for (int c : cores) {
-                if (c >= numCores) {
+                if (online.find(c) == online.end()) {
                     std::cerr << "Warning: --cpu-decode contains invalid core " << c
-                              << " (this system has cores 0-" << (numCores - 1) << ")" << std::endl;
+                              << " (online CPUs: " << onlineDesc << ")" << std::endl;
                     config.cpuDecode.clear();
                     break;
                 }
@@ -272,12 +310,13 @@ DirettaRenderer::Config parseArguments(int argc, char* argv[]) {
         }
         else if (arg == "--cpu-other" && i + 1 < argc) {
             config.cpuOther = argv[++i];
-            int numCores = static_cast<int>(sysconf(_SC_NPROCESSORS_ONLN));
+            std::string onlineDesc;
+            auto online = getOnlineCpus(&onlineDesc);
             auto cores = parseCoreSpec(config.cpuOther);
             for (int c : cores) {
-                if (c >= numCores) {
+                if (online.find(c) == online.end()) {
                     std::cerr << "Warning: --cpu-other contains invalid core " << c
-                              << " (this system has cores 0-" << (numCores - 1) << ")" << std::endl;
+                              << " (online CPUs: " << onlineDesc << ")" << std::endl;
                     config.cpuOther.clear();
                     break;
                 }
