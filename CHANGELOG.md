@@ -3,7 +3,10 @@
 ## [2.5.7] - 2026-07-01
 
 ### Fixed
-- **`install.sh`: FFmpeg 8.1+ fails to configure without `udp` in the protocol list** (issue #81, reported by sheviks). FFmpeg 8.1+ introduced a compile-time dependency on the `udp` protocol (likely via `hls`); configuring without it caused the build to fail. Added `udp` to both `get_ffmpeg_configure_opts` (legacy 5.x build) and `get_ffmpeg_8_minimal_opts` (8.x minimal build). No change to the DRUP binary itself.
+- **`install.sh`: FFmpeg 8.1+ fails to configure without `udp` in the protocol list** (issue #81, reported by sheviks). FFmpeg 8.1+ introduced a compile-time dependency on the `udp` protocol (likely via `hls`); configuring without it caused the build to fail. Added `udp` to both `get_ffmpeg_configure_opts` (legacy full build) and `get_ffmpeg_8_minimal_opts` (minimal build). No change to the DRUP binary itself.
+
+### Changed
+- **`install.sh`: FFmpeg menu overhauled** — FFmpeg 5.1.2 (2022, unmaintained) removed; FFmpeg 8.x bumped from 8.0.1 to 8.1.2; new option added for FFmpeg 7.1.1 minimal audio-only build (same configure as the 8.x minimal, recommended for Pi and low-RAM systems); RPM Fusion option description updated to clarify it installs the distro-maintained version with automatic security updates. Version numbers are now defined as named constants (`FFMPEG_7_VERSION`, `FFMPEG_8_VERSION`) at the top of the script — bumping a version is a one-line change. Final menu: (1) FFmpeg 7.1.1 full, (2) FFmpeg 7.1.1 minimal, (3) FFmpeg 8.1.2 minimal [default], (4) RPM Fusion / system packages.
 
 ## [2.5.6] - 2026-06-24
 
