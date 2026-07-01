@@ -31,7 +31,6 @@ detect_latest_sdk() {
 SDK_PATH="${DIRETTA_SDK_PATH:-$(detect_latest_sdk)}"
 FFMPEG_BUILD_DIR="/tmp/ffmpeg-build"
 FFMPEG_HEADERS_DIR="$SCRIPT_DIR/ffmpeg-headers"
-FFMPEG_5_VERSION="5.1.2"
 FFMPEG_7_VERSION="7.1.1"
 FFMPEG_8_VERSION="8.1.2"
 FFMPEG_TARGET_VERSION="$FFMPEG_8_VERSION"   # updated by install_ffmpeg()
@@ -662,57 +661,45 @@ install_ffmpeg() {
     echo ""
     echo "Installation options:"
     echo ""
-    echo "  1) Build FFmpeg $FFMPEG_5_VERSION from source (legacy/full)"
-    echo "     - Stable, widely tested"
-    echo "     - Requires matching headers for compilation (auto-downloaded)"
-    echo ""
-    echo "  2) Build FFmpeg $FFMPEG_7_VERSION from source (full)"
+    echo "  1) Build FFmpeg $FFMPEG_7_VERSION from source (full)"
     echo "     - Stable LTS branch, GCC 14/15 compatible"
     echo "     - Full DSD support, LTO optimization"
     echo ""
-    echo "  3) Build FFmpeg $FFMPEG_7_VERSION minimal audio"
-    echo "     - Same branch as option 2, minimal audio-only build"
+    echo "  2) Build FFmpeg $FFMPEG_7_VERSION minimal audio"
+    echo "     - Same branch as option 1, minimal audio-only build"
     echo "     - Smallest footprint: only essential decoders enabled"
     echo "     - Recommended for Pi and low-RAM systems"
     echo ""
-    echo "  4) Build FFmpeg $FFMPEG_8_VERSION minimal audio (recommended)"
+    echo "  3) Build FFmpeg $FFMPEG_8_VERSION minimal audio (recommended)"
     echo "     - Latest stable branch, minimal audio-only build"
     echo "     - Smallest footprint: only essential decoders enabled"
     echo "     - Installs to /usr (system-wide)"
     echo ""
     if [ "$OS" = "fedora" ]; then
-    echo "  5) Install from RPM Fusion (Fedora)"
+    echo "  4) Install from RPM Fusion (Fedora)"
     echo "     - Pre-built, distro-maintained package (currently FFmpeg 7.x/8.x)"
     echo "     - No compilation needed — fastest setup"
     echo "     - Full codec support; automatic security updates via dnf"
     echo ""
-    echo "  6) Use system packages (minimal)"
+    echo "  5) Use system packages (minimal)"
     echo "     - Fastest installation"
     echo "     - May lack DSD and some codecs"
     echo ""
     else
-    echo "  5) Use system packages (minimal)"
+    echo "  4) Use system packages (minimal)"
     echo "     - Fastest installation"
     echo "     - May lack DSD and some codecs"
     echo ""
     fi
 
-    local max_option=5
-    [ "$OS" = "fedora" ] && max_option=6
+    local max_option=4
+    [ "$OS" = "fedora" ] && max_option=5
 
-    read -p "Choose option [1-$max_option] (default: 4): " FFMPEG_OPTION
-    FFMPEG_OPTION=${FFMPEG_OPTION:-4}
+    read -p "Choose option [1-$max_option] (default: 3): " FFMPEG_OPTION
+    FFMPEG_OPTION=${FFMPEG_OPTION:-3}
 
     case $FFMPEG_OPTION in
         1)
-            FFMPEG_TARGET_VERSION="$FFMPEG_5_VERSION"
-            build_ffmpeg_from_source "$FFMPEG_5_VERSION"
-            configure_ffmpeg_paths
-            rm -rf "$FFMPEG_BUILD_DIR"
-            test_ffmpeg_installation "/usr/local/bin/ffmpeg"
-            echo "$FFMPEG_TARGET_VERSION" > "$SCRIPT_DIR/.ffmpeg-version"
-            ;;
-        2)
             FFMPEG_TARGET_VERSION="$FFMPEG_7_VERSION"
             build_ffmpeg_from_source "$FFMPEG_7_VERSION"
             configure_ffmpeg_paths
@@ -720,21 +707,21 @@ install_ffmpeg() {
             test_ffmpeg_installation "/usr/local/bin/ffmpeg"
             echo "$FFMPEG_TARGET_VERSION" > "$SCRIPT_DIR/.ffmpeg-version"
             ;;
-        3)
+        2)
             FFMPEG_TARGET_VERSION="$FFMPEG_7_VERSION"
             build_ffmpeg_8_minimal "$FFMPEG_7_VERSION"
             rm -rf "$FFMPEG_BUILD_DIR"
             test_ffmpeg_installation "/usr/bin/ffmpeg"
             echo "$FFMPEG_TARGET_VERSION" > "$SCRIPT_DIR/.ffmpeg-version"
             ;;
-        4)
+        3)
             FFMPEG_TARGET_VERSION="$FFMPEG_8_VERSION"
             build_ffmpeg_8_minimal "$FFMPEG_8_VERSION"
             rm -rf "$FFMPEG_BUILD_DIR"
             test_ffmpeg_installation "/usr/bin/ffmpeg"
             echo "$FFMPEG_TARGET_VERSION" > "$SCRIPT_DIR/.ffmpeg-version"
             ;;
-        5)
+        4)
             if [ "$OS" = "fedora" ]; then
                 install_ffmpeg_rpm_fusion
                 test_ffmpeg_installation "$(which ffmpeg)"
@@ -743,7 +730,7 @@ install_ffmpeg() {
                 test_ffmpeg_installation "$(which ffmpeg)"
             fi
             ;;
-        6)
+        5)
             if [ "$OS" = "fedora" ]; then
                 install_ffmpeg_system
                 test_ffmpeg_installation "$(which ffmpeg)"
