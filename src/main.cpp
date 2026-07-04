@@ -68,6 +68,7 @@ void statsSignalHandler(int /*signal*/) {
 bool g_verbose = false;
 bool g_minimalUPnP = false;
 bool g_dopEnabled = false;
+bool g_dopMsb = false;  // --dop-msb: bit-reverse DSD bytes in DoP frames (for DACs expecting MSB-first)
 int g_rtPriority = 50;
 LogLevel g_logLevel = LogLevel::INFO;
 
@@ -242,6 +243,11 @@ DirettaRenderer::Config parseArguments(int argc, char* argv[]) {
             g_dopEnabled = true;
             std::cout << "DoP mode enabled (DSD over PCM)" << std::endl;
         }
+        else if (arg == "--dop-msb") {
+            g_dopEnabled = true;
+            g_dopMsb = true;
+            std::cout << "DoP mode enabled (MSB-first bit order — for DACs expecting reversed DSD bytes)" << std::endl;
+        }
         // Advanced Diretta SDK settings
         else if (arg == "--thread-mode" && i + 1 < argc) {
             config.threadMode = std::atoi(argv[++i]);
@@ -357,6 +363,8 @@ DirettaRenderer::Config parseArguments(int argc, char* argv[]) {
                       << "  --minimal-upnp        Minimal UPnP mode (no position polling, no events)\n"
                       << "  --dop                 DoP mode: encode DSD as 24-bit PCM (DSD over PCM)\n"
                       << "                        DSD64->176.4kHz, DSD128->352.8kHz, DSD256->705.6kHz\n"
+                      << "  --dop-msb             DoP mode with MSB-first bit order (implies --dop)\n"
+                      << "                        Bit-reverses each DSD byte; try if --dop produces noise\n"
                       << "  --version, -V         Show version information\n"
                       << "  --help, -h            Show this help\n"
                       << "\n"

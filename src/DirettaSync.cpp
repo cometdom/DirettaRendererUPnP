@@ -1501,7 +1501,22 @@ size_t DirettaSync::sendAudio(const uint8_t* data, size_t numSamples) {
         // numSamples encoding from AudioEngine: numSamples = (totalBytes * 8) / channels
         totalBytes = (numSamples * static_cast<size_t>(numChannels)) / 8;
 
-        written = m_ringBuffer.pushDSDToDoP(data, totalBytes, numChannels);
+        bool dopBitReverse = g_dopMsb;
+        written = m_ringBuffer.pushDSDToDoP(data, totalBytes, numChannels, dopBitReverse);
+
+        // Debug: log first few DoP pushes for diagnosis (show raw input bytes before encoding)
+        if (g_verbose && m_pushCount.load(std::memory_order_relaxed) < 3 && written > 0) {
+            size_t perCh = totalBytes / static_cast<size_t>(numChannels);
+            std::cout << "[DirettaSync] DoP push #" << (m_pushCount.load() + 1)
+                      << " in=" << totalBytes << "B out=" << written
+                      << " bitrev=" << (dopBitReverse ? "yes" : "no") << std::endl;
+            std::cout << "[DirettaSync]   L raw[0..3]: ";
+            for (size_t i = 0; i < 4 && i < perCh; i++) printf("%02X ", data[i]);
+            printf("\n");
+            std::cout << "[DirettaSync]   R raw[0..3]: ";
+            for (size_t i = 0; i < 4 && i < perCh; i++) printf("%02X ", data[perCh + i]);
+            printf("\n");
+        }
         formatLabel = "DoP";
 
     } else if (dsdMode) {

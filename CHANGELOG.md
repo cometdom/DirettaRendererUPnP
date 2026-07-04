@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- **`--dop-msb` flag** (issue #80, follow-up for yama3kzh's SFORZATO DAC-01 noise with `--dop`). When the DAC's DoP decoder expects MSB-first DSD payload in 24-bit DoP frames (rather than the LSB-first default from DSF files), `--dop-msb` enables intra-byte bit reversal of each DSD byte before packing. The reversal uses a static 256-entry lookup table in `DirettaRingBuffer` — zero branches and zero heap allocations in the audio hot path. `--dop-msb` implies `--dop`; using it without `--dop` enables both. Verbose mode prints the first few DoP pushes with raw DSD bytes for diagnosis. Two new unit tests cover both the LSB-first and MSB-first (`bitReverse=true`) encoding paths byte-by-byte.
+
 ## [2.5.8] - 2026-07-01
 
 ### Added

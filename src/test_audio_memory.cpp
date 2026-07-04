@@ -23,6 +23,8 @@ bool test_ring_buffer_full();
 bool test_ring_buffer_empty_pop();
 bool test_push24bit_pop_integration();
 bool test_pushDSD_optimized_integration();
+bool test_pushDSD_dop_encoding();
+bool test_pushDSD_dop_msb_encoding();
 
 int main() {
     std::cout << "=== DirettaRingBuffer Unit Tests ===" << std::endl;
@@ -65,6 +67,8 @@ int main() {
     std::cout << std::endl << "--- Integration ---" << std::endl;
     RUN_TEST(test_push24bit_pop_integration);
     RUN_TEST(test_pushDSD_optimized_integration);
+    RUN_TEST(test_pushDSD_dop_encoding);
+    RUN_TEST(test_pushDSD_dop_msb_encoding);
 
     std::cout << std::endl;
     std::cout << "=== Results: " << passed << " passed, " << failed << " failed ===" << std::endl;
@@ -675,6 +679,110 @@ bool test_push24bit_pop_integration() {
     TEST_ASSERT(popped[0] == 0x00 && popped[1] == 0x01 && popped[2] == 0x02,
         "First packed sample incorrect");
 
+    return true;
+}
+
+bool test_pushDSD_dop_encoding() {
+    // Verify DoP v1.1 frame structure: stereo planar DSD → interleaved 24-bit PCM with markers
+    // Expected per frame (6 bytes): [L_dsd0, L_dsd1, marker, R_dsd0, R_dsd1, marker]
+    // Markers alternate: 0x05, 0xFA, 0x05, 0xFA, ...
+    DirettaRingBuffer ring;
+    ring.resize(1024 * 1024, 0x69);
+
+    constexpr size_t BYTES_PER_CHANNEL = 16;  // 8 PCM frames
+    constexpr size_t TOTAL_INPUT = BYTES_PER_CHANNEL * 2;
+
+    alignas(64) uint8_t input[TOTAL_INPUT];
+    for (size_t i = 0; i < BYTES_PER_CHANNEL; i++) {
+        input[i]                    = static_cast<uint8_t>(i);          // L: 0x00..0x0F
+        input[BYTES_PER_CHANNEL + i] = static_cast<uint8_t>(0x80 + i);  // R: 0x80..0x8F
+    }
+
+    size_t written = ring.pushDSDToDoP(input, TOTAL_INPUT, 2);
+    TEST_ASSERT(written > 0, "DoP push failed");
+
+    // Each pair of DSD bytes per channel → one 24-bit PCM sample (3 bytes)
+    // 8 PCM frames × 2ch × 3 bytes = 48 bytes expected in ring
+    size_t available = ring.getAvailable();
+    TEST_ASSERT_EQ(available, static_cast<size_t>(48), "DoP output size unexpected");
+
+    std::vector<uint8_t> out(available);
+    ring.pop(out.data(), available);
+
+    // Verify all 8 frames byte-by-byte
+    uint8_t markers[8] = {0x05, 0xFA, 0x05, 0xFA, 0x05, 0xFA, 0x05, 0xFA};
+    bool ok = true;
+    for (size_t f = 0; f < 8; f++) {
+        size_t base = f * 6;
+        uint8_t l0 = out[base + 0], l1 = out[base + 1], lm = out[base + 2];
+        uint8_t r0 = out[base + 3], r1 = out[base + 4], rm = out[base + 5];
+        // L: DSD bytes 2f and 2f+1; R: DSD bytes 2f and 2f+1 (R channel)
+        if (l0 != static_cast<uint8_t>(2*f)   ||
+            l1 != static_cast<uint8_t>(2*f+1) ||
+            lm != markers[f]                   ||
+            r0 != static_cast<uint8_t>(0x80 + 2*f)   ||
+            r1 != static_cast<uint8_t>(0x80 + 2*f+1) ||
+            rm != markers[f]) {
+            std::cout << "  Frame " << f << ": got L=[" << (int)l0 << "," << (int)l1
+                      << ",marker=" << (int)lm << "] R=[" << (int)r0 << "," << (int)r1
+                      << ",marker=" << (int)rm << "]" << std::endl;
+            std::cout << "  Expected L=[" << (int)(2*f) << "," << (int)(2*f+1)
+                      << ",marker=" << (int)markers[f] << "] R=["
+                      << (int)(0x80+2*f) << "," << (int)(0x80+2*f+1)
+                      << ",marker=" << (int)markers[f] << "]" << std::endl;
+            ok = false;
+        }
+    }
+    TEST_ASSERT(ok, "DoP frame encoding incorrect — check pushDSDToDoP byte layout");
+    return true;
+}
+
+bool test_pushDSD_dop_msb_encoding() {
+    // Verify --dop-msb (bitReverse=true): DSD bytes must be bit-reversed in output
+    // kBitReverseTable[0x01] = 0x80, kBitReverseTable[0x80] = 0x01
+    DirettaRingBuffer ring;
+    ring.resize(1024 * 1024, 0x69);
+
+    constexpr size_t BYTES_PER_CHANNEL = 4;  // 2 PCM frames
+    constexpr size_t TOTAL_INPUT = BYTES_PER_CHANNEL * 2;
+
+    alignas(64) uint8_t input[TOTAL_INPUT];
+    input[0] = 0x01; input[1] = 0xF0;  // L: bytes 0,1
+    input[2] = 0x03; input[3] = 0x0F;  // L: bytes 2,3
+    input[4] = 0x02; input[5] = 0xE0;  // R: bytes 0,1
+    input[6] = 0x05; input[7] = 0xAA;  // R: bytes 2,3
+
+    size_t written = ring.pushDSDToDoP(input, TOTAL_INPUT, 2, true /* bitReverse */);
+    TEST_ASSERT(written > 0, "DoP MSB push failed");
+
+    size_t available = ring.getAvailable();
+    TEST_ASSERT_EQ(available, static_cast<size_t>(12), "DoP MSB output size unexpected");
+
+    std::vector<uint8_t> out(available);
+    ring.pop(out.data(), available);
+
+    // Frame 0: L=[rev(0x01)=0x80, rev(0xF0)=0x0F, 0x05], R=[rev(0x02)=0x40, rev(0xE0)=0x07, 0x05]
+    // Frame 1: L=[rev(0x03)=0xC0, rev(0x0F)=0xF0, 0xFA], R=[rev(0x05)=0xA0, rev(0xAA)=0x55, 0xFA]
+    struct { uint8_t l0,l1,lm, r0,r1,rm; } expected[2] = {
+        {0x80, 0x0F, 0x05, 0x40, 0x07, 0x05},
+        {0xC0, 0xF0, 0xFA, 0xA0, 0x55, 0xFA},
+    };
+
+    bool ok = true;
+    for (int f = 0; f < 2; f++) {
+        size_t b = static_cast<size_t>(f) * 6;
+        if (out[b+0] != expected[f].l0 || out[b+1] != expected[f].l1 || out[b+2] != expected[f].lm ||
+            out[b+3] != expected[f].r0 || out[b+4] != expected[f].r1 || out[b+5] != expected[f].rm) {
+            std::cout << "  Frame " << f << ": got ["
+                      << (int)out[b+0] << "," << (int)out[b+1] << "," << (int)out[b+2] << ","
+                      << (int)out[b+3] << "," << (int)out[b+4] << "," << (int)out[b+5] << "]" << std::endl;
+            std::cout << "  Expected ["
+                      << (int)expected[f].l0 << "," << (int)expected[f].l1 << "," << (int)expected[f].lm << ","
+                      << (int)expected[f].r0 << "," << (int)expected[f].r1 << "," << (int)expected[f].rm << "]" << std::endl;
+            ok = false;
+        }
+    }
+    TEST_ASSERT(ok, "DoP MSB bit-reversal incorrect");
     return true;
 }
 
