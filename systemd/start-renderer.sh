@@ -163,7 +163,11 @@ if [ -n "$MINIMAL_UPNP" ] && [ "$MINIMAL_UPNP" = "1" ]; then
 fi
 
 # DoP: transmit DSD as 24-bit PCM with DoP markers
-if [ -n "$DOP" ] && [ "$DOP" = "1" ]; then
+# DOP=1   → --dop   (LSB-first, standard DoP v1.1)
+# DOP=msb → --dop-msb (bit-reversed bytes, for DACs expecting MSB-first DSD in DoP)
+if [ "$DOP" = "msb" ]; then
+    CMD+=("--dop-msb")
+elif [ -n "$DOP" ] && [ "$DOP" = "1" ]; then
     CMD+=("--dop")
 fi
 
