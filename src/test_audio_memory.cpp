@@ -25,6 +25,7 @@ bool test_push24bit_pop_integration();
 bool test_pushDSD_optimized_integration();
 bool test_pushDSD_dop_encoding();
 bool test_pushDSD_dop_msb_encoding();
+bool test_pushDSD_dop_marker_phase_invariant();
 
 int main() {
     std::cout << "=== DirettaRingBuffer Unit Tests ===" << std::endl;
@@ -69,6 +70,7 @@ int main() {
     RUN_TEST(test_pushDSD_optimized_integration);
     RUN_TEST(test_pushDSD_dop_encoding);
     RUN_TEST(test_pushDSD_dop_msb_encoding);
+    RUN_TEST(test_pushDSD_dop_marker_phase_invariant);
 
     std::cout << std::endl;
     std::cout << "=== Results: " << passed << " passed, " << failed << " failed ===" << std::endl;
@@ -783,6 +785,94 @@ bool test_pushDSD_dop_msb_encoding() {
         }
     }
     TEST_ASSERT(ok, "DoP MSB bit-reversal incorrect");
+    return true;
+}
+
+bool test_pushDSD_dop_marker_phase_invariant() {
+    // Regression test: pushDSDToDoP must always write an EVEN number of frames.
+    //
+    // Root cause: the 44.1k drift corrector in getNewStream alternates 176/177 frames
+    // per SDK call. When 177 frames (1062 bytes stereo 24-bit) are drained, the ring
+    // has 1062 bytes free. Without the fix, floor(1062/6)=177 (odd) was written,
+    // flipping m_dopMarkerState and producing two consecutive identical markers at the
+    // push boundary. The SFORZATO (and similar DACs) lost DoP sync → continuous noise.
+    //
+    // Fix: pushDSDToDoP rounds pcmFrames down to even before writing.
+    //
+    // Test 1: odd frame count from small DSD input → rounded to even, state preserved.
+    // Test 2: continuous marker alternation across two consecutive pushes (no duplicate markers).
+
+    DirettaRingBuffer ring;
+    ring.resize(1024 * 1024, 0x00);  // clear() → m_dopMarkerState = false (0x05)
+
+    // Build stereo DSD input: 6 bytes/channel = 3 frames worth
+    // (3 is odd — would corrupt marker state without the even-frame guard)
+    alignas(64) uint8_t dsd3[12];  // 6 L + 6 R
+    for (size_t i = 0; i < 12; i++) dsd3[i] = static_cast<uint8_t>(i + 0x10);
+
+    // --- Test 1: odd pcmFrames (3) must be rounded to 2 ---
+    size_t consumed = ring.pushDSDToDoP(dsd3, 12, 2);
+    // Fix writes 2 frames (even) → consumed = 2*2*2 = 8 DSD input bytes
+    TEST_ASSERT_EQ(consumed, static_cast<size_t>(8),
+                   "Odd-frame push: expected 8 input bytes consumed (2 frames), not 12 (3 frames)");
+    size_t avail1 = ring.getAvailable();
+    TEST_ASSERT_EQ(avail1, static_cast<size_t>(12),
+                   "Odd-frame push: ring should have 12 bytes (2 frames × 6), not 18 (3 frames × 6)");
+
+    // Drain what was written
+    uint8_t out1[12];
+    ring.pop(out1, 12);
+    // Frame 0 marker must be 0x05 (state was false), frame 1 marker must be 0xFA
+    TEST_ASSERT_EQ(out1[2],  static_cast<uint8_t>(0x05), "Frame 0 L marker must be 0x05");
+    TEST_ASSERT_EQ(out1[5],  static_cast<uint8_t>(0x05), "Frame 0 R marker must be 0x05");
+    TEST_ASSERT_EQ(out1[8],  static_cast<uint8_t>(0xFA), "Frame 1 L marker must be 0xFA");
+    TEST_ASSERT_EQ(out1[11], static_cast<uint8_t>(0xFA), "Frame 1 R marker must be 0xFA");
+
+    // After 2 frames (even): marker state still = false (0x05)
+    // Push 3 more frames: must write 2 again, starting with 0x05
+    ring.pushDSDToDoP(dsd3, 12, 2);
+    uint8_t out2[12];
+    ring.pop(out2, ring.getAvailable());
+    TEST_ASSERT_EQ(out2[2], static_cast<uint8_t>(0x05),
+                   "After even-frame push, next push must still start with 0x05 marker");
+
+    // --- Test 2: simulate the drift-corrector scenario ---
+    // Fill a ring with multiple pushes, then verify that the entire output stream
+    // has perfectly alternating 0x05/0xFA markers (no consecutive identical markers).
+    // Any odd-frame push would corrupt the phase and produce a duplicate marker.
+    DirettaRingBuffer ring2;
+    ring2.resize(2048, 0x00);
+
+    alignas(64) uint8_t fill[512];
+    for (size_t i = 0; i < 512; i++) fill[i] = static_cast<uint8_t>(i & 0xFF);
+
+    // Fill ring with several pushes of varying sizes
+    for (int i = 0; i < 5; i++) {
+        ring2.pushDSDToDoP(fill, 512, 2);
+    }
+
+    // Drain all and verify no consecutive identical markers
+    size_t total2 = ring2.getAvailable();
+    // total2 must be frame-aligned (multiple of 6) for valid DoP content
+    TEST_ASSERT(total2 % 6 == 0, "Total ring content not frame-aligned");
+
+    std::vector<uint8_t> all(total2);
+    ring2.pop(all.data(), total2);
+
+    bool phase_ok = true;
+    size_t nframes2 = total2 / 6;
+    for (size_t f = 1; f < nframes2 && phase_ok; f++) {
+        uint8_t prev = all[(f - 1) * 6 + 2];
+        uint8_t curr = all[f * 6 + 2];
+        if (curr == prev) {
+            std::cout << "  Frame " << f << ": duplicate marker 0x"
+                      << std::hex << (int)curr << std::dec
+                      << " — DoP sync would be lost here" << std::endl;
+            phase_ok = false;
+        }
+    }
+    TEST_ASSERT(phase_ok, "Consecutive identical DoP markers found — even-frame guard not working");
+
     return true;
 }
 
