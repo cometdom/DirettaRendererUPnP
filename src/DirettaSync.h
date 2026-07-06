@@ -655,9 +655,15 @@ private:
     int m_cachedBytesPerBuffer{176};
     uint8_t m_cachedSilenceByte{0};
     bool m_cachedConsumerIsDsd{false};
+    bool m_cachedConsumerIsDoP{false};
+    int m_cachedConsumerChannels{2};
     int m_cachedConsumerSampleRate{44100};
     int m_cachedBytesPerFrame{0};
     uint32_t m_cachedFramesPerBufferRemainder{0};
+
+    // DoP silence generation state (SDK thread only — no atomic needed)
+    // Tracks marker phase across getNewStream() calls during stabilization
+    bool m_doPSilenceMarkerState{false};  // false = 0x05 marker, true = 0xFA
 
     // Prefill and stabilization
     size_t m_prefillTarget = 0;

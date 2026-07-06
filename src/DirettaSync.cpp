@@ -1206,6 +1206,9 @@ void DirettaSync::configureRingPCM(int rate, int channels, int direttaBps, int i
     m_needDsdByteSwap.store(false, std::memory_order_release);
     m_isLowBitrate.store(direttaBps <= 2 && rate <= 48000, std::memory_order_release);
     m_dsdConversionMode.store(DirettaRingBuffer::DSDConversionMode::Passthrough, std::memory_order_release);
+    if (isDoPMode) {
+        m_doPSilenceMarkerState = false;  // Reset to 0x05 on each track open
+    }
 
     // Increment format generation to invalidate cached values in sendAudio
     m_formatGeneration.fetch_add(1, std::memory_order_release);
@@ -1653,6 +1656,8 @@ bool DirettaSync::getNewStream(diretta_stream& baseStream) {
         m_cachedBytesPerBuffer = m_bytesPerBuffer.load(std::memory_order_acquire);
         m_cachedSilenceByte = m_ringBuffer.silenceByte();
         m_cachedConsumerIsDsd = m_isDsdMode.load(std::memory_order_acquire);
+        m_cachedConsumerIsDoP = m_isDoPMode.load(std::memory_order_acquire);
+        m_cachedConsumerChannels = m_channels.load(std::memory_order_acquire);
         m_cachedConsumerSampleRate = m_sampleRate.load(std::memory_order_acquire);
         // PCM buffer rounding drift fix values (stable per-track)
         m_cachedBytesPerFrame = m_bytesPerFrame.load(std::memory_order_acquire);
@@ -1663,6 +1668,34 @@ bool DirettaSync::getNewStream(diretta_stream& baseStream) {
     // Hot path: use cached values
     int currentBytesPerBuffer = m_cachedBytesPerBuffer;
     uint8_t currentSilenceByte = m_cachedSilenceByte;
+    bool currentIsDoP = m_cachedConsumerIsDoP;
+
+    // DoP silence: fill buffer with proper DoP frames (DSD silence 0x69 + alternating markers)
+    // instead of PCM 0x00, so the DAC can detect and lock DoP mode from the very first frame.
+    // PCM 0x00 silence causes DACs that scan for DoP only at stream init to stay in PCM mode.
+    // m_doPSilenceMarkerState persists across calls to keep the marker stream coherent.
+    auto fillSilence = [&](uint8_t* buf, int size) {
+        if (!currentIsDoP) {
+            std::memset(buf, currentSilenceByte, size);
+            return;
+        }
+        int channels = m_cachedConsumerChannels > 0 ? m_cachedConsumerChannels : 2;
+        int bytesPerFrame = channels * 3;
+        int offset = 0;
+        while (offset + bytesPerFrame <= size) {
+            uint8_t marker = m_doPSilenceMarkerState ? 0xFA : 0x05;
+            m_doPSilenceMarkerState = !m_doPSilenceMarkerState;
+            for (int ch = 0; ch < channels; ch++) {
+                buf[offset + ch * 3 + 0] = 0x69;    // DSD silence byte 0
+                buf[offset + ch * 3 + 1] = 0x69;    // DSD silence byte 1
+                buf[offset + ch * 3 + 2] = marker;  // DoP marker
+            }
+            offset += bytesPerFrame;
+        }
+        if (offset < size) {
+            std::memset(buf + offset, 0x00, size - offset);
+        }
+    };
 
     // PCM buffer rounding drift fix: accumulator adjusts buffer size for 44.1k family
     // Uses cached remainder/bytesPerFrame, only accumulator is per-call
@@ -1691,7 +1724,7 @@ bool DirettaSync::getNewStream(diretta_stream& baseStream) {
 
     RingAccessGuard ringGuard(m_ringUsers, m_reconfiguring);
     if (!ringGuard.active()) {
-        std::memset(dest, currentSilenceByte, currentBytesPerBuffer);
+        fillSilence(dest, currentBytesPerBuffer);
         m_workerActive = false;
         return true;
     }
@@ -1702,7 +1735,7 @@ bool DirettaSync::getNewStream(diretta_stream& baseStream) {
     // Shutdown silence
     int silenceRemaining = m_silenceBuffersRemaining.load(std::memory_order_acquire);
     if (silenceRemaining > 0) {
-        std::memset(dest, currentSilenceByte, currentBytesPerBuffer);
+        fillSilence(dest, currentBytesPerBuffer);
         m_silenceBuffersRemaining.fetch_sub(1, std::memory_order_acq_rel);
         m_workerActive = false;
         return true;
@@ -1710,14 +1743,14 @@ bool DirettaSync::getNewStream(diretta_stream& baseStream) {
 
     // Stop requested
     if (m_stopRequested.load(std::memory_order_acquire)) {
-        std::memset(dest, currentSilenceByte, currentBytesPerBuffer);
+        fillSilence(dest, currentBytesPerBuffer);
         m_workerActive = false;
         return true;
     }
 
     // Prefill not complete
     if (!m_prefillComplete.load(std::memory_order_acquire)) {
-        std::memset(dest, currentSilenceByte, currentBytesPerBuffer);
+        fillSilence(dest, currentBytesPerBuffer);
         m_workerActive = false;
         return true;
     }
@@ -1785,7 +1818,7 @@ bool DirettaSync::getNewStream(diretta_stream& baseStream) {
                 DIRETTA_LOG("Post-online stabilization complete (" << count << " buffers)");
             }
         }
-        std::memset(dest, currentSilenceByte, currentBytesPerBuffer);
+        fillSilence(dest, currentBytesPerBuffer);
         m_workerActive = false;
         return true;
     }
@@ -1816,7 +1849,7 @@ bool DirettaSync::getNewStream(diretta_stream& baseStream) {
                      << avail << ", threshold=" << threshold << ")");
             // Fall through to normal pop below
         } else {
-            std::memset(dest, currentSilenceByte, currentBytesPerBuffer);
+            fillSilence(dest, currentBytesPerBuffer);
             m_workerActive = false;
             return true;
         }
@@ -1829,7 +1862,7 @@ bool DirettaSync::getNewStream(diretta_stream& baseStream) {
             m_rebuffering.store(true, std::memory_order_release);
             LOG_WARN("[DirettaSync] Buffer underrun — entering rebuffering mode (avail=" << avail << ")");
         }
-        std::memset(dest, currentSilenceByte, currentBytesPerBuffer);
+        fillSilence(dest, currentBytesPerBuffer);
         m_workerActive = false;
         return true;
     }
