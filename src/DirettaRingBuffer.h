@@ -540,12 +540,10 @@ public:
 
         if (pcmFrames > maxFramesByStaging) pcmFrames = maxFramesByStaging;
         if (pcmFrames > maxFramesByFree)   pcmFrames = maxFramesByFree;
-        // DoP marker phase invariant: always write an even number of frames.
-        // An odd count flips m_dopMarkerState, causing two consecutive identical markers
-        // at the push boundary. The DAC loses DoP sync and plays noise continuously.
-        // Root cause: the 44.1k-family drift corrector in getNewStream alternates between
-        // 176 and 177 frames/call; when 177 bytes are drained, free space = 1062 = 177×6,
-        // and floor(1062/6)=177 (odd) corrupts the phase on the very next push.
+        // Keep frame count even so each push leaves m_dopMarkerState unchanged (net 0 flips).
+        // This isn't strictly required for correct alternation (the state machine handles
+        // odd counts fine across push boundaries), but it simplifies reasoning about the
+        // marker stream and avoids edge cases when free space is exactly one odd-frame amount.
         if (pcmFrames % 2 != 0) pcmFrames--;
         if (pcmFrames == 0) return 0;
 

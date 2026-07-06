@@ -1303,6 +1303,8 @@ void DirettaSync::configureRingDSD(uint32_t byteRate, int channels) {
     m_need16To32Upsample.store(false, std::memory_order_release);
     m_need16To24Upsample.store(false, std::memory_order_release);
     m_channels.store(channels, std::memory_order_release);
+    m_sampleRate.store(static_cast<int>(byteRate * 8), std::memory_order_release);
+    m_bytesPerSample.store(1, std::memory_order_release);
     m_isLowBitrate.store(false, std::memory_order_release);
     // DSD always uses DSD_BUFFER_SECONDS regardless of source type
     m_isRemoteStream.store(false, std::memory_order_release);
@@ -1739,13 +1741,16 @@ bool DirettaSync::getNewStream(diretta_stream& baseStream) {
             int targetWarmupMs = 50 * std::max(1, dsdMultiplier);  // 50ms baseline
 
             double bytesPerSecond = static_cast<double>(currentSampleRate) * 2 / 8.0;  // 2ch, 1bit
-            double cycleTimeUs = (static_cast<double>(efficientMTU) / bytesPerSecond) * 1000000.0;
+            // Use actual buffer size for cycle time (not MTU); avoids 10x overcount on 1ms-buffer paths
+            double cycleTimeUs = (bytesPerSecond > 0)
+                ? (static_cast<double>(currentBytesPerBuffer) / bytesPerSecond) * 1000000.0
+                : 1000.0;  // fallback: assume 1ms cycle if rate unknown
 
             double buffersNeeded = (targetWarmupMs * 1000.0) / cycleTimeUs;
             stabilizationTarget = static_cast<int>(std::ceil(buffersNeeded));
             stabilizationTarget = std::max(50, std::min(stabilizationTarget, 3000));
         } else {
-            // PCM: Scale stabilization with MTU like DSD
+            // PCM (including DoP): Scale stabilization with actual buffer size
             // First connect needs extra time for target clock sync
             int targetWarmupMs = m_isFirstConnect
                 ? static_cast<int>(DirettaBuffer::FIRST_CONNECT_STABILIZATION_MS)
@@ -1756,7 +1761,12 @@ bool DirettaSync::getNewStream(diretta_stream& baseStream) {
             if (channels <= 0) channels = 2;
             if (bps <= 0) bps = 4;
             double bytesPerSecond = static_cast<double>(currentSampleRate) * channels * bps;
-            double cycleTimeUs = (static_cast<double>(efficientMTU) / bytesPerSecond) * 1000000.0;
+            // Bug fix: was using efficientMTU instead of actual buffer size; for DoP at 176.4kHz
+            // that gave cycleTimeUs=1.4µs (wrong) instead of 1ms, causing 3000 buffers of silence
+            // (3 seconds) instead of the intended 100ms — enough to prevent DAC DoP lock.
+            double cycleTimeUs = (bytesPerSecond > 0)
+                ? (static_cast<double>(currentBytesPerBuffer) / bytesPerSecond) * 1000000.0
+                : 1000.0;  // fallback: assume 1ms cycle if rate unknown
 
             double buffersNeeded = (targetWarmupMs * 1000.0) / cycleTimeUs;
             stabilizationTarget = static_cast<int>(std::ceil(buffersNeeded));
