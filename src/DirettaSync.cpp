@@ -997,6 +997,7 @@ void DirettaSync::fullReset() {
         m_stabilizationCount = 0;
         m_streamCount = 0;
         m_pushCount = 0;
+        m_popCount = 0;
         m_rebuffering.store(false, std::memory_order_relaxed);
         m_isDsdMode.store(false, std::memory_order_release);
         m_isDoPMode.store(false, std::memory_order_release);
@@ -1206,9 +1207,6 @@ void DirettaSync::configureRingPCM(int rate, int channels, int direttaBps, int i
     m_needDsdByteSwap.store(false, std::memory_order_release);
     m_isLowBitrate.store(direttaBps <= 2 && rate <= 48000, std::memory_order_release);
     m_dsdConversionMode.store(DirettaRingBuffer::DSDConversionMode::Passthrough, std::memory_order_release);
-    if (isDoPMode) {
-        m_doPSilenceMarkerState = false;  // Reset to 0x05 on each track open
-    }
 
     // Increment format generation to invalidate cached values in sendAudio
     m_formatGeneration.fetch_add(1, std::memory_order_release);
@@ -1670,39 +1668,25 @@ bool DirettaSync::getNewStream(diretta_stream& baseStream) {
     uint8_t currentSilenceByte = m_cachedSilenceByte;
     bool currentIsDoP = m_cachedConsumerIsDoP;
 
-    // DoP silence: fill buffer with proper DoP frames (DSD silence 0x69 + alternating markers)
-    // instead of PCM 0x00, so the DAC can detect and lock DoP mode from the very first frame.
-    // PCM 0x00 silence causes DACs that scan for DoP only at stream init to stay in PCM mode.
-    // m_doPSilenceMarkerState persists across calls to keep the marker stream coherent.
+    // Silence filling: use plain PCM 0x00 in all modes including DoP.
+    // The DAC detects DoP markers from the actual audio data stream (first ring pop),
+    // which is the same mechanism used when a UPnP source pre-encodes DoP
+    // (e.g. MinimServer/Asset UPnP → 176.4kHz PCM with markers → DRUP receives
+    // as regular PCM → sends PCM 0x00 silence → DAC detects DoP from data).
+    // DoP-specific silence (0x69 + alternating markers) was previously generated
+    // here but caused persistent "music + constant hiss" noise for SFORZATO and
+    // HOLO Audio DACs despite correct marker alternation — the pre-marker silence
+    // phase appears to disturb these DACs' DSD demodulators before real audio starts.
     auto fillSilence = [&](uint8_t* buf, int size) {
-        if (!currentIsDoP) {
-            std::memset(buf, currentSilenceByte, size);
-            return;
-        }
-        int channels = m_cachedConsumerChannels > 0 ? m_cachedConsumerChannels : 2;
-        int bytesPerFrame = channels * 3;
-        int offset = 0;
-        while (offset + bytesPerFrame <= size) {
-            uint8_t marker = m_doPSilenceMarkerState ? 0xFA : 0x05;
-            m_doPSilenceMarkerState = !m_doPSilenceMarkerState;
-            for (int ch = 0; ch < channels; ch++) {
-                buf[offset + ch * 3 + 0] = 0x69;    // DSD silence byte 0
-                buf[offset + ch * 3 + 1] = 0x69;    // DSD silence byte 1
-                buf[offset + ch * 3 + 2] = marker;  // DoP marker
-            }
-            offset += bytesPerFrame;
-        }
-        if (offset < size) {
-            std::memset(buf + offset, 0x00, size - offset);
-        }
+        std::memset(buf, currentSilenceByte, size);
     };
 
     // PCM buffer rounding drift fix: accumulator adjusts buffer size for 44.1k family
     // Uses cached remainder/bytesPerFrame, only accumulator is per-call.
-    // DoP mode uses threshold=2000 / add=2 frames so the buffer stays at an even frame
-    // count (176 or 178 at 176.4 kHz). Adding only 1 frame would produce 177 frames
-    // (odd), which flips m_doPSilenceMarkerState and corrupts the 0x05/0xFA alternation
-    // at the next silence→ring or ring→silence boundary, causing continuous DAC noise.
+    // DoP mode uses threshold=2000 / add=2 frames so all pops are even-frame counts
+    // (176 or 178 at 176.4 kHz). This keeps the ring read position at a 0x05-aligned
+    // frame so any silence→ring transition always resumes at a 0x05 DoP marker, giving
+    // a clean re-lock point after silence periods (prefill, stabilisation, underrun).
     // Average rate is unchanged: 2 frames / 2000 units == 1 frame / 1000 units.
     if (m_cachedFramesPerBufferRemainder != 0) {
         uint32_t acc = m_framesPerBufferAccumulator.load(std::memory_order_relaxed);
@@ -1881,6 +1865,27 @@ bool DirettaSync::getNewStream(diretta_stream& baseStream) {
 
     // Pop from ring buffer directly into SDK stream
     m_ringBuffer.pop(dest, currentBytesPerBuffer);
+
+    // Diagnostic: log first 5 pops in DoP mode so we can verify marker bytes and DSD content
+    if (g_verbose && currentIsDoP) {
+        int popIdx = m_popCount.fetch_add(1, std::memory_order_relaxed) + 1;
+        if (popIdx <= 5) {
+            int show = std::min(currentBytesPerBuffer, 12);  // 2 stereo DoP frames
+            std::cout << "[DoP POP #" << popIdx << "] bytes=" << currentBytesPerBuffer
+                      << " first " << show << "B: ";
+            for (int i = 0; i < show; i++) printf("%02X ", dest[i]);
+            printf("\n");
+            // Decode: stereo DoP frame = [L_DSD0, L_DSD1, L_marker, R_DSD0, R_DSD1, R_marker]
+            if (currentBytesPerBuffer >= 6) {
+                printf("  Frame0: L=[%02X,%02X] R=[%02X,%02X] marker=%02X\n",
+                       dest[0], dest[1], dest[3], dest[4], dest[2]);
+            }
+            if (currentBytesPerBuffer >= 12) {
+                printf("  Frame1: L=[%02X,%02X] R=[%02X,%02X] marker=%02X\n",
+                       dest[6], dest[7], dest[9], dest[10], dest[8]);
+            }
+        }
+    }
 
     // G1: Signal producer that space is now available
     // Use try_lock to avoid blocking the time-critical consumer thread

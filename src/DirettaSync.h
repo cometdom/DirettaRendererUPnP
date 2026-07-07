@@ -661,10 +661,6 @@ private:
     int m_cachedBytesPerFrame{0};
     uint32_t m_cachedFramesPerBufferRemainder{0};
 
-    // DoP silence generation state (SDK thread only — no atomic needed)
-    // Tracks marker phase across getNewStream() calls during stabilization
-    bool m_doPSilenceMarkerState{false};  // false = 0x05 marker, true = 0xFA
-
     // Prefill and stabilization
     size_t m_prefillTarget = 0;
     std::atomic<bool> m_prefillComplete{false};
@@ -676,6 +672,7 @@ private:
     // Statistics
     std::atomic<int> m_streamCount{0};
     std::atomic<int> m_pushCount{0};
+    std::atomic<int> m_popCount{0};
     std::atomic<uint32_t> m_underrunCount{0};
     std::atomic<bool> m_rebuffering{false};              // Rebuffering after sustained underrun
 };
