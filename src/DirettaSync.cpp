@@ -1698,13 +1698,25 @@ bool DirettaSync::getNewStream(diretta_stream& baseStream) {
     };
 
     // PCM buffer rounding drift fix: accumulator adjusts buffer size for 44.1k family
-    // Uses cached remainder/bytesPerFrame, only accumulator is per-call
+    // Uses cached remainder/bytesPerFrame, only accumulator is per-call.
+    // DoP mode uses threshold=2000 / add=2 frames so the buffer stays at an even frame
+    // count (176 or 178 at 176.4 kHz). Adding only 1 frame would produce 177 frames
+    // (odd), which flips m_doPSilenceMarkerState and corrupts the 0x05/0xFA alternation
+    // at the next silence→ring or ring→silence boundary, causing continuous DAC noise.
+    // Average rate is unchanged: 2 frames / 2000 units == 1 frame / 1000 units.
     if (m_cachedFramesPerBufferRemainder != 0) {
         uint32_t acc = m_framesPerBufferAccumulator.load(std::memory_order_relaxed);
         acc += m_cachedFramesPerBufferRemainder;
-        if (acc >= 1000) {
-            acc -= 1000;
-            currentBytesPerBuffer += m_cachedBytesPerFrame;
+        if (currentIsDoP && m_cachedBytesPerFrame > 0) {
+            if (acc >= 2000) {
+                acc -= 2000;
+                currentBytesPerBuffer += 2 * m_cachedBytesPerFrame;
+            }
+        } else {
+            if (acc >= 1000) {
+                acc -= 1000;
+                currentBytesPerBuffer += m_cachedBytesPerFrame;
+            }
         }
         m_framesPerBufferAccumulator.store(acc, std::memory_order_relaxed);
     }
