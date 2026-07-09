@@ -550,8 +550,9 @@ public:
         uint8_t* dst = m_stagingDSD;
         size_t out = 0;
 
-        // DoP v1.1: bits[23:16]=marker, bits[15:8]=DSD_byte_N+1, bits[7:0]=DSD_byte_N
-        // Stored little-endian: [DSD_byte_N, DSD_byte_N+1, marker]
+        // DoP v1.1: bits[23:16]=marker, bits[15:8]=DSD_byte_N, bits[7:0]=DSD_byte_N+1
+        // Stored little-endian: [DSD_byte_N+1, DSD_byte_N, marker]
+        // (matches MinimServer/Asset UPnP reference implementations)
         for (size_t k = 0; k < pcmFrames; k++) {
             uint8_t marker = m_dopMarkerState ? 0xFA : 0x05;
             m_dopMarkerState = !m_dopMarkerState;
@@ -564,9 +565,9 @@ public:
                     b0 = kBitReverseTable[b0];
                     b1 = kBitReverseTable[b1];
                 }
-                dst[out++] = b0;      // DSD byte N   (LSB of PCM word)
-                dst[out++] = b1;      // DSD byte N+1 (mid byte)
-                dst[out++] = marker;  // DoP marker   (MSB of PCM word)
+                dst[out++] = b1;      // DSD byte N+1 (LSB of PCM word, bits 7:0)
+                dst[out++] = b0;      // DSD byte N   (mid byte, bits 15:8)
+                dst[out++] = marker;  // DoP marker   (MSB of PCM word, bits 23:16)
             }
         }
 
