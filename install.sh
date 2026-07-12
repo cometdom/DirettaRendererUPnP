@@ -1040,11 +1040,13 @@ build_renderer() {
 
     # If WebUI is already installed, refresh profiles so new settings
     # (e.g. DoP, new config keys) are immediately visible without a separate
-    # --webui run.
+    # --webui run. Use sudo -n (non-interactive) so a build-only run never
+    # prompts for a password; if credentials aren't cached we skip silently.
     local WEBUI_PROFILES_DST="/opt/diretta-renderer-upnp/webui/profiles"
     if [ -d "$WEBUI_PROFILES_DST" ] && [ -d "$SCRIPT_DIR/webui/profiles" ]; then
-        sudo cp -r "$SCRIPT_DIR/webui/profiles" "/opt/diretta-renderer-upnp/webui/"
-        print_info "WebUI profiles refreshed"
+        if sudo -n cp -r "$SCRIPT_DIR/webui/profiles" "/opt/diretta-renderer-upnp/webui/" 2>/dev/null; then
+            print_info "WebUI profiles refreshed"
+        fi
     fi
 }
 
