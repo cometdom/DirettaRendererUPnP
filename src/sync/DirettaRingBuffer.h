@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: MIT
+// This file is part of DirettaRendererUPnP.
+// See LICENSE for copyright holders and terms.
+
 /**
  * @file DirettaRingBuffer.h
  * @brief Lock-free ring buffer for Diretta audio streaming

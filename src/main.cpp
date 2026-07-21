@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: MIT
+// This file is part of DirettaRendererUPnP.
+// See LICENSE for copyright holders and terms.
+
 /**
  * @file main.cpp
  * @brief Main entry point for Diretta UPnP Renderer (Simplified Architecture)

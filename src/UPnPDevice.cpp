@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: MIT
+// This file is part of DirettaRendererUPnP.
+// See LICENSE for copyright holders and terms.
+
 #include "UPnPDevice.hpp"
 #include "ProtocolInfoBuilder.h"
 #include <iostream>

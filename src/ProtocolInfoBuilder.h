@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: MIT
+// This file is part of DirettaRendererUPnP.
+// See LICENSE for copyright holders and terms.
+
 #ifndef PROTOCOL_INFO_BUILDER_H
 #define PROTOCOL_INFO_BUILDER_H
 

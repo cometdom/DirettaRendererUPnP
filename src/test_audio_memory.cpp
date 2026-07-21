@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: MIT
+// This file is part of DirettaRendererUPnP.
+// See LICENSE for copyright holders and terms.
+
 #include "AudioMemoryTest.h"
 #include "memcpyfast_audio.h"
 #include "DirettaRingBuffer.h"

@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: MIT
+// This file is part of DirettaRendererUPnP.
+// See LICENSE for copyright holders and terms.
+
 #ifndef DIRETTA_OUTPUT_H
 #define DIRETTA_OUTPUT_H
 

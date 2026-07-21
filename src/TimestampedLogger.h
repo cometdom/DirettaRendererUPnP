@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: MIT
+// This file is part of DirettaRendererUPnP.
+// See LICENSE for copyright holders and terms.
+
 /**
  * @file TimestampedLogger.h
  * @brief Automatic timestamp addition to all console output
