@@ -1,5 +1,26 @@
 # Changelog
 
+## [2.5.9] - 2026-07-21
+
+Maintenance release. **No change to the audio path** — playback behaviour is identical to 2.5.8.
+
+### Fixed
+- **`install.sh`: sudo password prompt after a build-only run** (option 3). `build_renderer()` refreshed the Web UI profiles with a plain `sudo cp`, which always prompts for a password — even during a build-only run where nothing is meant to be installed. It now uses `sudo -n` (non-interactive): the copy runs silently when sudo credentials are cached, and is skipped without prompting when they are not. The profiles are refreshed on the next full install/webui run anyway.
+
+### Changed
+- **Licence made explicit per file.** The sources under `src/` carried no licence marker. Added the SPDX identifier so automated licence detection works:
+
+  ```
+  // SPDX-License-Identifier: MIT
+  // This file is part of DirettaRendererUPnP.
+  // See LICENSE for copyright holders and terms.
+  ```
+
+  Deliberately **no per-file copyright line**: this project has several copyright holders (see `LICENSE` — Dominique COMET, SwissMontainsBear, Leeeanh) and naming any single one per file would misrepresent authorship. `LICENSE` is unchanged and git history remains the per-line record.
+- **Added [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)** for bundled third-party code. `src/FastMemcpy_Avx.h` derives from [FastMemcpy](https://github.com/skywind3000/FastMemcpy) by Linwei (skywind3000) but carried only a one-line author comment — no copyright notice and no licence text, which its MIT licence requires in redistributions. The notice now reproduces the upstream MIT terms verbatim, states which file it covers, and makes clear that the audio-specific SIMD variants are this project's own work covered by `LICENSE`. The third-party file itself is untouched, and FastMemcpy has been added to the README's Third-Party Components list, where it was missing.
+
+**Licence terms are unchanged (MIT).** These changes only make existing terms explicit and satisfy an attribution requirement that was already in force.
+
 ## [2.5.8] - 2026-07-06
 
 ### Added

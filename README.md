@@ -1,4 +1,4 @@
-# Diretta UPnP Renderer v2.5.8
+# Diretta UPnP Renderer v2.5.9
 
 **The world's first native UPnP/DLNA renderer with Diretta protocol support - Low-Latency Edition**
 
@@ -8,18 +8,19 @@
 
 ---
 
-![Version](https://img.shields.io/badge/version-2.5.8-blue.svg)
+![Version](https://img.shields.io/badge/version-2.5.9-blue.svg)
 ![Low Latency](https://img.shields.io/badge/Latency-Low-green.svg)
 ![SDK](https://img.shields.io/badge/SDK-DIRETTA::Sync-orange.svg)
 ![Audirvana](https://img.shields.io/badge/Audirvana-Compatible-green.svg)
 
 ---
 
-## What's New in v2.5.8
+## What's New in v2.5.9
 
-**Adds DoP (DSD over PCM) output mode.**
+**Maintenance release: install fix and licence hygiene. No change to the audio path.**
 
-- **`--dop` flag**: DSD streams are now transmittable as standard 24-bit DoP v1.1 PCM frames for DACs that decode DoP natively but do not expose native Diretta DSD. DSD64→176.4 kHz, DSD128→352.8 kHz, DSD256→705.6 kHz, DSD512→1.4 MHz. Enabled via `--dop` CLI flag or the new **DSD Output Mode** selector in the Web UI. No effect on PCM content; native DSD path unchanged when `--dop` is absent.
+- **`install.sh`**: no more sudo password prompt after a build-only run (option 3). The Web UI profile refresh now uses `sudo -n`, so it runs silently when sudo credentials are cached and is simply skipped otherwise, instead of prompting during a build that installs nothing.
+- **Licensing made explicit**: the sources carried no licence marker — MIT SPDX headers have been added, and the new [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) reproduces the upstream MIT notice for the bundled FastMemcpy code. **Licence terms are unchanged**; this only makes the existing terms explicit.
 
 See [CHANGELOG.md](CHANGELOG.md) for details.
 
@@ -27,6 +28,7 @@ See [CHANGELOG.md](CHANGELOG.md) for details.
 
 | Version | Highlights |
 |---------|-----------|
+| **v2.5.8** | DoP (DSD over PCM) output mode — `--dop` / `--dop-msb` flags, DSD64→176.4 kHz … DSD512→1.4 MHz (issue #80 by yama3kzh) |
 | **v2.5.7** | `install.sh`: FFmpeg 8.1+ build failure fixed (`udp` protocol missing, issue #81 by sheviks); FFmpeg menu overhauled (5.x removed, 7.1.1 minimal added, 8.0.1→8.1.2) |
 | **v2.5.6** | Boot warmup: defensive Target reset to escape stale idle-mode (PR #79, hoorna/Alfred) |
 | **v2.5.5** | Build: hard `SIGILL` crash on AMD Zen3/Zen2 "Ryzen 7000" mobile CPUs fixed (Didier/ds21) — Makefile Zen4 auto-detection now requires actual AVX-512 support |
@@ -1139,4 +1141,4 @@ This software is provided "as is" without warranty. While designed for high-qual
 
 **Enjoy bit-perfect, low-latency audio streaming!**
 
-*Last updated: 2026-07-21 (v2.5.8)*
+*Last updated: 2026-07-21 (v2.5.9)*
