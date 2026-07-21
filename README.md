@@ -1115,12 +1115,17 @@ This is normal and ensures clean transitions.
 - [Diretta Host SDK](https://www.diretta.link) - Proprietary (personal use only)
 - [FFmpeg](https://ffmpeg.org) - LGPL/GPL
 - [libupnp](https://pupnp.sourceforge.io/) - BSD License
+- [FastMemcpy](https://github.com/skywind3000/FastMemcpy) - MIT License (bundled in `src/FastMemcpy_Avx.h`)
+
+Required notices for bundled third-party code are reproduced in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ---
 
 ## License
 
 This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) file for details.
+
+Bundled third-party code keeps its own licence; the required notices are reproduced in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 **IMPORTANT**: The Diretta Host SDK is proprietary software by Yu Harada and is licensed for **personal use only**. Commercial use is prohibited.
 
