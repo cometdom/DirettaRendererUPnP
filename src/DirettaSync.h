@@ -593,6 +593,7 @@ private:
     std::mutex m_configMutex;
     std::recursive_mutex m_lifecycleMutex;       // Protects open/close/stop/release transitions
     std::atomic<bool> m_openAbortRequested{false}; // Signal open() to abort early
+    std::atomic<bool> m_onlineTimeoutOccurred{false}; // Set when waitForOnline() times out; allows sendAudio() to fill ring
     std::atomic<bool> m_reconfiguring{false};
     mutable std::atomic<int> m_ringUsers{0};
 

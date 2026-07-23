@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+- **Online-timeout deadlock: audio silent when `waitForOnline` expires**. When a Diretta target takes longer than `ONLINE_WAIT_MS` (2 s) to reach online state — e.g. a slow PLL relock on a first sample-rate switch, or an SDK regression stalling the connection handshake — DRUP entered a deadlock: `sendAudio()` returned 0 due to `!is_online()`, the ring stayed empty, `getNewStream()` kept sending silence, and the target never received real audio to complete the online transition. Fix: a new `m_onlineTimeoutOccurred` atomic flag is set when `waitForOnline` times out. `sendAudio()` bypasses the `!is_online()` guard while this flag is active, allowing the ring to fill. Once the ring reaches the prefill threshold, `getNewStream()` sends real audio to the target; if the target then goes online, playback proceeds normally. The flag is cleared at the next `is_online()` success and reset at the start of each `open()`.
+
 ## [2.5.9] - 2026-07-21
 
 Maintenance release. **No change to the audio path** — playback behaviour is identical to 2.5.8.

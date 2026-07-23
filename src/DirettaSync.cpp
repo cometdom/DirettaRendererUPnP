@@ -474,6 +474,7 @@ void DirettaSync::logSinkCapabilities() {
 bool DirettaSync::open(const AudioFormat& format) {
     std::lock_guard<std::recursive_mutex> lifecycleLock(m_lifecycleMutex);
     m_openAbortRequested.store(false, std::memory_order_release);
+    m_onlineTimeoutOccurred.store(false, std::memory_order_release);
 
     std::cout << "[DirettaSync] ========== OPEN ==========" << std::endl;
     std::cout << "[DirettaSync] Format: " << format.sampleRate << "Hz/"
@@ -835,6 +836,9 @@ bool DirettaSync::open(const AudioFormat& format) {
 
     if (!waitForOnline(m_config.onlineWaitMs)) {
         DIRETTA_LOG("WARNING: Did not come online within timeout");
+        // Allow sendAudio() to fill the ring so the target can transition online.
+        // Without this, the deadlock: no audio → ring empty → silence → never online.
+        m_onlineTimeoutOccurred.store(true, std::memory_order_release);
     }
 
     m_postOnlineDelayDone = false;
@@ -1470,7 +1474,14 @@ void DirettaSync::sendPreTransitionSilence() {
 size_t DirettaSync::sendAudio(const uint8_t* data, size_t numSamples) {
     if (m_draining.load(std::memory_order_acquire)) return 0;
     if (m_stopRequested.load(std::memory_order_acquire)) return 0;
-    if (!is_online()) return 0;
+    bool online = is_online();
+    if (!online) {
+        if (!m_onlineTimeoutOccurred.load(std::memory_order_acquire)) return 0;
+        // Recovery: timeout occurred and target not yet online.
+        // Fill the ring so getNewStream() can send real audio → target goes online.
+    } else if (m_onlineTimeoutOccurred.load(std::memory_order_relaxed)) {
+        m_onlineTimeoutOccurred.store(false, std::memory_order_relaxed);
+    }
 
     RingAccessGuard ringGuard(m_ringUsers, m_reconfiguring);
     if (!ringGuard.active()) return 0;
