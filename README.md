@@ -1,4 +1,4 @@
-# Diretta UPnP Renderer v2.5.9
+# Diretta UPnP Renderer v2.5.10
 
 **The world's first native UPnP/DLNA renderer with Diretta protocol support - Low-Latency Edition**
 
@@ -8,19 +8,18 @@
 
 ---
 
-![Version](https://img.shields.io/badge/version-2.5.9-blue.svg)
+![Version](https://img.shields.io/badge/version-2.5.10-blue.svg)
 ![Low Latency](https://img.shields.io/badge/Latency-Low-green.svg)
 ![SDK](https://img.shields.io/badge/SDK-DIRETTA::Sync-orange.svg)
 ![Audirvana](https://img.shields.io/badge/Audirvana-Compatible-green.svg)
 
 ---
 
-## What's New in v2.5.9
+## What's New in v2.5.10
 
-**Maintenance release: install fix and licence hygiene. No change to the audio path.**
+**Audio fix: deadlock after online timeout broken.**
 
-- **`install.sh`**: no more sudo password prompt after a build-only run (option 3). The Web UI profile refresh now uses `sudo -n`, so it runs silently when sudo credentials are cached and is simply skipped otherwise, instead of prompting during a build that installs nothing.
-- **Licensing made explicit**: the sources carried no licence marker — MIT SPDX headers have been added, and the new [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) reproduces the upstream MIT notice for the bundled FastMemcpy code. **Licence terms are unchanged**; this only makes the existing terms explicit.
+- **Online-timeout deadlock fix**: when a Diretta target takes longer than 2 seconds to reach online state (slow PLL relock on first sample-rate switch, or SDK connection stall), DRUP would enter a deadlock — `sendAudio()` returned 0, the ring stayed empty, the target kept receiving silence and never went online. A new recovery flag now allows `sendAudio()` to fill the ring after a timeout, letting the target receive real audio and transition online normally.
 
 See [CHANGELOG.md](CHANGELOG.md) for details.
 
@@ -28,6 +27,7 @@ See [CHANGELOG.md](CHANGELOG.md) for details.
 
 | Version | Highlights |
 |---------|-----------|
+| **v2.5.9** | Maintenance: `install.sh` sudo prompt fix, MIT SPDX headers, THIRD_PARTY_NOTICES |
 | **v2.5.8** | DoP (DSD over PCM) output mode — `--dop` / `--dop-msb` flags, DSD64→176.4 kHz … DSD512→1.4 MHz (issue #80 by yama3kzh) |
 | **v2.5.7** | `install.sh`: FFmpeg 8.1+ build failure fixed (`udp` protocol missing, issue #81 by sheviks); FFmpeg menu overhauled (5.x removed, 7.1.1 minimal added, 8.0.1→8.1.2) |
 | **v2.5.6** | Boot warmup: defensive Target reset to escape stale idle-mode (PR #79, hoorna/Alfred) |
@@ -1141,4 +1141,4 @@ This software is provided "as is" without warranty. While designed for high-qual
 
 **Enjoy bit-perfect, low-latency audio streaming!**
 
-*Last updated: 2026-07-21 (v2.5.9)*
+*Last updated: 2026-07-23 (v2.5.10)*
