@@ -9,6 +9,7 @@
 
 #include "AudioEngine.h"
 #include "DirettaRingBuffer.h"  // For kBitReverseLUT
+#include "PEQEngine.h"          // Parametric EQ (optional, injected by DirettaRenderer)
 #include <iostream>
 #include <thread>
 #include <chrono>
@@ -2200,6 +2201,14 @@ bool AudioEngine::process(size_t samplesNeeded) {
     }
 
     if (samplesRead > 0) {
+        // ── Parametric EQ processing (PCM only, injected by DirettaRenderer) ──
+        // Applied AFTER decoding/resampling, BEFORE handing off to Diretta.
+        // DSD is always skipped — the guard below is belt-and-suspenders.
+        if (m_peqEngine && m_peqEngine->isEnabled() && !m_currentTrackInfo.isDSD) {
+            m_peqEngine->process(m_buffer.data(), samplesRead,
+                                 outputRate, outputBits, outputChannels);
+        }
+
         // Call audio callback to send data to output
         if (m_audioCallback) {
             bool continuePlayback = m_audioCallback(

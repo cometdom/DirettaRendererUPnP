@@ -10,6 +10,7 @@ Detailed configuration options and tuning guide.
 4. [UPnP Device Settings](#upnp-device-settings)
 5. [Performance Tuning](#performance-tuning)
 6. [Advanced Settings](#advanced-settings)
+7. [Parametric EQ (PEQ)](#parametric-eq-peq)
 
 ---
 
@@ -718,3 +719,144 @@ Expected output: `=== Results: 20 passed, 0 failed ===`
 - Check logs: `sudo journalctl -u diretta-renderer -f`
 - GitHub Issues: Report problems with full logs
 - Diretta community: For DAC-specific questions
+
+---
+
+## Parametric EQ (PEQ)
+
+The renderer includes a built-in parametric equalizer for room correction and tonal adjustment. It runs entirely in software, adding negligible CPU load (< 0.1% at 96 kHz on typical hardware).
+
+> **Note:** PEQ is applied to PCM audio only. DSD streams are never processed.
+
+### Enabling PEQ
+
+Pass the path to a filter config file via `--peq-config`:
+
+```bash
+sudo ./DirettaRendererUPnP --target 1 --peq-config /opt/diretta-renderer-upnp/peq.conf
+```
+
+Or, when using systemd, set `PEQ_CONFIG=` in `/etc/default/diretta-renderer`
+(or `/opt/diretta-renderer-upnp/diretta-renderer.conf`):
+
+```ini
+PEQ_CONFIG=/opt/diretta-renderer-upnp/peq.conf
+```
+
+### Config File Format
+
+One filter per line:
+
+```
+# TYPE  FREQ_HZ  GAIN_DB  Q
+#
+# Lines starting with # are comments
+# Empty lines are ignored
+
+peaking   80     -4.0   3.0
+highshelf 10000   1.5   0.7
+```
+
+| Field | Description |
+|-------|-------------|
+| `TYPE` | Filter type (see table below) |
+| `FREQ_HZ` | Center or corner frequency in Hz (must be < sampleRate/2) |
+| `GAIN_DB` | Gain in dB — positive=boost, negative=cut (ignored for LP/HP/Notch) |
+| `Q` | Quality factor, 0.1–20. Typical: 0.7 (shelf), 1.0–4.0 (peak) |
+
+### Supported Filter Types
+
+| Type | Aliases | Description |
+|------|---------|-------------|
+| `peaking` | `peak` | Bell/peaking EQ — boost or cut around center frequency |
+| `lowshelf` | `ls`, `loshelf` | Low-frequency shelving |
+| `highshelf` | `hs`, `hishelf` | High-frequency shelving |
+| `lowpass` | `lp` | 2nd-order low-pass (Butterworth, gain ignored) |
+| `highpass` | `hp` | 2nd-order high-pass (Butterworth, gain ignored) |
+| `notch` | — | Narrow null at center frequency (gain ignored) |
+
+### Example: Room Correction
+
+Typical corrections based on REW measurements:
+
+```
+# Tame low-frequency room resonances
+peaking   45     -6.0   4.0     # 45 Hz node, -6 dB
+peaking   80     -4.0   3.0     # 80 Hz node, -4 dB
+peaking   120    -2.5   2.5     # 120 Hz node, -2.5 dB
+
+# Remove sub-bass rumble (turntable/HVAC)
+highpass  20      0     0.7
+
+# Slight treble air
+highshelf 12000   1.0   0.7
+```
+
+### REW Compatibility
+
+Filter parameters can be pasted directly from REW's **"Export filters"** output or Equalizer APO presets. The type names (`peaking`, `lowshelf`, etc.) match the REW/APO naming convention.
+
+### Bypass Keyword
+
+Add `bypass` anywhere in the config file to **disable all PEQ** without losing your filter values:
+
+```ini
+bypass
+peaking   80    -4.0  3.0
+highshelf 12000  1.0  0.7
+```
+
+- PEQ is instantly deactivated on the next hot-reload (~5 seconds)
+- Filter lines below `bypass` are still parsed and **preserved in memory**
+- Remove the `bypass` line to re-enable — all filters come back immediately
+- Zero DSP overhead when bypassed (single atomic load, no math)
+
+This is the recommended way to A/B compare with and without EQ while playing:
+
+```bash
+# Bypass:
+echo -e "bypass\npeaking 80 -4.0 3.0" > /opt/diretta-renderer-upnp/peq.conf
+
+# Re-enable (wait ~5 seconds):
+echo "peaking 80 -4.0 3.0" > /opt/diretta-renderer-upnp/peq.conf
+```
+
+### Hot-Reload
+
+The config file is checked every **5 seconds**. Editing it while music is playing takes effect automatically — no restart required. There is no audible click on reload.
+
+To check that a reload worked, tail the logs:
+
+```bash
+sudo journalctl -u diretta-renderer -f | grep PEQEngine
+```
+
+You should see:
+```
+[PEQEngine] Config changed, staging reload: /opt/diretta-renderer-upnp/peq.conf
+[PEQEngine] Reload staged: 3 band(s)
+```
+
+> **RT safety:** the hot-reload path takes a brief mutex only to swap the new band
+> vector into the audio thread. The DSP loop itself is **always lock-free** in steady
+> state — a single atomic bool load is the only overhead between reloads.
+
+### Practical Q Values
+
+| Q | Character |
+|---|----------|
+| 0.5–0.7 | Broad — shelving filters, gentle tonal balance |
+| 1.0–2.0 | Moderate — typical room corrections |
+| 3.0–6.0 | Narrow — targeting a specific room mode |
+| 8.0–15.0 | Very narrow — precise resonance notch |
+
+### Technical Notes
+
+- **Algorithm:** Direct Form I biquad IIR, double-precision (64-bit) math per the RBJ Audio EQ Cookbook
+- **Precision:** Double-precision arithmetic prevents coefficient cancellation on narrow high-Q bands
+- **RT safety:** Lock-free in steady state — DSP loop holds no mutex; brief swap lock taken only on hot-reload
+- **Max bands:** 32 (more than sufficient; typical use is 3–8)
+- **Latency:** Zero additional latency — the filter is in-place on the same buffer
+- **DSD:** Completely bypassed — DSD streams are never touched
+- **Format:** Works on 16-bit (S16) and 32-bit (S32) output — both PCM-bypass and resampled paths
+- **Bypass overhead:** When `bypass` is active, a single `std::atomic<bool>` load short-circuits `process()` — negligible

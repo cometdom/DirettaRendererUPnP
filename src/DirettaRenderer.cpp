@@ -340,6 +340,34 @@ bool DirettaRenderer::start(std::atomic<bool>* stopSignal) {
         // Create AudioEngine
         m_audioEngine = std::make_unique<AudioEngine>();
 
+        // ── Parametric EQ ──
+        // Load PEQ engine if a config path was provided via --peq-config.
+        // The engine is ALWAYS injected into AudioEngine as long as the path
+        // is set, even if the file is currently bypassed or has no valid bands.
+        // This is critical for hot-reload: the user can remove "bypass" from
+        // the file and filters activate automatically within 5 seconds.
+        // The isEnabled() atomic flag in process() gates actual DSP work.
+        if (!m_config.peqConfigPath.empty()) {
+            m_peqEngine = std::make_unique<PEQEngine>();
+            m_peqEngine->load(m_config.peqConfigPath);   // result intentionally ignored
+            m_audioEngine->setPEQEngine(m_peqEngine.get());
+
+            if (m_peqEngine->isBypassed()) {
+                std::cout << "[DirettaRenderer] PEQ: " << m_peqEngine->bandCount()
+                          << " band(s) loaded from " << m_config.peqConfigPath
+                          << " [BYPASSED — remove 'bypass' line to enable]" << std::endl;
+            } else if (m_peqEngine->isEnabled()) {
+                std::cout << "[DirettaRenderer] PEQ: " << m_peqEngine->bandCount()
+                          << " active band(s) from " << m_config.peqConfigPath << std::endl;
+            } else {
+                std::cout << "[DirettaRenderer] PEQ: config loaded, no valid filters in "
+                          << m_config.peqConfigPath
+                          << " (add filter lines to enable)" << std::endl;
+            }
+        } else {
+            std::cout << "[DirettaRenderer] PEQ: disabled (no --peq-config)" << std::endl;
+        }
+
         // Set real-time position callback for accurate GetPositionInfo responses
         // (bypasses 1s position thread cache - fixes UAPP compatibility)
         m_upnp->setPositionCallback([this]() -> double {
@@ -1026,6 +1054,14 @@ void DirettaRenderer::positionThreadFunc() {
         }
 
         std::this_thread::sleep_for(std::chrono::seconds(1));
+
+        // Hot-reload PEQ config every 5 seconds (check mtime, reload if changed)
+        // Uses a simple counter rather than a separate timer thread.
+        static int peqReloadCounter = 0;
+        if (m_peqEngine && ++peqReloadCounter >= 5) {
+            peqReloadCounter = 0;
+            m_peqEngine->reload();
+        }
     }
 
     DEBUG_LOG("[Position Thread] Stopped");

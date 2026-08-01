@@ -37,6 +37,9 @@ PCM_PREFILL_MS="${PCM_PREFILL_MS:-}"
 PCM_REMOTE_PREFILL_MS="${PCM_REMOTE_PREFILL_MS:-}"
 DSD_PREFILL_MS="${DSD_PREFILL_MS:-}"
 
+# Parametric EQ config file path (empty = PEQ disabled)
+PEQ_CONFIG="${PEQ_CONFIG:-}"
+
 # Process priority defaults
 NICE_LEVEL="${NICE_LEVEL:--10}"
 IO_SCHED_CLASS="${IO_SCHED_CLASS:-realtime}"
@@ -235,6 +238,11 @@ if [ -n "$PCM_REMOTE_PREFILL_MS" ]; then
 fi
 if [ -n "$DSD_PREFILL_MS" ]; then
     CMD+=("--dsd-prefill-ms" "$DSD_PREFILL_MS")
+fi
+
+# Parametric EQ
+if [ -n "$PEQ_CONFIG" ]; then
+    CMD+=("--peq-config" "$PEQ_CONFIG")
 fi
 
 # Build exec prefix as array for process priority

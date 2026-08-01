@@ -20,6 +20,9 @@ extern "C" {
 #include <libavutil/audio_fifo.h>
 }
 
+// Forward declaration — PEQEngine is owned by DirettaRenderer, not AudioEngine
+class PEQEngine;
+
 /**
  * @brief Audio track information
  */
@@ -430,6 +433,13 @@ public:
      */
     uint32_t getCurrentSampleRate() const;
 
+    /**
+     * @brief Inject a PEQEngine (optional, non-owning).
+     *        Must be called before playback starts.
+     *        Pass nullptr to disable PEQ.
+     * @param engine  Pointer to a PEQEngine owned by the caller (DirettaRenderer)
+     */
+    void setPEQEngine(PEQEngine* engine) { m_peqEngine = engine; }
 
     /**
      * @brief Main processing loop (called from audio thread)
@@ -464,6 +474,9 @@ private:
 
     // Buffer
     AudioBuffer m_buffer;
+
+    // Optional PEQ engine (non-owning, set by DirettaRenderer)
+    PEQEngine* m_peqEngine = nullptr;
 
     // Playback tracking
     uint64_t m_samplesPlayed;

@@ -1,0 +1,53 @@
+# Parametric EQ Filter Config for DirettaRendererUPnP
+# =====================================================
+#
+# Format: TYPE  FREQ_HZ  GAIN_DB  Q
+#
+# Supported types:
+#   peaking   - Bell filter (boost or cut at center frequency)
+#   lowshelf  - Low-frequency shelving
+#   highshelf - High-frequency shelving
+#   lowpass   - 2nd-order low-pass (GAIN_DB ignored)
+#   highpass  - 2nd-order high-pass (GAIN_DB ignored)
+#   notch     - Sharp null at center frequency (GAIN_DB ignored)
+#
+# GAIN_DB: positive = boost, negative = cut
+# Q: 0.7 = Butterworth (broad), 1.0-4.0 = moderate, 6.0+ = narrow
+#
+# Lines starting with # are comments. Empty lines are ignored.
+#
+# ── Hot-reload ──────────────────────────────────────────────────────
+# This file is checked every 5 seconds while the renderer is running.
+# Edit it while music is playing — no restart needed.
+#
+# ── Bypass keyword ──────────────────────────────────────────────────
+# Add "bypass" anywhere in this file to disable all PEQ processing
+# without losing your filter settings. Removing "bypass" re-enables
+# them on the next hot-reload (~5 seconds).
+#
+#   bypass                         ← add this line to bypass PEQ
+#   peaking  80  -4.0  3.0        ← settings preserved, just inactive
+#   highshelf 12000  1.0  0.7
+#
+# ── Activate ────────────────────────────────────────────────────────
+# Set in diretta-renderer.conf:
+#   PEQ_CONFIG=/opt/diretta-renderer-upnp/peq.conf
+#
+# Or via command line:
+#   sudo ./DirettaRendererUPnP --target 1 --peq-config /opt/diretta-renderer-upnp/peq.conf
+# =====================================================================
+
+# ---- Example: Room correction ----
+# Uncomment and adjust to match your REW measurements.
+# Start with small corrections (-1 to -3 dB) and work outwards.
+
+# Room modes (low-frequency resonances)
+#peaking   45    -5.0   4.0    # 45 Hz room node,  -5 dB, Q=4
+#peaking   80    -4.0   3.0    # 80 Hz room node,  -4 dB, Q=3
+#peaking  120    -2.0   2.5    # 120 Hz room node, -2 dB, Q=2.5
+
+# Subsonic filter (remove below 20 Hz — turntable/HVAC rumble)
+#highpass   20    0.0   0.7
+
+# Slight treble air
+#highshelf 12000  1.0   0.7

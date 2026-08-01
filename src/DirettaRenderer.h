@@ -21,6 +21,8 @@
 #include <chrono>
 #include <iostream>
 
+#include "PEQEngine.h"
+
 // Forward declarations
 class UPnPDevice;
 class AudioEngine;
@@ -60,6 +62,9 @@ public:
         int pcmRemotePrefillMs = -1;           // Default 150ms
         int dsdPrefillMs = -1;                 // Default 200ms
 
+        // Parametric EQ (empty = disabled)
+        std::string peqConfigPath;  // Path to PEQ config file (e.g. /etc/direttarenderer/peq.conf)
+
         Config();
     };
 
@@ -87,9 +92,10 @@ private:
     Config m_config;
 
     // Components
-    std::unique_ptr<UPnPDevice> m_upnp;
-    std::unique_ptr<AudioEngine> m_audioEngine;
-    std::unique_ptr<DirettaSync> m_direttaSync;
+    std::unique_ptr<UPnPDevice>      m_upnp;
+    std::unique_ptr<AudioEngine>     m_audioEngine;
+    std::unique_ptr<DirettaSync>     m_direttaSync;
+    std::unique_ptr<PEQEngine>       m_peqEngine;     ///< Optional PEQ (owned here, injected into AudioEngine)
 
     // Threads
     std::thread m_audioThread;

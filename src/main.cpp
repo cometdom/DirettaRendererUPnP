@@ -351,6 +351,9 @@ DirettaRenderer::Config parseArguments(int argc, char* argv[]) {
         else if (arg == "--dsd-prefill-ms" && i + 1 < argc) {
             config.dsdPrefillMs = std::atoi(argv[++i]);
         }
+        else if (arg == "--peq-config" && i + 1 < argc) {
+            config.peqConfigPath = argv[++i];
+        }
         else if (arg == "--help" || arg == "-h") {
             std::cout << "Diretta UPnP Renderer (Simplified Architecture)\n\n"
                       << "Usage: " << argv[0] << " [options]\n\n"
@@ -397,6 +400,13 @@ DirettaRenderer::Config parseArguments(int argc, char* argv[]) {
                       << "  --pcm-prefill-ms <ms>          PCM prefill in ms (default 80)\n"
                       << "  --pcm-remote-prefill-ms <ms>   PCM remote prefill in ms (default 150)\n"
                       << "  --dsd-prefill-ms <ms>          DSD prefill in ms (default 200)\n"
+                      << "\n"
+                      << "Parametric EQ:\n"
+                      << "  --peq-config <path>            Load PEQ filter config file\n"
+                      << "                                 Format: TYPE FREQ GAIN_DB Q (one per line)\n"
+                      << "                                 Types: peaking lowshelf highshelf lowpass highpass notch\n"
+                      << "                                 Hot-reloaded every 5s (edit without restart)\n"
+                      << "                                 Example: peaking 80 -4.0 3.0\n"
                       << std::endl;
             exit(0);
         }
@@ -538,6 +548,11 @@ int main(int argc, char* argv[]) {
         std::cout << "  Network:  " << config.networkInterface << std::endl;
     }
     std::cout << "  UUID:     " << config.uuid << std::endl;
+    if (!config.peqConfigPath.empty()) {
+        std::cout << "  PEQ:      " << config.peqConfigPath << std::endl;
+    } else {
+        std::cout << "  PEQ:      disabled" << std::endl;
+    }
     std::cout << std::endl;
 
     try {

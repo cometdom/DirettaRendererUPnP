@@ -447,6 +447,7 @@ SOURCES = \
     $(SRCDIR)/main.cpp \
     $(SRCDIR)/DirettaRenderer.cpp \
     $(SRCDIR)/AudioEngine.cpp \
+    $(SRCDIR)/PEQEngine.cpp \
     $(SRCDIR)/DirettaSync.cpp \
     $(SRCDIR)/UPnPDevice.cpp
 
