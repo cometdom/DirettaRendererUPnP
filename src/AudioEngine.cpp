@@ -111,6 +111,7 @@ bool AudioDecoder::open(const std::string& url) {
     std::cout << "[AudioDecoder] Opening: " << url.substr(0, 80) << "..." << std::endl;
     m_decodeError = false;
     m_readTimeout = false;
+    m_liveStreamDecodeErrors = 0;
 
     // Open input file
     m_formatContext = avformat_alloc_context();
@@ -1423,12 +1424,23 @@ size_t AudioDecoder::readSamples(AudioBuffer& buffer, size_t numSamples,
             if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
                 break;
             } else if (ret < 0) {
-                std::cerr << "[AudioDecoder] Error receiving frame from decoder" << std::endl;
                 av_frame_unref(m_frame);
+                // On a live stream (unknown duration) a truncated packet at a server-side
+                // reconnect boundary causes a transient codec error. Flush and continue
+                // instead of treating it as fatal — but cap retries to detect a truly broken stream.
+                if (m_trackInfo.duration == 0 && m_liveStreamDecodeErrors < 1) {
+                    ++m_liveStreamDecodeErrors;
+                    std::cerr << "[AudioDecoder] Transient frame error on live stream, flushing codec and continuing" << std::endl;
+                    avcodec_flush_buffers(m_codecContext);
+                    break;
+                }
+                std::cerr << "[AudioDecoder] Error receiving frame from decoder" << std::endl;
                 // Set even when totalSamplesRead > 0 (error after partial read), unlike m_eof.
                 m_decodeError = true;
                 return totalSamplesRead;
             }
+
+            m_liveStreamDecodeErrors = 0;  // Reset on successful decode
 
             // Process frame
             size_t frameSamples = m_frame->nb_samples;
@@ -2218,6 +2230,7 @@ bool AudioEngine::process(size_t samplesNeeded) {
         }
 
         m_samplesPlayed += samplesRead;
+        m_liveStreamReconnects = 0;  // Good audio received — reset reconnect counter
     }
 
     // Fatal decoder conditions checked before samplesRead == 0 because an error
@@ -2250,6 +2263,20 @@ bool AudioEngine::process(size_t samplesNeeded) {
 
     // Live stream stall: av_read_frame() hit the 20s interrupt deadline (v2.5.1).
     if (m_currentDecoder && m_currentDecoder->hasReadTimeout()) {
+        // On a live stream the upstream server may reset its connection, causing the
+        // local Roon proxy to stall briefly before resuming. Reopen the same URL
+        // instead of stopping — but cap retries to catch a truly dead stream.
+        if (m_currentTrackInfo.duration == 0 && m_liveStreamReconnects < 3) {
+            ++m_liveStreamReconnects;
+            std::cerr << "[AudioEngine] Live stream stalled, attempting reconnect ("
+                      << m_liveStreamReconnects << "/3)..." << std::endl;
+            m_isDraining = false;
+            if (openCurrentTrack()) {
+                std::cout << "[AudioEngine] Reconnect successful, resuming live stream" << std::endl;
+                return true;
+            }
+            std::cerr << "[AudioEngine] Reconnect failed" << std::endl;
+        }
         triggerFatalStop("Stream read timeout (live proxy stall), triggering clean stop");
         return false;
     }
