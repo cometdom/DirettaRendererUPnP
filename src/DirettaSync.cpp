@@ -1649,6 +1649,11 @@ void DirettaSync::dumpStats() const {
     std::cout << "════════════════════════════════════════\n" << std::endl;
 }
 
+void DirettaSync::requestPostReconnectRebuffering() {
+    m_rebuffering.store(true, std::memory_order_release);
+    m_postReconnectRebuffering.store(true, std::memory_order_release);
+}
+
 //=============================================================================
 // DIRETTA::Sync Overrides
 //=============================================================================
@@ -1848,16 +1853,19 @@ bool DirettaSync::getNewStream(diretta_stream& baseStream) {
     // Rebuffering: hold silence until buffer recovers to threshold
     // Prevents stuttering ("CD skip" effect) when small data bursts trickle in
     // during a network stall — accumulates data for a clean resumption
-    // Remote streams use a higher threshold (50%) for better CDN hiccup resilience
+    // Remote streams and post-reconnect use a higher threshold (50%) for resilience
     if (m_rebuffering.load(std::memory_order_acquire)) {
-        float thresholdPct = m_isRemoteStream.load(std::memory_order_relaxed)
+        bool postReconnect = m_postReconnectRebuffering.load(std::memory_order_relaxed);
+        float thresholdPct = (postReconnect || m_isRemoteStream.load(std::memory_order_relaxed))
             ? DirettaBuffer::REBUFFER_THRESHOLD_REMOTE_PCT
             : DirettaBuffer::REBUFFER_THRESHOLD_PCT;
         size_t threshold = static_cast<size_t>(currentRingSize * thresholdPct);
         if (avail >= threshold) {
+            m_postReconnectRebuffering.store(false, std::memory_order_relaxed);
             m_rebuffering.store(false, std::memory_order_release);
             LOG_WARN("[DirettaSync] Rebuffering complete — resuming playback (avail="
-                     << avail << ", threshold=" << threshold << ")");
+                     << avail << ", threshold=" << threshold << ")"
+                     << (postReconnect ? " [post-reconnect]" : ""));
             // Fall through to normal pop below
         } else {
             fillSilence(dest, currentBytesPerBuffer);

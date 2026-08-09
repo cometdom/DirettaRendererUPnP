@@ -2297,6 +2297,7 @@ bool AudioEngine::process(size_t samplesNeeded) {
                 m_currentDecoder = std::move(newDecoder);
                 m_currentTrackInfo = m_currentDecoder->getTrackInfo();
                 std::cout << "[AudioEngine] Reconnect successful, resuming live stream" << std::endl;
+                m_reconnectOccurred.store(true, std::memory_order_release);
                 return true;
             }
             std::cerr << "[AudioEngine] Reconnect failed (attempt " << m_liveStreamReconnects << "/3)" << std::endl;

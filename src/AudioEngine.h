@@ -497,6 +497,15 @@ private:
     // reset when a track opens normally. Caps retries to avoid infinite reconnect loops.
     int m_liveStreamReconnects = 0;
 
+    // Set to true after a successful live stream reconnect; cleared by consumeReconnectFlag().
+    // Lets DirettaRenderer trigger a post-reconnect rebuffering cycle in DirettaSync.
+    std::atomic<bool> m_reconnectOccurred{false};
+
+public:
+    bool consumeReconnectFlag() {
+        return m_reconnectOccurred.exchange(false, std::memory_order_acq_rel);
+    }
+
     // Prevent copying
     AudioEngine(const AudioEngine&) = delete;
     AudioEngine& operator=(const AudioEngine&) = delete;
