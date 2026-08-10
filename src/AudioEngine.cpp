@@ -111,6 +111,7 @@ bool AudioDecoder::open(const std::string& url) {
     std::cout << "[AudioDecoder] Opening: " << url.substr(0, 80) << "..." << std::endl;
     m_decodeError = false;
     m_readTimeout = false;
+    m_rawPacketBypass = false;
 
     // Open input file
     m_formatContext = avformat_alloc_context();
@@ -1407,6 +1408,32 @@ size_t AudioDecoder::readSamples(AudioBuffer& buffer, size_t numSamples,
             continue;
         }
 
+        // RAW PACKET BYPASS: copy packet data directly, skip codec entirely.
+        // Safe only when raw bytes/frame == output bytes/frame (detected in initResampler).
+        // Truncated packets (e.g. < 1 complete sample) are silently discarded — no error.
+        if (m_rawPacketBypass) {
+            size_t packetSamples = (size_t)m_packet->size / bytesPerSample;
+            if (packetSamples > 0) {
+                size_t samplesToCopy = std::min(packetSamples, numSamples - totalSamplesRead);
+                size_t bytesToCopy   = samplesToCopy * bytesPerSample;
+                memcpy_audio(outputPtr, m_packet->data, bytesToCopy);
+                outputPtr        += bytesToCopy;
+                totalSamplesRead += samplesToCopy;
+
+                if (packetSamples > samplesToCopy && m_pcmFifo) {
+                    uint8_t* excessPtr     = m_packet->data + bytesToCopy;
+                    uint8_t* excessPtrs[1] = { excessPtr };
+                    int written = av_audio_fifo_write(m_pcmFifo, (void**)excessPtrs,
+                                                     (int)(packetSamples - samplesToCopy));
+                    if (written < 0) {
+                        std::cerr << "[AudioDecoder] FIFO write failed in bypass path, excess samples dropped" << std::endl;
+                    }
+                }
+            }
+            av_packet_unref(m_packet);
+            continue;
+        }
+
         // Send packet to decoder
         ret = avcodec_send_packet(m_codecContext, m_packet);
         av_packet_unref(m_packet);
@@ -1661,11 +1688,30 @@ bool AudioDecoder::initResampler(uint32_t outputRate, uint32_t outputBits) {
         }
 
         m_bypassMode = true;
+
+        // Detect raw packet bypass: safe when raw bytes/frame == output bytes/frame
+        // (little-endian only — big-endian codecs require a byte swap the codec provides)
+        {
+            AVCodecID id = m_codecContext->codec_id;
+            // S24LE is listed for completeness but cannot activate bypass:
+            // block_align=channels*3 never equals outBytesPerFrame=channels*4.
+            bool isLE = (id == AV_CODEC_ID_PCM_S16LE ||
+                         id == AV_CODEC_ID_PCM_S24LE ||
+                         id == AV_CODEC_ID_PCM_S32LE);
+            int rawBytesPerFrame  = m_codecContext->block_align;
+            int outBytesPerFrame  = (int)(((outputBits == 16) ? 2 : 4) * m_trackInfo.channels);
+            m_rawPacketBypass = isLE && (rawBytesPerFrame == outBytesPerFrame);
+            if (m_rawPacketBypass) {
+                std::cout << "[AudioDecoder] RAW PACKET BYPASS enabled - codec completely skipped" << std::endl;
+            }
+        }
+
         m_resamplerInitialized = true;
         return true;
     }
 
     m_bypassMode = false;
+    m_rawPacketBypass = false;
 
     // Free existing resampler
     if (m_swrContext) {

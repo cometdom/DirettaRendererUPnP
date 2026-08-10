@@ -208,6 +208,9 @@ private:
     // Enables bit-perfect playback for matching integer formats
     bool m_bypassMode = false;
     bool m_resamplerInitialized = false;
+    // Raw packet bypass - skip codec entirely when raw bytes == output bytes
+    // (little-endian PCM, no expansion or byte-swap needed)
+    bool m_rawPacketBypass = false;
 
     // D2: Cached resampler delay (avoids swr_get_delay() call every frame)
     // Delay stabilizes after first few frames, refresh periodically
