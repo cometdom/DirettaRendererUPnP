@@ -1186,7 +1186,7 @@ size_t AudioDecoder::readSamples(AudioBuffer& buffer, size_t numSamples,
             // Read packets until we have enough data
             // DSF layout: each packet is [blockSize L][blockSize R]
             while (leftOffset < bytesPerChannelNeeded && !m_eof && !m_readTimeout) {
-                // Deadline: abort if av_read_frame() blocks > 20s (live stream proxy stall)
+                // Deadline: abort if av_read_frame() blocks > 5s (live stream proxy stall)
                 m_readDeadlineNs.store(
                     std::chrono::duration_cast<std::chrono::nanoseconds>(
                         (std::chrono::steady_clock::now() + std::chrono::seconds(READ_STALL_TIMEOUT_S)).time_since_epoch()
@@ -1354,7 +1354,7 @@ size_t AudioDecoder::readSamples(AudioBuffer& buffer, size_t numSamples,
     }
 
     while (totalSamplesRead < numSamples && !m_eof && !m_readTimeout) {
-        // Read packet — set 20s deadline so av_read_frame() cannot block indefinitely
+        // Read packet — set 5s deadline so av_read_frame() cannot block indefinitely
         // (protects against live streams via proxy keeping TCP alive with no audio data)
         m_readDeadlineNs.store(
             std::chrono::duration_cast<std::chrono::nanoseconds>(
@@ -1955,6 +1955,7 @@ bool AudioEngine::play() {
     // Open current track if not already open OR if at EOF
     if (!m_currentDecoder || m_currentDecoder->isEOF()) {
         std::cout << "[AudioEngine] Opening track (new or after EOF)" << std::endl;
+        m_liveStreamReconnects = 0;
 
         if (!openCurrentTrack()) {
             std::cerr << "[AudioEngine] Failed to open track" << std::endl;
@@ -2261,7 +2262,7 @@ bool AudioEngine::process(size_t samplesNeeded) {
         return false;
     }
 
-    // Live stream stall: av_read_frame() hit the 20s interrupt deadline (v2.5.1).
+    // Live stream stall: av_read_frame() hit the 5s interrupt deadline.
     if (m_currentDecoder && m_currentDecoder->hasReadTimeout()) {
         // On a live stream the upstream server may reset its connection, causing the
         // local Roon proxy to stall briefly before resuming. Reopen the same URL
@@ -2271,7 +2272,10 @@ bool AudioEngine::process(size_t samplesNeeded) {
             std::cerr << "[AudioEngine] Live stream stalled, attempting reconnect ("
                       << m_liveStreamReconnects << "/3)..." << std::endl;
             m_isDraining = false;
-            if (openCurrentTrack()) {
+            lock.unlock();
+            bool reconnectOk = openCurrentTrack(true);  // suppressCallback: no spurious position reset
+            lock.lock();
+            if (reconnectOk) {
                 std::cout << "[AudioEngine] Reconnect successful, resuming live stream" << std::endl;
                 return true;
             }
@@ -2367,8 +2371,8 @@ bool AudioEngine::process(size_t samplesNeeded) {
     return true;
 }
 
-bool AudioEngine::openCurrentTrack() {
-    // Note: This function is called from play() which already holds the mutex
+bool AudioEngine::openCurrentTrack(bool suppressCallback) {
+    // Note: called with m_mutex held, except from the reconnect path which unlocks first
 
     if (m_currentURI.empty()) {
         std::cerr << "[AudioEngine] No current URI set" << std::endl;
@@ -2398,8 +2402,8 @@ bool AudioEngine::openCurrentTrack() {
     }
     std::cout << "/" << m_currentTrackInfo.channels << "ch" << std::endl;
 
-    // Call track change callback with URI and metadata
-    if (m_trackChangeCallback) {
+    // Call track change callback with URI and metadata (suppressed on silent reconnect)
+    if (m_trackChangeCallback && !suppressCallback) {
         m_trackChangeCallback(m_trackNumber, m_currentTrackInfo, m_currentURI, m_currentMetadata);
     }
 

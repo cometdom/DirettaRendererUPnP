@@ -192,7 +192,7 @@ private:
     AudioBuffer m_dsdRightBuffer;
     size_t m_dsdBufferCapacity = 0;
 
-    // FFmpeg interrupt callback: abort av_read_frame() if it stalls > 20s
+    // FFmpeg interrupt callback: abort av_read_frame() if it stalls > 5s
     // Prevents permanent hang when a live stream (e.g., Roon-proxied radio)
     // keeps the HTTP connection alive but sends no audio data.
     std::atomic<int64_t> m_readDeadlineNs{0};  // nanoseconds since epoch; 0 = no deadline
@@ -473,7 +473,7 @@ private:
     std::atomic<bool> m_formatChangePending{false};  // Preload detected format change, don't re-preload
 
     // Helper functions
-    bool openCurrentTrack();
+    bool openCurrentTrack(bool suppressCallback = false);
     bool preloadNextTrack();
     void transitionToNextTrack();
 
