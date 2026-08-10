@@ -2266,7 +2266,7 @@ bool AudioEngine::process(size_t samplesNeeded) {
         // On a live stream the upstream server may reset its connection, causing the
         // local Roon proxy to stall briefly before resuming. Reopen the same URL
         // instead of stopping — but cap retries to catch a truly dead stream.
-        if (m_currentTrackInfo.duration == 0 && m_liveStreamReconnects < 3) {
+        while (m_currentTrackInfo.duration == 0 && m_liveStreamReconnects < 3) {
             ++m_liveStreamReconnects;
             std::cerr << "[AudioEngine] Live stream stalled, attempting reconnect ("
                       << m_liveStreamReconnects << "/3)..." << std::endl;
@@ -2275,7 +2275,7 @@ bool AudioEngine::process(size_t samplesNeeded) {
                 std::cout << "[AudioEngine] Reconnect successful, resuming live stream" << std::endl;
                 return true;
             }
-            std::cerr << "[AudioEngine] Reconnect failed" << std::endl;
+            std::cerr << "[AudioEngine] Reconnect failed (attempt " << m_liveStreamReconnects << "/3)" << std::endl;
         }
         triggerFatalStop("Stream read timeout (live proxy stall), triggering clean stop");
         return false;
