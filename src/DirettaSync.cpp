@@ -534,6 +534,7 @@ bool DirettaSync::open(const AudioFormat& format) {
             m_ringBuffer.clear();
             m_prefillComplete = false;
             m_rebuffering.store(false, std::memory_order_relaxed);
+            m_postReconnectRebuffering.store(false, std::memory_order_relaxed);
             // m_postOnlineDelayDone stays true - DAC already stable
             m_stabilizationCount = 0;
             m_stopRequested = false;
@@ -903,6 +904,7 @@ void DirettaSync::close() {
     m_playing = false;
     m_paused = false;
     m_rebuffering.store(false, std::memory_order_relaxed);
+    m_postReconnectRebuffering.store(false, std::memory_order_relaxed);
 
     // Reset cached consumer generation to force reload on next getNewStream()
     m_cachedConsumerGen = UINT32_MAX;
@@ -1007,6 +1009,7 @@ void DirettaSync::fullReset() {
         m_pushCount = 0;
         m_popCount = 0;
         m_rebuffering.store(false, std::memory_order_relaxed);
+        m_postReconnectRebuffering.store(false, std::memory_order_relaxed);
         m_isDsdMode.store(false, std::memory_order_release);
         m_isDoPMode.store(false, std::memory_order_release);
         m_needDsdBitReversal.store(false, std::memory_order_release);

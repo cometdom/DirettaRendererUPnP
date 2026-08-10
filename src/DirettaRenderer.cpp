@@ -956,7 +956,9 @@ void DirettaRenderer::audioThreadFunc() {
                     std::this_thread::sleep_for(std::chrono::milliseconds(5));
                 } else if (bufferLevel < BUFFER_LOW_THRESHOLD && bufferLevel > 0.0f) {
                     // Buffer is getting low - process again immediately (catch up)
-                    m_audioEngine->process(currentSamplesPerCall);
+                    if (m_audioEngine->process(currentSamplesPerCall) && m_audioEngine->consumeReconnectFlag()) {
+                        m_direttaSync->requestPostReconnectRebuffering();
+                    }
                 }
             }
         } else {
