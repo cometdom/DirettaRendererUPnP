@@ -2016,6 +2016,7 @@ void AudioEngine::stop() {
         m_silenceCount = 0;
         m_isDraining = false;
         m_formatChangePending = false;
+        m_liveStreamReconnects = 0;
 
         // CRITICAL: NE PAS effacer m_currentURI !
         // On veut pouvoir redémarrer la même piste depuis le début
