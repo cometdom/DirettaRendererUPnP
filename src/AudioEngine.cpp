@@ -1419,13 +1419,15 @@ size_t AudioDecoder::readSamples(AudioBuffer& buffer, size_t numSamples,
                 memcpy_audio(outputPtr, m_packet->data, bytesToCopy);
                 outputPtr        += bytesToCopy;
                 totalSamplesRead += samplesToCopy;
-                m_liveStreamDecodeErrors = 0;
 
                 if (packetSamples > samplesToCopy && m_pcmFifo) {
                     uint8_t* excessPtr     = m_packet->data + bytesToCopy;
                     uint8_t* excessPtrs[1] = { excessPtr };
-                    av_audio_fifo_write(m_pcmFifo, (void**)excessPtrs,
-                                        (int)(packetSamples - samplesToCopy));
+                    int written = av_audio_fifo_write(m_pcmFifo, (void**)excessPtrs,
+                                                     (int)(packetSamples - samplesToCopy));
+                    if (written < 0) {
+                        std::cerr << "[AudioDecoder] FIFO write failed in bypass path, excess samples dropped" << std::endl;
+                    }
                 }
             }
             av_packet_unref(m_packet);
@@ -1691,6 +1693,8 @@ bool AudioDecoder::initResampler(uint32_t outputRate, uint32_t outputBits) {
         // (little-endian only — big-endian codecs require a byte swap the codec provides)
         {
             AVCodecID id = m_codecContext->codec_id;
+            // S24LE is listed for completeness but cannot activate bypass:
+            // block_align=channels*3 never equals outBytesPerFrame=channels*4.
             bool isLE = (id == AV_CODEC_ID_PCM_S16LE ||
                          id == AV_CODEC_ID_PCM_S24LE ||
                          id == AV_CODEC_ID_PCM_S32LE);
