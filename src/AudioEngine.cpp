@@ -2273,10 +2273,29 @@ bool AudioEngine::process(size_t samplesNeeded) {
             std::cerr << "[AudioEngine] Live stream stalled, attempting reconnect ("
                       << m_liveStreamReconnects << "/3)..." << std::endl;
             m_isDraining = false;
+
+            // Capture-validate-commit pattern (same as preloadNextTrack) to avoid a data
+            // race on m_currentDecoder: stop()/setCurrentURI() can run concurrently when
+            // the lock is released, so we build the decoder locally and only write to
+            // shared members after re-acquiring the lock and validating nothing changed.
+            std::string capturedURI = m_currentURI;
             lock.unlock();
-            bool reconnectOk = openCurrentTrack(true);  // suppressCallback: no spurious position reset
+
+            auto newDecoder = std::make_unique<AudioDecoder>();
+            bool openOk = newDecoder->open(capturedURI);
+
             lock.lock();
-            if (reconnectOk) {
+
+            // Abort if a Stop or SetURI arrived while we were doing slow network I/O
+            if (m_state != State::PLAYING || m_currentURI != capturedURI) {
+                std::cerr << "[AudioEngine] Reconnect aborted (state changed during open)" << std::endl;
+                return false;
+            }
+
+            if (openOk) {
+                // Commit: write to shared members only under lock, no spurious callback
+                m_currentDecoder = std::move(newDecoder);
+                m_currentTrackInfo = m_currentDecoder->getTrackInfo();
                 std::cout << "[AudioEngine] Reconnect successful, resuming live stream" << std::endl;
                 return true;
             }
@@ -2373,7 +2392,7 @@ bool AudioEngine::process(size_t samplesNeeded) {
 }
 
 bool AudioEngine::openCurrentTrack(bool suppressCallback) {
-    // Note: called with m_mutex held, except from the reconnect path which unlocks first
+    // Note: always called with m_mutex held
 
     if (m_currentURI.empty()) {
         std::cerr << "[AudioEngine] No current URI set" << std::endl;
