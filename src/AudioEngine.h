@@ -148,6 +148,7 @@ private:
     bool m_eof;
     bool m_decodeError = false;  // Set on avcodec_receive_frame() failure (not EAGAIN/EOF)
     bool m_readTimeout = false;  // Set when av_read_frame() aborted by interrupt callback
+    int m_liveStreamDecodeErrors = 0;  // Consecutive avcodec_receive_frame() errors on live stream; resets on success
 
     // DSD Native Mode
     bool m_rawDSD;           // True if reading raw DSD packets (no decoding)
@@ -191,7 +192,7 @@ private:
     AudioBuffer m_dsdRightBuffer;
     size_t m_dsdBufferCapacity = 0;
 
-    // FFmpeg interrupt callback: abort av_read_frame() if it stalls > 20s
+    // FFmpeg interrupt callback: abort av_read_frame() if it stalls > 5s
     // Prevents permanent hang when a live stream (e.g., Roon-proxied radio)
     // keeps the HTTP connection alive but sends no audio data.
     std::atomic<int64_t> m_readDeadlineNs{0};  // nanoseconds since epoch; 0 = no deadline
@@ -217,7 +218,7 @@ private:
     int64_t m_cachedResamplerDelay = 0;
     int m_delayRefreshCounter = 0;
     static constexpr int DELAY_REFRESH_INTERVAL = 100;  // Refresh every 100 frames
-    static constexpr int READ_STALL_TIMEOUT_S = 20;     // Abort av_read_frame() after this many seconds
+    static constexpr int READ_STALL_TIMEOUT_S = 5;      // Abort av_read_frame() after this many seconds
 
     bool initResampler(uint32_t outputRate, uint32_t outputBits);
     bool canBypass(uint32_t outputRate, uint32_t outputBits) const;
@@ -475,7 +476,7 @@ private:
     std::atomic<bool> m_formatChangePending{false};  // Preload detected format change, don't re-preload
 
     // Helper functions
-    bool openCurrentTrack();
+    bool openCurrentTrack(bool suppressCallback = false);
     bool preloadNextTrack();
     void transitionToNextTrack();
 
@@ -494,6 +495,10 @@ private:
     // The UPnP thread sets these flags, the audio thread processes the seek
     std::atomic<bool> m_seekRequested{false};
     std::atomic<double> m_seekTarget{0.0};
+
+    // Live stream reconnect counter: incremented on each read-timeout reconnect attempt,
+    // reset when a track opens normally. Caps retries to avoid infinite reconnect loops.
+    int m_liveStreamReconnects = 0;
 
     // Prevent copying
     AudioEngine(const AudioEngine&) = delete;
