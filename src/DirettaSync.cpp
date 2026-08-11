@@ -534,6 +534,7 @@ bool DirettaSync::open(const AudioFormat& format) {
             m_ringBuffer.clear();
             m_prefillComplete = false;
             m_rebuffering.store(false, std::memory_order_relaxed);
+            m_postReconnectRebuffering.store(false, std::memory_order_relaxed);
             // m_postOnlineDelayDone stays true - DAC already stable
             m_stabilizationCount = 0;
             m_stopRequested = false;
@@ -903,6 +904,7 @@ void DirettaSync::close() {
     m_playing = false;
     m_paused = false;
     m_rebuffering.store(false, std::memory_order_relaxed);
+    m_postReconnectRebuffering.store(false, std::memory_order_relaxed);
 
     // Reset cached consumer generation to force reload on next getNewStream()
     m_cachedConsumerGen = UINT32_MAX;
@@ -1007,6 +1009,7 @@ void DirettaSync::fullReset() {
         m_pushCount = 0;
         m_popCount = 0;
         m_rebuffering.store(false, std::memory_order_relaxed);
+        m_postReconnectRebuffering.store(false, std::memory_order_relaxed);
         m_isDsdMode.store(false, std::memory_order_release);
         m_isDoPMode.store(false, std::memory_order_release);
         m_needDsdBitReversal.store(false, std::memory_order_release);
@@ -1649,6 +1652,11 @@ void DirettaSync::dumpStats() const {
     std::cout << "════════════════════════════════════════\n" << std::endl;
 }
 
+void DirettaSync::requestPostReconnectRebuffering() {
+    m_rebuffering.store(true, std::memory_order_release);
+    m_postReconnectRebuffering.store(true, std::memory_order_release);
+}
+
 //=============================================================================
 // DIRETTA::Sync Overrides
 //=============================================================================
@@ -1848,16 +1856,19 @@ bool DirettaSync::getNewStream(diretta_stream& baseStream) {
     // Rebuffering: hold silence until buffer recovers to threshold
     // Prevents stuttering ("CD skip" effect) when small data bursts trickle in
     // during a network stall — accumulates data for a clean resumption
-    // Remote streams use a higher threshold (50%) for better CDN hiccup resilience
+    // Remote streams and post-reconnect use a higher threshold (50%) for resilience
     if (m_rebuffering.load(std::memory_order_acquire)) {
-        float thresholdPct = m_isRemoteStream.load(std::memory_order_relaxed)
+        bool postReconnect = m_postReconnectRebuffering.load(std::memory_order_relaxed);
+        float thresholdPct = (postReconnect || m_isRemoteStream.load(std::memory_order_relaxed))
             ? DirettaBuffer::REBUFFER_THRESHOLD_REMOTE_PCT
             : DirettaBuffer::REBUFFER_THRESHOLD_PCT;
         size_t threshold = static_cast<size_t>(currentRingSize * thresholdPct);
         if (avail >= threshold) {
+            m_postReconnectRebuffering.store(false, std::memory_order_relaxed);
             m_rebuffering.store(false, std::memory_order_release);
             LOG_WARN("[DirettaSync] Rebuffering complete — resuming playback (avail="
-                     << avail << ", threshold=" << threshold << ")");
+                     << avail << ", threshold=" << threshold << ")"
+                     << (postReconnect ? " [post-reconnect]" : ""));
             // Fall through to normal pop below
         } else {
             fillSilence(dest, currentBytesPerBuffer);

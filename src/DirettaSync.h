@@ -438,6 +438,20 @@ public:
      */
     size_t sendAudio(const uint8_t* data, size_t numSamples);
 
+    /**
+     * @brief Force a 50% rebuffering threshold after a live stream reconnect.
+     *
+     * After a reconnect the ring buffer typically holds only ~20-22% — just
+     * enough to clear the normal 20% threshold immediately. The Diretta target
+     * then resumes consuming at full rate while the decoder is still catching
+     * up, causing rapid underrun/rebuffering oscillations for minutes.
+     *
+     * Calling this right after a successful reconnect raises the threshold to
+     * 50% for one rebuffering cycle, giving the buffer a safe cushion before
+     * playback resumes (~190 ms extra silence vs minutes of oscillation).
+     */
+    void requestPostReconnectRebuffering();
+
     float getBufferLevel() const;
     const AudioFormat& getFormat() const { return m_currentFormat; }
 
@@ -680,6 +694,7 @@ private:
     std::atomic<int> m_popCount{0};
     std::atomic<uint32_t> m_underrunCount{0};
     std::atomic<bool> m_rebuffering{false};              // Rebuffering after sustained underrun
+    std::atomic<bool> m_postReconnectRebuffering{false}; // Use 50% threshold for one cycle after live stream reconnect
 };
 
 #endif // DIRETTA_SYNC_H
