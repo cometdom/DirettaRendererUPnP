@@ -1,4 +1,4 @@
-# Diretta UPnP Renderer v2.5.10
+# Diretta UPnP Renderer v2.5.11
 
 **The world's first native UPnP/DLNA renderer with Diretta protocol support - Low-Latency Edition**
 
@@ -8,18 +8,19 @@
 
 ---
 
-![Version](https://img.shields.io/badge/version-2.5.10-blue.svg)
+![Version](https://img.shields.io/badge/version-2.5.11-blue.svg)
 ![Low Latency](https://img.shields.io/badge/Latency-Low-green.svg)
 ![SDK](https://img.shields.io/badge/SDK-DIRETTA::Sync-orange.svg)
 ![Audirvana](https://img.shields.io/badge/Audirvana-Compatible-green.svg)
 
 ---
 
-## What's New in v2.5.10
+## What's New in v2.5.11
 
-**Audio fix: deadlock after online timeout broken.**
+**Live stream resilience: automatic reconnect on stall, plus a bit-perfect raw-PCM fast path.**
 
-- **Online-timeout deadlock fix**: when a Diretta target takes longer than 2 seconds to reach online state (slow PLL relock on first sample-rate switch, or SDK connection stall), DRUP would enter a deadlock — `sendAudio()` returned 0, the ring stayed empty, the target kept receiving silence and never went online. A new recovery flag now allows `sendAudio()` to fill the ring after a timeout, letting the target receive real audio and transition online normally.
+- **Live stream stall recovery**: internet radio stations that reset mid-stream no longer stop playback — DRUP now reconnects automatically (up to 3 attempts, ~5s audible gap instead of a hard stop), with a post-reconnect buffering cushion to prevent underrun oscillation while the decoder catches up (PR #84 / #85, hoorna/Alfred).
+- **Raw packet bypass decoder**: native PCM streams (e.g. `pcm_s16le`) now skip the FFmpeg decode step entirely where the raw packet already matches the output frame size, for bit-perfect, zero-decode-overhead passthrough (PR #86, hoorna/Alfred).
 
 See [CHANGELOG.md](CHANGELOG.md) for details.
 
@@ -27,6 +28,7 @@ See [CHANGELOG.md](CHANGELOG.md) for details.
 
 | Version | Highlights |
 |---------|-----------|
+| **v2.5.10** | Online-timeout deadlock fix — `sendAudio()` no longer stuck returning 0 after `waitForOnline` times out, ring can refill and the target reaches online normally |
 | **v2.5.9** | Maintenance: `install.sh` sudo prompt fix, MIT SPDX headers, THIRD_PARTY_NOTICES |
 | **v2.5.8** | DoP (DSD over PCM) output mode — `--dop` / `--dop-msb` flags, DSD64→176.4 kHz … DSD512→1.4 MHz (issue #80 by yama3kzh) |
 | **v2.5.7** | `install.sh`: FFmpeg 8.1+ build failure fixed (`udp` protocol missing, issue #81 by sheviks); FFmpeg menu overhauled (5.x removed, 7.1.1 minimal added, 8.0.1→8.1.2) |
@@ -1141,4 +1143,4 @@ This software is provided "as is" without warranty. While designed for high-qual
 
 **Enjoy bit-perfect, low-latency audio streaming!**
 
-*Last updated: 2026-07-23 (v2.5.10)*
+*Last updated: 2026-08-11 (v2.5.11)*

@@ -1,5 +1,14 @@
 # Changelog
 
+## [2.5.11] - 2026-08-11
+
+### Added
+- **Raw packet bypass decoder** (PR #86, hoorna/Alfred). For native PCM streams where the raw FFmpeg packet already matches the output frame size exactly (`block_align == outBytesPerFrame`, little-endian containers — e.g. `pcm_s16le`), `AudioDecoder::readSamples()` now copies demuxed packet bytes directly into the audio path, skipping `avcodec_send_packet()`/`avcodec_receive_frame()` entirely. Falls back to the normal decode path for anything else (big-endian, compressed, or 24-bit where the S32 container size doesn't match). Zero decode overhead, bit-perfect passthrough for the common raw-PCM case.
+
+### Fixed
+- **Live stream proxy stalls: recover instead of stopping** (PR #84, hoorna/Alfred). When an internet radio station resets its live stream, a local proxy (Roon, Audirvana) can stall or deliver a truncated packet mid-stream. DRUP used to hard-stop; it now: (1) flushes the codec and continues on a single transient decode error on a live stream (`duration == 0`), capped at 1 consecutive error; (2) on a genuine read stall (`AVIOInterruptCB` deadline hit), reopens the same URL up to 3 times instead of triggering a fatal stop; (3) the stall deadline (`READ_STALL_TIMEOUT_S`) is reduced from 20s to 5s, cutting the audible gap on a real stall from ~21s to ~5s. Reconnect uses the same capture-validate-commit pattern as `preloadNextTrack()` — the new decoder is opened into a local `unique_ptr` while the engine mutex is released (avoiding a ~90s UPnP command freeze during the reopen), then committed under lock only after re-validating that no concurrent `Stop`/`SetURI` changed state — closes a data race on `m_currentDecoder` found during review of an earlier iteration of this fix.
+- **Post-reconnect buffer oscillation** (PR #85, hoorna/Alfred). Immediately after a live-stream reconnect (see above), the ring buffer typically holds only ~20-22% — just enough to clear the normal 20% rebuffering threshold instantly, before the decoder has caught up, causing rapid underrun/rebuffering oscillation for minutes. `DirettaSync::requestPostReconnectRebuffering()` now raises the threshold to 50% for the single rebuffering cycle following a reconnect, then reverts to 20%. Tested on `pcm_s24le`/48kHz internet radio via Roon: underruns per session dropped from ~63 to ~6 over a comparable 4h45m run.
+
 ## [2.5.10] - 2026-07-23
 
 ### Fixed
