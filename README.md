@@ -1,4 +1,4 @@
-# Diretta UPnP Renderer v2.5.11
+# Diretta UPnP Renderer v2.5.12
 
 **The world's first native UPnP/DLNA renderer with Diretta protocol support - Low-Latency Edition**
 
@@ -8,19 +8,18 @@
 
 ---
 
-![Version](https://img.shields.io/badge/version-2.5.11-blue.svg)
+![Version](https://img.shields.io/badge/version-2.5.12-blue.svg)
 ![Low Latency](https://img.shields.io/badge/Latency-Low-green.svg)
 ![SDK](https://img.shields.io/badge/SDK-DIRETTA::Sync-orange.svg)
 ![Audirvana](https://img.shields.io/badge/Audirvana-Compatible-green.svg)
 
 ---
 
-## What's New in v2.5.11
+## What's New in v2.5.12
 
-**Live stream resilience: automatic reconnect on stall, plus a bit-perfect raw-PCM fast path.**
+**Startup robustness: a failed link-tuning step could no longer stop the renderer from starting at all.**
 
-- **Live stream stall recovery**: internet radio stations that reset mid-stream no longer stop playback — DRUP now reconnects automatically (up to 3 attempts, ~5s audible gap instead of a hard stop), with a post-reconnect buffering cushion to prevent underrun oscillation while the decoder catches up (PR #84 / #85, hoorna/Alfred).
-- **Raw packet bypass decoder**: native PCM streams (e.g. `pcm_s16le`) now skip the FFmpeg decode step entirely where the raw packet already matches the output frame size, for bit-perfect, zero-decode-overhead passthrough (PR #86, hoorna/Alfred).
+- **`start-renderer.sh` fix**: `TARGET_INTERFACE`/`TARGET_SPEED`/`TARGET_DUPLEX` link tuning ran under `set -e` with an unguarded `ethtool` call — a stale or wrong interface name (e.g. a stable-naming rename pending a reboot) made `ethtool` fail, which aborted the whole script before the DRUP binary ever ran. Systemd then just crash-looped on a bare exit code with no indication anything audio-related was involved. Now a failure prints a clear warning and the renderer starts anyway; its existing UPnP-init retry loop already handles a not-yet-ready network interface gracefully.
 
 See [CHANGELOG.md](CHANGELOG.md) for details.
 
@@ -28,6 +27,7 @@ See [CHANGELOG.md](CHANGELOG.md) for details.
 
 | Version | Highlights |
 |---------|-----------|
+| **v2.5.11** | Live stream stall recovery + automatic reconnect (PR #84/#85, hoorna/Alfred); raw packet bypass decoder for bit-perfect zero-overhead PCM passthrough (PR #86, hoorna/Alfred) |
 | **v2.5.10** | Online-timeout deadlock fix — `sendAudio()` no longer stuck returning 0 after `waitForOnline` times out, ring can refill and the target reaches online normally |
 | **v2.5.9** | Maintenance: `install.sh` sudo prompt fix, MIT SPDX headers, THIRD_PARTY_NOTICES |
 | **v2.5.8** | DoP (DSD over PCM) output mode — `--dop` / `--dop-msb` flags, DSD64→176.4 kHz … DSD512→1.4 MHz (issue #80 by yama3kzh) |
@@ -1143,4 +1143,4 @@ This software is provided "as is" without warranty. While designed for high-qual
 
 **Enjoy bit-perfect, low-latency audio streaming!**
 
-*Last updated: 2026-08-11 (v2.5.11)*
+*Last updated: 2026-08-22 (v2.5.12)*

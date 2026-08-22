@@ -61,7 +61,16 @@ RENDERER_BIN="/opt/diretta-renderer-upnp/DirettaRendererUPnP"
 if [ -n "$TARGET_INTERFACE" ]; then
     if command -v ethtool >/dev/null 2>&1; then
         echo "Set advanced target network settings: $TARGET_INTERFACE -> ${TARGET_SPEED}Mbit/${TARGET_DUPLEX}-duplex"
-        ethtool -s "$TARGET_INTERFACE" speed "$TARGET_SPEED" duplex "$TARGET_DUPLEX"
+        # Non-fatal: this is a cosmetic link-tuning step, not a requirement for
+        # DRUP to run. A stale/wrong TARGET_INTERFACE (e.g. a stable-naming
+        # rename that hasn't taken effect yet, pending a reboot) must not take
+        # the whole renderer down via 'set -e' — DRUP's own UpnpInit2 retry
+        # loop already handles a not-yet-ready network interface gracefully.
+        if ! ethtool -s "$TARGET_INTERFACE" speed "$TARGET_SPEED" duplex "$TARGET_DUPLEX"; then
+            echo "WARNING: failed to set speed/duplex on '$TARGET_INTERFACE' (see ethtool error above)." >&2
+            echo "         Check the interface name with 'ip link show' and TARGET_INTERFACE in your config." >&2
+            echo "         Continuing without link tuning." >&2
+        fi
         sleep 1
     else
         echo "WARNING: TARGET_INTERFACE set but ethtool is not installed — skipping link tuning." >&2

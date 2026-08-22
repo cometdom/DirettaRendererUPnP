@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.5.12] - 2026-08-22
+
+### Fixed
+- **`start-renderer.sh`: a failed `ethtool` link-tuning call took down the whole renderer** (reported by Daniel via TuneOS/fedora-audiophile-setup). `TARGET_INTERFACE`/`TARGET_SPEED`/`TARGET_DUPLEX` (v2.4.0) force NIC speed/duplex via `ethtool -s` before the renderer starts. The script runs under `set -e`, and the `ethtool` call itself was unguarded — if `TARGET_INTERFACE` names an interface that doesn't exist (e.g. a stable-naming rename via `.link` files that only takes effect after the next reboot, or any other mismatch), `ethtool` fails, `set -e` aborts the whole script immediately, and the DRUP binary is never even executed. Systemd then saw a bare wrapper-script exit code (75, ethtool's own `EX_TEMPFAIL`) with no indication anything audio-related was involved, and looped `Restart=on-failure` forever. Fixed by wrapping the `ethtool` call so a failure prints a clear, actionable warning (checked with a simulated `ethtool` failure) and falls through to start the renderer regardless — this cosmetic link-tuning step was never a requirement for playback. `DirettaRenderer::start()` already retries `UpnpInit2()` indefinitely with a clear "Network not ready, retrying UPnP init..." log line every 5s if the actual `--interface` binding also isn't ready yet, so the renderer now degrades gracefully (self-heals once the network is ready) instead of crash-looping.
+
 ## [2.5.11] - 2026-08-11
 
 ### Added
