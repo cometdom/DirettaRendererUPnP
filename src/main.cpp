@@ -420,6 +420,26 @@ int main(int argc, char* argv[]) {
     signal(SIGTERM, signalHandler);
     signal(SIGUSR1, statsSignalHandler);
 
+    // Block SIGINT/SIGTERM on this (main) thread now, before any worker
+    // thread is created anywhere below (UPnP/audio/position threads, Diretta
+    // SDK worker, etc.) — a new thread inherits the creating thread's signal
+    // mask, so every one of them is born with these signals blocked too.
+    // Unblocked again just below, right before the final wait loop, once all
+    // worker threads already exist — so the main thread keeps handling
+    // Ctrl-C/SIGTERM exactly as before via the handlers registered above.
+    // Without this, a second signal arriving while the first is still being
+    // handled (shutdown can take a few seconds: SDK release, buffer drain,
+    // thread joins) can land on a worker thread instead of the main thread,
+    // re-entering signalHandler() concurrently and calling stop() a second
+    // time while the first call is still in progress — observed to crash
+    // with "terminate called without an active exception" from a std::thread
+    // destructor firing on a still-joinable thread mid-join.
+    sigset_t blockedSignals;
+    sigemptyset(&blockedSignals);
+    sigaddset(&blockedSignals, SIGINT);
+    sigaddset(&blockedSignals, SIGTERM);
+    pthread_sigmask(SIG_BLOCK, &blockedSignals, nullptr);
+
     std::cout << "═══════════════════════════════════════════════════════\n"
               << "  Diretta UPnP Renderer v" << RENDERER_VERSION << "\n"
               << "═══════════════════════════════════════════════════════\n"
@@ -562,6 +582,11 @@ int main(int argc, char* argv[]) {
         std::cout << "Waiting for UPnP control points..." << std::endl;
         std::cout << "(Press Ctrl+C to stop)" << std::endl;
         std::cout << std::endl;
+
+        // All worker threads exist by now — safe to let the main thread
+        // start handling SIGINT/SIGTERM again (see the SIG_BLOCK comment
+        // near the top of main()).
+        pthread_sigmask(SIG_UNBLOCK, &blockedSignals, nullptr);
 
         while (g_renderer->isRunning()) {
             std::this_thread::sleep_for(std::chrono::seconds(1));
