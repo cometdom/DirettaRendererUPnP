@@ -23,10 +23,23 @@
 #include <pthread.h>
 #include <sched.h>
 #include <vector>
+#include <csignal>
 
 // Logging: uses centralized LogLevel system from LogLevel.h (included via DirettaSync.h)
 // DEBUG_LOG kept as alias for backward compatibility within this file
 #define DEBUG_LOG(x) LOG_DEBUG(x)
+
+// Blocks SIGINT/SIGTERM on the calling thread only. Called at the top of
+// every worker thread's entry function so the main thread stays the sole,
+// always-interruptible receiver of a process-directed signal — see the
+// matching helper and comment in main.cpp (PR #88 review, cometdom).
+static void blockShutdownSignalsOnThisThread() {
+    sigset_t blockedSignals;
+    sigemptyset(&blockedSignals);
+    sigaddset(&blockedSignals, SIGINT);
+    sigaddset(&blockedSignals, SIGTERM);
+    pthread_sigmask(SIG_BLOCK, &blockedSignals, nullptr);
+}
 
 // Parse comma-separated core list (e.g. "6,7,8") into a vector of ints.
 // Returns empty vector on parse error or empty input.
@@ -862,6 +875,7 @@ void DirettaRenderer::stop() {
 //=============================================================================
 
 void DirettaRenderer::upnpThreadFunc() {
+    blockShutdownSignalsOnThisThread();
     auto cores = parseCoreList(m_config.cpuOther);
     if (!cores.empty()) pinThreadToCores(cores, "UPnP Thread");
     DEBUG_LOG("[UPnP Thread] Started");
@@ -874,6 +888,7 @@ void DirettaRenderer::upnpThreadFunc() {
 }
 
 void DirettaRenderer::audioThreadFunc() {
+    blockShutdownSignalsOnThisThread();
     // Prefer --cpu-decode for the audio thread when set; otherwise fall back
     // to --cpu-other (legacy behaviour). When --cpu-decode is used, also raise
     // the audio thread to SCHED_FIFO so it benefits from the same real-time
@@ -988,6 +1003,7 @@ void DirettaRenderer::audioThreadFunc() {
 }
 
 void DirettaRenderer::positionThreadFunc() {
+    blockShutdownSignalsOnThisThread();
     auto cores = parseCoreList(m_config.cpuOther);
     if (!cores.empty()) pinThreadToCores(cores, "Position Thread");
     DEBUG_LOG("[Position Thread] Started");

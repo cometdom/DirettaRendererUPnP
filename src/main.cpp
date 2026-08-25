@@ -152,7 +152,21 @@ static bool pinCurrentThread(const std::vector<int>& cores, const char* name) {
 // Global storage for cpuOther value (set from config in main, used by logDrainThread)
 static std::string g_cpuOther;
 
+// Blocks SIGINT/SIGTERM on the calling thread only. Called at the top of every
+// worker thread's entry function so the main thread stays the sole receiver of
+// a process-directed signal — without ever blocking the signal on main itself
+// (blocking it on main across start()'s indefinite network/target retry loops
+// made the whole process briefly un-interruptible; see PR #88 review).
+static void blockShutdownSignalsOnThisThread() {
+    sigset_t blockedSignals;
+    sigemptyset(&blockedSignals);
+    sigaddset(&blockedSignals, SIGINT);
+    sigaddset(&blockedSignals, SIGTERM);
+    pthread_sigmask(SIG_BLOCK, &blockedSignals, nullptr);
+}
+
 void logDrainThreadFunc() {
+    blockShutdownSignalsOnThisThread();
     auto cores = parseCoreSpec(g_cpuOther);
     if (!cores.empty()) pinCurrentThread(cores, "Log Drain Thread");
     LogEntry entry;
@@ -420,25 +434,18 @@ int main(int argc, char* argv[]) {
     signal(SIGTERM, signalHandler);
     signal(SIGUSR1, statsSignalHandler);
 
-    // Block SIGINT/SIGTERM on this (main) thread now, before any worker
-    // thread is created anywhere below (UPnP/audio/position threads, Diretta
-    // SDK worker, etc.) — a new thread inherits the creating thread's signal
-    // mask, so every one of them is born with these signals blocked too.
-    // Unblocked again just below, right before the final wait loop, once all
-    // worker threads already exist — so the main thread keeps handling
-    // Ctrl-C/SIGTERM exactly as before via the handlers registered above.
-    // Without this, a second signal arriving while the first is still being
-    // handled (shutdown can take a few seconds: SDK release, buffer drain,
-    // thread joins) can land on a worker thread instead of the main thread,
-    // re-entering signalHandler() concurrently and calling stop() a second
-    // time while the first call is still in progress — observed to crash
-    // with "terminate called without an active exception" from a std::thread
-    // destructor firing on a still-joinable thread mid-join.
-    sigset_t blockedSignals;
-    sigemptyset(&blockedSignals);
-    sigaddset(&blockedSignals, SIGINT);
-    sigaddset(&blockedSignals, SIGTERM);
-    pthread_sigmask(SIG_BLOCK, &blockedSignals, nullptr);
+    // SIGINT/SIGTERM are never blocked on the main thread — it must stay the
+    // sole, always-interruptible receiver of a process-directed signal,
+    // including during start()'s own indefinite network/target retry loops.
+    // Each worker thread instead blocks these signals on itself, at the top
+    // of its own entry function (blockShutdownSignalsOnThisThread(), and the
+    // equivalent in DirettaRenderer.cpp's upnpThreadFunc/audioThreadFunc/
+    // positionThreadFunc) — this still guarantees a second signal arriving
+    // mid-shutdown can never land on a worker thread and re-enter
+    // signalHandler() concurrently (the original crash this was meant to
+    // fix: "terminate called without an active exception" from a std::thread
+    // destructor firing on a still-joinable thread mid-join), without ever
+    // making the process itself briefly un-interruptible (see PR #88 review).
 
     std::cout << "═══════════════════════════════════════════════════════\n"
               << "  Diretta UPnP Renderer v" << RENDERER_VERSION << "\n"
@@ -583,10 +590,8 @@ int main(int argc, char* argv[]) {
         std::cout << "(Press Ctrl+C to stop)" << std::endl;
         std::cout << std::endl;
 
-        // All worker threads exist by now — safe to let the main thread
-        // start handling SIGINT/SIGTERM again (see the SIG_BLOCK comment
-        // near the top of main()).
-        pthread_sigmask(SIG_UNBLOCK, &blockedSignals, nullptr);
+        // Main thread has never had SIGINT/SIGTERM blocked (see the comment
+        // near the top of main()) — nothing to unblock here.
 
         while (g_renderer->isRunning()) {
             std::this_thread::sleep_for(std::chrono::seconds(1));
