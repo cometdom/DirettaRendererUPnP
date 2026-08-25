@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.5.13] - 2026-08-25
+
+### Fixed
+- **Crash from a second Ctrl-C/SIGTERM arriving during shutdown** (PR #88, hoorna/Alfred). `signalHandler()` does blocking work directly (renderer stop, thread joins, SDK release), but default `signal()` semantics only block re-delivery of the same signal on the thread already running the handler — every other thread (UPnP, audio, position, Diretta SDK worker) stayed eligible to receive a second SIGINT/SIGTERM while the first was still being handled. If the kernel delivered it to one of those instead of the main thread, `signalHandler()` re-entered concurrently and called `DirettaRenderer::stop()` a second time while the first call was still in progress, joining the same `std::thread` objects from two threads at once — observed as `terminate called without an active exception` / abort after pressing Ctrl-C twice in quick succession during a shutdown that took a few seconds (SDK release, buffer drain, several thread joins). Fixed by having each worker thread block SIGINT/SIGTERM on itself as the first thing it does in its own entry function (`upnpThreadFunc`/`audioThreadFunc`/`positionThreadFunc`/`g_logDrainThread`), so a second signal mid-shutdown can never land anywhere but the main thread. An earlier iteration of this fix instead blocked the signals on the main thread itself across the whole `start()` call, which made the process briefly un-interruptible whenever `start()`'s own indefinite network/target retry loops were active (no thread existed with the signal unblocked during that window) — caught in review and corrected before merge: the main thread now never blocks these signals and stays interruptible for its entire lifetime, including during those retry loops (verified by running the renderer with no reachable Diretta target and confirming Ctrl-C is handled promptly mid-retry).
+
 ## [2.5.12] - 2026-08-22
 
 ### Fixed

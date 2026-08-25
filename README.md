@@ -1,4 +1,4 @@
-# Diretta UPnP Renderer v2.5.12
+# Diretta UPnP Renderer v2.5.13
 
 **The world's first native UPnP/DLNA renderer with Diretta protocol support - Low-Latency Edition**
 
@@ -8,18 +8,18 @@
 
 ---
 
-![Version](https://img.shields.io/badge/version-2.5.12-blue.svg)
+![Version](https://img.shields.io/badge/version-2.5.13-blue.svg)
 ![Low Latency](https://img.shields.io/badge/Latency-Low-green.svg)
 ![SDK](https://img.shields.io/badge/SDK-DIRETTA::Sync-orange.svg)
 ![Audirvana](https://img.shields.io/badge/Audirvana-Compatible-green.svg)
 
 ---
 
-## What's New in v2.5.12
+## What's New in v2.5.13
 
-**Startup robustness: a failed link-tuning step could no longer stop the renderer from starting at all.**
+**Shutdown robustness: a second Ctrl-C/SIGTERM during a slow shutdown could crash the renderer.**
 
-- **`start-renderer.sh` fix**: `TARGET_INTERFACE`/`TARGET_SPEED`/`TARGET_DUPLEX` link tuning ran under `set -e` with an unguarded `ethtool` call — a stale or wrong interface name (e.g. a stable-naming rename pending a reboot) made `ethtool` fail, which aborted the whole script before the DRUP binary ever ran. Systemd then just crash-looped on a bare exit code with no indication anything audio-related was involved. Now a failure prints a clear warning and the renderer starts anyway; its existing UPnP-init retry loop already handles a not-yet-ready network interface gracefully.
+- **Signal-handling race fix** (PR #88, hoorna/Alfred): pressing Ctrl-C (or a `systemctl stop`) a second time while the renderer was already mid-shutdown (SDK release, buffer drain, thread joins can take a few seconds) could land on a worker thread and re-enter the signal handler concurrently, crashing with `terminate called without an active exception`. Each worker thread now blocks SIGINT/SIGTERM on itself at startup, so a second signal can never land anywhere but the main thread — which stays permanently interruptible, including while waiting for the network or the Diretta target to become available.
 
 See [CHANGELOG.md](CHANGELOG.md) for details.
 
@@ -27,6 +27,7 @@ See [CHANGELOG.md](CHANGELOG.md) for details.
 
 | Version | Highlights |
 |---------|-----------|
+| **v2.5.12** | `start-renderer.sh`: a failed `ethtool` link-tuning call no longer prevents the renderer from starting (reported by Daniel via TuneOS/fedora-audiophile-setup) |
 | **v2.5.11** | Live stream stall recovery + automatic reconnect (PR #84/#85, hoorna/Alfred); raw packet bypass decoder for bit-perfect zero-overhead PCM passthrough (PR #86, hoorna/Alfred) |
 | **v2.5.10** | Online-timeout deadlock fix — `sendAudio()` no longer stuck returning 0 after `waitForOnline` times out, ring can refill and the target reaches online normally |
 | **v2.5.9** | Maintenance: `install.sh` sudo prompt fix, MIT SPDX headers, THIRD_PARTY_NOTICES |
@@ -1143,4 +1144,4 @@ This software is provided "as is" without warranty. While designed for high-qual
 
 **Enjoy bit-perfect, low-latency audio streaming!**
 
-*Last updated: 2026-08-22 (v2.5.12)*
+*Last updated: 2026-08-25 (v2.5.13)*
