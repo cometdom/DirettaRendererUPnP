@@ -19,7 +19,7 @@
 
 **Build: opt-in support for SDK v149's GCC16-built libraries, with a toolchain safety check.**
 
-- **GCC16 SDK variant + compatibility warning** (slim2diretta issue #10, sheviks): SDK v149 ships each arch variant built with both GCC15 and GCC16 (e.g. `x64-linux-16v3` alongside the existing `x64-linux-15v3`); sheviks reported the GCC16 build measurably improved sound quality on his setup. `make ARCH_NAME=x64-linux-16v3` (and the aarch64/riscv64 GCC16 equivalents) already worked with no code change, but mixing a GCC16-built static lib with an older host toolchain was untested — it can reference `libstdc++` symbols the installed runtime doesn't have, failing at runtime rather than at build time. The Makefile now compares the system's `gcc -dumpversion` against the GCC version embedded in the selected variant and warns (non-fatal) only for GCC16+ variants — the existing GCC15-vs-older-system combination has years of proven field use and stays silent. Auto-detection still defaults to GCC15; GCC16 remains opt-in via `ARCH_NAME=` (also passthrough-able via `install.sh`: `env ARCH_NAME=x64-linux-16v3 ./install.sh -b`).
+- **GCC16 SDK variant + compatibility warning** (slim2diretta issue #10, sheviks): SDK v149 ships each arch variant built with both GCC15 and GCC16 (e.g. `x64-linux-16v3` alongside the existing `x64-linux-15v3`); sheviks reported the GCC16 build measurably improved sound quality on his setup. Opt in via `ARCH_NAME=` (see [Alternative: GCC16-built SDK library](#alternative-gcc16-built-sdk-library-experimental) below) — the build now warns (non-fatal) if your system gcc is older than a GCC16+ variant, since mixing them is untested and can fail at runtime rather than at build time. Auto-detection still defaults to the proven GCC15 variants.
 
 See [CHANGELOG.md](CHANGELOG.md) for details.
 
@@ -432,6 +432,20 @@ sudo pacman -S clang lld            # Arch
 ```
 
 Clang+LTO is opt-in and may offer different performance and sound characteristics. (Added in v2.2.2, PR #64 by sheviks)
+
+#### Alternative: GCC16-built SDK library (experimental)
+
+Diretta SDK v149+ ships each architecture variant built with both GCC15 (the default, auto-detected) and GCC16. One tester reported measurably better sound quality with the GCC16 build ([slim2diretta issue #10](https://github.com/cometdom/slim2Diretta/issues/10)). Opt in with the `ARCH_NAME` environment variable — works with either `install.sh` usage style, same as `LLVM=1` above:
+
+```bash
+env ARCH_NAME=x64-linux-16v3 ./install.sh    # Interactive installer, GCC16-built lib
+# or
+make ARCH_NAME=x64-linux-16v3                # Direct build, GCC16-built lib
+```
+
+Other GCC16 variants: `x64-linux-16v4` (AVX-512), `x64-linux-16zen4` (AMD Ryzen 7000+), `aarch64-linux-16k4` (4KB pages), `aarch64-linux-16k16` (16KB pages, Pi 5/CM5), `riscv64-linux-16`.
+
+**Caveat**: this is untested against an older host toolchain — a static library built with a newer GCC can reference `libstdc++` symbol versions the installed runtime doesn't have. The build will warn (non-fatal) if your system's `gcc` is older than GCC16; if the resulting binary fails to start with a `GLIBCXX_3.4.xx not found` error, fall back to the GCC15 variant (the default).
 
 ### 4. Configure Network (Recommended)
 
