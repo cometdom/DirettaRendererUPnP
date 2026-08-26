@@ -262,6 +262,41 @@ ifeq (,$(wildcard $(SDK_HEADER)))
     $(error ❌ SDK headers not found at: $(SDK_PATH)/Host/)
 endif
 
+# ============================================
+# SDK library / system toolchain compatibility check
+# ============================================
+# SDK v149+ ships each variant built with two different GCC major
+# versions (e.g. libDirettaHost_x64-linux-15v3.a vs ...-16v3.a — the
+# embedded "15"/"16" is the GCC version used to compile that static
+# lib, unrelated to the SDK release number). A static lib built with a
+# newer GCC can reference libstdc++ symbol versions the *installed*
+# libstdc++ runtime doesn't have yet, which fails at RUNTIME ("version
+# `GLIBCXX_3.4.xx' not found") rather than at build/link time — and
+# independent of whether this Makefile builds with gcc or clang (LLVM=1
+# commonly links against the system libstdc++ too). So this probes the
+# system's gcc directly. GCC15 variants are the long-standing default
+# (proven fine on systems with a much older system gcc than that since
+# day one) — only escalate to a warning for GCC16+ variants, which are
+# new in SDK v149 and unverified against an older host toolchain (the
+# open question raised in slim2diretta issue #10). Bump
+# SDK_LIB_GCC_UNVERIFIED_FLOOR once a GCC generation gets enough field
+# use to be trusted the way 15 already is.
+SDK_LIB_GCC_UNVERIFIED_FLOOR = 16
+SDK_LIB_GCC_MAJOR := $(shell echo $(FULL_VARIANT) | sed -nE 's/^[a-z0-9]+-linux-(musl)?([0-9]+).*/\2/p')
+ifneq ($(SDK_LIB_GCC_MAJOR),)
+    SYSTEM_GCC := $(shell command -v gcc 2>/dev/null)
+    ifneq ($(SYSTEM_GCC),)
+        SYSTEM_GCC_MAJOR := $(shell gcc -dumpversion | cut -d. -f1)
+        ifeq ($(shell [ $(SYSTEM_GCC_MAJOR) -lt $(SDK_LIB_GCC_MAJOR) ] && [ $(SDK_LIB_GCC_MAJOR) -ge $(SDK_LIB_GCC_UNVERIFIED_FLOOR) ] && echo 1),1)
+        $(warning ⚠️  The selected Diretta SDK library ($(FULL_VARIANT)) was built with GCC $(SDK_LIB_GCC_MAJOR), but the system gcc is only version $(SYSTEM_GCC_MAJOR) (gcc -dumpversion). This is untested: the static lib may reference libstdc++ symbols newer than what's installed, which can make the built binary fail to even start ("version GLIBCXX_3.4.xx not found") rather than fail the build. If that happens, either upgrade the system gcc/libstdc++, or pick a variant built with GCC $(SYSTEM_GCC_MAJOR) instead via ARCH_NAME=.)
+        else
+        $(info ✓ Toolchain check: system gcc $(SYSTEM_GCC_MAJOR), SDK lib GCC $(SDK_LIB_GCC_MAJOR) (OK))
+        endif
+    else
+        $(info Toolchain check: system gcc not found, skipping SDK lib / libstdc++ version check)
+    endif
+endif
+
 $(info ✓ SDK validation passed)
 $(info )
 

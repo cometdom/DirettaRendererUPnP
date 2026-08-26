@@ -1023,6 +1023,13 @@ build_renderer() {
         fi
         MAKE_ARGS+=("LLVM=$LLVM")
     fi
+    # Environment variable shortcut: ARCH_NAME=<variant> -> override the
+    # auto-detected Diretta SDK library variant (e.g. to opt into a
+    # GCC16-built variant such as x64-linux-16v3 — see CLAUDE.md/README).
+    if [ -n "$ARCH_NAME" ]; then
+        MAKE_ARGS+=("ARCH_NAME=$ARCH_NAME")
+        print_info "ARCH_NAME=$ARCH_NAME: overriding auto-detected SDK library variant"
+    fi
     # Production build: NOLOG=1 disables SDK internal logging
     # Use local FFmpeg headers if available (for ABI compatibility)
     if [ -d "$FFMPEG_HEADERS_DIR" ] && [ -f "$FFMPEG_HEADERS_DIR/.version" ]; then

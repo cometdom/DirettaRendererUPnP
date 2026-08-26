@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.5.14] - 2026-08-26
+
+### Added
+- **GCC16-built SDK variant support + toolchain compatibility check** (slim2diretta issue #10, sheviks). Diretta SDK v149 ships each arch variant built with both GCC15 and GCC16 static libraries (e.g. `libDirettaHost_x64-linux-16v3.a` alongside the existing `x64-linux-15v3`), and sheviks reported the GCC16 build measurably improved sound quality on his setup regardless of the local compiler (tested Clang 22 and GCC16), and asked whether a system-GCC-version check would be worth adding given the untested risk of mixing a GCC16-built static lib with an older host toolchain. `make ARCH_NAME=x64-linux-16v3` (and the aarch64/riscv64 GCC16 equivalents) already worked with no code change — the variant selection was already generic. What was missing was the safety check, ported from slim2diretta v1.4.18: the Makefile now parses the GCC major version embedded in the selected variant name and compares it against the system's actual `gcc -dumpversion`, warning (non-fatal) when the system toolchain is older than a GCC16+ variant, since a static lib built with a newer GCC can reference `libstdc++` symbol versions the installed runtime doesn't have — a failure that would surface at runtime (`GLIBCXX_3.4.xx not found`) rather than at build time, and independent of whether the renderer itself is built with gcc or clang (`LLVM=1` still links against the system libstdc++). The check is deliberately silent for the existing GCC15-vs-older-system combination, which has years of proven field use with no reported issues — only the new GCC16 territory is unverified. Auto-detection still defaults to GCC15 variants; GCC16 remains opt-in via `ARCH_NAME=`. Also added an `ARCH_NAME` environment-variable passthrough in `install.sh`'s `build_renderer()` (mirrors the existing `LLVM=1` convention) — `env ARCH_NAME=x64-linux-16v3 ./install.sh -b` — since the installer had no way to forward it before, leaving anyone using the standard install path with no supported way to try the new variant.
+
 ## [2.5.13] - 2026-08-25
 
 ### Fixed

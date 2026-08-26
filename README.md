@@ -1,4 +1,4 @@
-# Diretta UPnP Renderer v2.5.13
+# Diretta UPnP Renderer v2.5.14
 
 **The world's first native UPnP/DLNA renderer with Diretta protocol support - Low-Latency Edition**
 
@@ -8,18 +8,18 @@
 
 ---
 
-![Version](https://img.shields.io/badge/version-2.5.13-blue.svg)
+![Version](https://img.shields.io/badge/version-2.5.14-blue.svg)
 ![Low Latency](https://img.shields.io/badge/Latency-Low-green.svg)
 ![SDK](https://img.shields.io/badge/SDK-DIRETTA::Sync-orange.svg)
 ![Audirvana](https://img.shields.io/badge/Audirvana-Compatible-green.svg)
 
 ---
 
-## What's New in v2.5.13
+## What's New in v2.5.14
 
-**Shutdown robustness: a second Ctrl-C/SIGTERM during a slow shutdown could crash the renderer.**
+**Build: opt-in support for SDK v149's GCC16-built libraries, with a toolchain safety check.**
 
-- **Signal-handling race fix** (PR #88, hoorna/Alfred): pressing Ctrl-C (or a `systemctl stop`) a second time while the renderer was already mid-shutdown (SDK release, buffer drain, thread joins can take a few seconds) could land on a worker thread and re-enter the signal handler concurrently, crashing with `terminate called without an active exception`. Each worker thread now blocks SIGINT/SIGTERM on itself at startup, so a second signal can never land anywhere but the main thread — which stays permanently interruptible, including while waiting for the network or the Diretta target to become available.
+- **GCC16 SDK variant + compatibility warning** (slim2diretta issue #10, sheviks): SDK v149 ships each arch variant built with both GCC15 and GCC16 (e.g. `x64-linux-16v3` alongside the existing `x64-linux-15v3`); sheviks reported the GCC16 build measurably improved sound quality on his setup. `make ARCH_NAME=x64-linux-16v3` (and the aarch64/riscv64 GCC16 equivalents) already worked with no code change, but mixing a GCC16-built static lib with an older host toolchain was untested — it can reference `libstdc++` symbols the installed runtime doesn't have, failing at runtime rather than at build time. The Makefile now compares the system's `gcc -dumpversion` against the GCC version embedded in the selected variant and warns (non-fatal) only for GCC16+ variants — the existing GCC15-vs-older-system combination has years of proven field use and stays silent. Auto-detection still defaults to GCC15; GCC16 remains opt-in via `ARCH_NAME=` (also passthrough-able via `install.sh`: `env ARCH_NAME=x64-linux-16v3 ./install.sh -b`).
 
 See [CHANGELOG.md](CHANGELOG.md) for details.
 
@@ -27,6 +27,7 @@ See [CHANGELOG.md](CHANGELOG.md) for details.
 
 | Version | Highlights |
 |---------|-----------|
+| **v2.5.13** | Signal-handling race fix (PR #88, hoorna/Alfred) — a second Ctrl-C/SIGTERM during a slow shutdown could crash the renderer; each worker thread now blocks SIGINT/SIGTERM on itself so a second signal can never land anywhere but the main thread |
 | **v2.5.12** | `start-renderer.sh`: a failed `ethtool` link-tuning call no longer prevents the renderer from starting (reported by Daniel via TuneOS/fedora-audiophile-setup) |
 | **v2.5.11** | Live stream stall recovery + automatic reconnect (PR #84/#85, hoorna/Alfred); raw packet bypass decoder for bit-perfect zero-overhead PCM passthrough (PR #86, hoorna/Alfred) |
 | **v2.5.10** | Online-timeout deadlock fix — `sendAudio()` no longer stuck returning 0 after `waitForOnline` times out, ring can refill and the target reaches online normally |
@@ -1144,4 +1145,4 @@ This software is provided "as is" without warranty. While designed for high-qual
 
 **Enjoy bit-perfect, low-latency audio streaming!**
 
-*Last updated: 2026-08-25 (v2.5.13)*
+*Last updated: 2026-08-26 (v2.5.14)*

@@ -336,6 +336,17 @@ make ARCH_NAME=x64-linux-15v3     # x64 with AVX2 (most common)
 make ARCH_NAME=aarch64-linux-15   # Raspberry Pi 4 (4KB pages)
 make ARCH_NAME=aarch64-linux-15k16 # Raspberry Pi 5 (16KB pages)
 
+# SDK v149+ also ships GCC16-built variants (x64-linux-16v3/16v4/16zen4,
+# aarch64-linux-16k4/16k16, riscv64-linux-16) alongside the GCC15 ones
+# auto-detected by default. Reported to measurably improve sound quality
+# on some setups (slim2diretta issue #10) but untested against an older
+# host toolchain — the Makefile warns if the system gcc is older than
+# the selected variant's GCC major version. Opt in explicitly:
+make ARCH_NAME=x64-linux-16v3     # x64 AVX2, GCC16-built lib
+
+# Same override via install.sh (ARCH_NAME env var, mirrors the LLVM=1 convention):
+env ARCH_NAME=x64-linux-16v3 ./install.sh -b
+
 # Production build (disables SDK logging)
 make NOLOG=1
 
@@ -365,6 +376,9 @@ Located in `<SDK>/lib/` (SDK path auto-detected, see above):
 | `aarch64-linux-15` | ARM64 (4KB pages) |
 | `aarch64-linux-15k16` | ARM64 (16KB pages, Pi 5) |
 | `riscv64-linux-15` | RISC-V 64-bit |
+| `x64-linux-16v3`/`16v4`/`16zen4` | x86-64 variants above, GCC16-built (SDK v149+; opt-in via `ARCH_NAME=`, see Build & Run above) |
+| `aarch64-linux-16k4`/`16k16` | ARM64 (4KB/16KB pages), GCC16-built (SDK v149+) — note the naming shift from the GCC15 scheme: the 4KB variant has an explicit `k4` suffix instead of none |
+| `riscv64-linux-16` | RISC-V 64-bit, GCC16-built (SDK v149+) |
 | `*-musl*` | musl libc variants |
 | `*-nolog` | Logging disabled |
 | `*-win` (`x64-win`, `w32-win`, `arm64-win`) | Windows binaries — **present in the SDK but of unclear official status**: the SDK's own `memo_host.txt` explicitly states *« It only runs on Linux. It does not run on other operating systems. »* Ask Yu Harada before relying on the Windows libs for a real port. |
