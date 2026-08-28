@@ -78,7 +78,7 @@ DirettaRendererUPnP-L is the **low-latency optimized** fork of DirettaRendererUP
 
 ## Diretta SDK Reference
 
-**SDK Location:** auto-detected by the Makefile from `$HOME / . / .. / /opt` (latest `DirettaHostSDK_<version>/` directory wins, via `sort -V | tail -1`). Override with `DIRETTA_SDK_PATH=...`. Current SDK at the time of writing: v1.49.x.
+**SDK Location:** auto-detected by the Makefile from `$HOME / . / .. / /opt` (latest `DirettaHostSDK_<version>/` directory wins, via `sort -V | tail -1`). Override with `DIRETTA_SDK_PATH=...`. Current SDK at the time of writing: v1.50.x — v1.49.x also still builds and runs fine (verified: `DIRETTA_SDK_PATH` override to a v149 tree compiles and links cleanly), since the auto-detect simply picks whichever version is actually installed rather than requiring the latest.
 
 ### Key SDK Headers
 
