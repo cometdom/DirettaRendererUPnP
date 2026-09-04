@@ -315,6 +315,12 @@ bool DirettaRenderer::start(std::atomic<bool>* stopSignal) {
 
         // Pre-connect with default format to warm up Diretta pipeline
         // This eliminates the ~5s glitch on first play
+        //
+        // DIAGNOSTIC: temporarily disabled to test whether an open()+stopPlayback()
+        // +release() cycle that never streams real audio is what triggers the SDK 150
+        // regression (~50s OPEN COMPLETE delay / "Failed to set sink after 20 attempts"
+        // on the *next* open()). Re-enable once confirmed either way.
+#if 0
         {
             AudioFormat warmupFmt;
             warmupFmt.sampleRate = 44100;
@@ -337,6 +343,7 @@ bool DirettaRenderer::start(std::atomic<bool>* stopSignal) {
                 std::cerr << "[DirettaRenderer] Warmup pre-connect failed (non-fatal)" << std::endl;
             }
         }
+#endif
 
         // Create UPnP device
         UPnPDevice::Config upnpConfig;
