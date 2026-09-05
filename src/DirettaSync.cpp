@@ -782,7 +782,16 @@ bool DirettaSync::open(const AudioFormat& format) {
             DIRETTA_LOG("setSink retry #" << attempt);
             std::this_thread::sleep_for(std::chrono::milliseconds(retryDelayMs));
         }
-        sinkSet = setSink(m_targetAddress, cycleTime, false, m_effectiveMTU);
+        // DIAGNOSTIC (diretta-player investigation, 2026-09-05): SDK header
+        // documents this 3rd param as "Disable Sink's playback rejection
+        // (NOP)". tune-diretta's bridge passes `true` here (disables it) and
+        // has never reproduced the SDK 150 connection-establishment stall
+        // that affects DRUP/slim2Diretta; DRUP has always passed `false`
+        // (rejection left enabled). Flipped to `true` here to test whether
+        // that's the actual differentiator. Revert to `false` if this
+        // doesn't fix it — see the tune-diretta-hardware-test-rig memory
+        // note for the full SDK 150 regression writeup.
+        sinkSet = setSink(m_targetAddress, cycleTime, true, m_effectiveMTU);
     }
 
     if (!sinkSet) {
