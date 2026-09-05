@@ -782,7 +782,19 @@ bool DirettaSync::open(const AudioFormat& format) {
             DIRETTA_LOG("setSink retry #" << attempt);
             std::this_thread::sleep_for(std::chrono::milliseconds(retryDelayMs));
         }
-        sinkSet = setSink(m_targetAddress, cycleTime, false, m_effectiveMTU);
+        // DIAGNOSTIC (diretta-player investigation, 2026-09-05, take 2): the
+        // "disable playback rejection" flag test (3rd param) made no
+        // difference — reverted to `false` here. This test targets the 2nd
+        // param instead: the SDK header documents it as "Sink buffer time
+        // (if zero use default sink buffer time)", DISTINCT from the
+        // transfer-mode CycleTime already matched (6499us) in an earlier,
+        // inconclusive test. DRUP passes `cycleTime` here too (~6.5ms with
+        // Dominique's config) — tune-diretta's bridge hardcodes 100ms for
+        // this same argument, completely decoupled from its own
+        // cycle_time_us setting. Testing a fixed 100ms sink buffer time in
+        // DRUP to match. Revert to `cycleTime` if this doesn't help either
+        // — see the tune-diretta-hardware-test-rig memory note.
+        sinkSet = setSink(m_targetAddress, ACQUA::Clock::MilliSeconds(100), false, m_effectiveMTU);
     }
 
     if (!sinkSet) {
