@@ -11,6 +11,7 @@
 #include "DirettaSync.h"
 #include "LogLevel.h"
 #include "TimestampedLogger.h"
+#include <SysLog.hpp>
 #include <iostream>
 #include <csignal>
 #include <memory>
@@ -433,6 +434,20 @@ int main(int argc, char* argv[]) {
     signal(SIGINT, signalHandler);
     signal(SIGTERM, signalHandler);
     signal(SIGUSR1, statsSignalHandler);
+
+    // DIRETTA_SDK_SYSLOG_DEBUG=1 turns on the SDK's own internal syslog
+    // output (DIRETTA::SysLogDiretta, Host/SysLog.hpp) at Debug level,
+    // printed straight to stdout (so it lands in this process's own logs
+    // alongside everything else) — never enabled before now. Added while
+    // investigating the SDK 150.x connection stall at Yu Harada's request
+    // ("Is it possible to capture logs from DirettaHost?"). Off by default:
+    // untested verbosity/performance impact, no reason to enable in normal
+    // use.
+    if (std::getenv("DIRETTA_SDK_SYSLOG_DEBUG")) {
+        DIRETTA::SysLogDiretta::initialize(ACQUA::SysLog::user, 0, true);
+        DIRETTA::SysLogDiretta::changeLevel(ACQUA::SysLog::Debug, 0);
+        std::cout << "[main] Diretta SDK internal syslog enabled (Debug level, stdout)" << std::endl;
+    }
 
     // SIGINT/SIGTERM are never blocked on the main thread — it must stay the
     // sole, always-interruptible receiver of a process-directed signal,
