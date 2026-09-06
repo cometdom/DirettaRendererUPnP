@@ -523,7 +523,16 @@ protected:
     bool getNewStream(diretta_stream& stream) override;
     bool getNewStreamCmp() override { return true; }
     bool startSyncWorker() override;
-    void statusUpdate() override {}
+
+    // Was an empty stub — Yu Harada (2026-09-06): "If you are handling
+    // statusUpdate in a derived class, be sure to call the statusUpdate
+    // method of the base class. Otherwise, the notification will not reach
+    // ConnectWait." Confirmed by a packet capture during a live stall: the
+    // actual UDP negotiation with the target completes and streams normally
+    // within ~1s, continuously, for the full ~50s+ duration — connectWait()
+    // was simply never being woken up despite the connection already being
+    // good, and sitting out its full internal timeout every time.
+    void statusUpdate() override { DIRETTA::Sync::statusUpdate(); }
 
 private:
     //=========================================================================
