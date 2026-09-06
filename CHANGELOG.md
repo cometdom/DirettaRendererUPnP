@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.5.15] - 2026-09-06
+
+### Fixed
+- **~50s connection stall (and outright "Failed to set sink" failures) on Diretta Host SDK 150.x** (PR #89). Two distinct bugs, both root-caused by Yu Harada while diagnosing the report:
+  1. **`DirettaSync::statusUpdate() override` was an empty stub** (`{}`), silently swallowing the base class's notification that `Sync::connectWait()` waits on. This was the actual cause of the stall — confirmed via a live packet capture during a stall: the real UDP negotiation with the target completed and streamed normally within ~1s the entire time; `connectWait()` was simply never woken up despite the connection already being good, and sat out its full internal timeout every time. Fixed by chaining to the base class: `void statusUpdate() override { DIRETTA::Sync::statusUpdate(); }`.
+  2. **`configureSinkPCM()`/`configureSinkDSD()` called `setSinkConfigure()` before `setSink()`** — the wrong order per Yu's explicit guidance ("if you call `Sync::setSink`, you must also call `Sync::setSinkConfigure`" — after, not before). SDK 149's own uninitialized-flag bug apparently tolerated the wrong order; SDK 150 fixed that flag, exposing it. Didn't turn out to be the cause of the reported stall (tested in isolation, no effect), but a real correctness bug per the SDK author, worth keeping fixed regardless. The format `configureSinkPCM()`/`configureSinkDSD()` determine via `checkSinkSupport()`'s trial-and-error is now stashed in a new `m_pendingSinkFormat` member and applied via `setSinkConfigure()` once, right after `setSink()` succeeds in `open()`.
+
+  Confirmed on real hardware (SDK 150_4, DDC-0 target firmware 150_1): `OPEN` → `OPEN COMPLETE` now completes in well under a second on both boot warmup and real playback — matching SDK 149.x behavior — across repeated restarts, with `Stop` during playback transitioning cleanly (`PLAYING → STOPPED`) instead of appearing ignored.
+
+### Added
+- **`DIRETTA_SDK_SYSLOG_DEBUG=1` env var** enables the Diretta SDK's own internal syslog output (`DIRETTA::SysLogDiretta`, `Host/SysLog.hpp`) at Debug level, landing in the renderer's own process log. Never wired up before; added at Yu Harada's request while investigating the SDK 150.x stall above ("Is it possible to capture logs from DirettaHost?"). Off by default — verbosity/performance impact untested, no reason to enable in normal use, kept as diagnostic tooling for future SDK-level investigations.
+
 ## [2.5.14] - 2026-08-26
 
 ### Added

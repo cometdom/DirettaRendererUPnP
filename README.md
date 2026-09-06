@@ -1,4 +1,4 @@
-# Diretta UPnP Renderer v2.5.14
+# Diretta UPnP Renderer v2.5.15
 
 **The world's first native UPnP/DLNA renderer with Diretta protocol support - Low-Latency Edition**
 
@@ -8,18 +8,19 @@
 
 ---
 
-![Version](https://img.shields.io/badge/version-2.5.14-blue.svg)
+![Version](https://img.shields.io/badge/version-2.5.15-blue.svg)
 ![Low Latency](https://img.shields.io/badge/Latency-Low-green.svg)
 ![SDK](https://img.shields.io/badge/SDK-DIRETTA::Sync-orange.svg)
 ![Audirvana](https://img.shields.io/badge/Audirvana-Compatible-green.svg)
 
 ---
 
-## What's New in v2.5.14
+## What's New in v2.5.15
 
-**Build: opt-in support for SDK v149's GCC16-built libraries, with a toolchain safety check.**
+**Fixes a ~50s connection stall on the new Diretta Host SDK 150.x.**
 
-- **GCC16 SDK variant + compatibility warning** (slim2diretta issue #10, sheviks): SDK v149 ships each arch variant built with both GCC15 and GCC16 (e.g. `x64-linux-16v3` alongside the existing `x64-linux-15v3`); sheviks reported the GCC16 build measurably improved sound quality on his setup. Opt in via `ARCH_NAME=` (see [Alternative: GCC16-built SDK library](#alternative-gcc16-built-sdk-library-experimental) below) — the build now warns (non-fatal) if your system gcc is older than a GCC16+ variant, since mixing them is untested and can fail at runtime rather than at build time. Auto-detection still defaults to the proven GCC15 variants.
+- **SDK 150.x connection stall fixed** (PR #89): `OPEN` → `OPEN COMPLETE` could take ~50s, or fail outright with "Failed to set sink", against SDK 150.x — while the actual UDP link to the target was fine the whole time. Root cause (found by Yu Harada): our `statusUpdate()` override was an empty stub, silently swallowing the base class's wake-up notification that `connectWait()` needs. Fixed by chaining to `DIRETTA::Sync::statusUpdate()`. Also fixed a related but independent ordering bug — `setSinkConfigure()` must be called *after* `setSink()`, not before — that SDK 149's own uninitialized-flag bug happened to tolerate. Confirmed on real hardware: connections now complete in well under a second, matching SDK 149.x behavior.
+- **`DIRETTA_SDK_SYSLOG_DEBUG=1`**: new opt-in env var surfaces the Diretta SDK's own internal syslog output in the renderer's log, for future SDK-level diagnostics.
 
 See [CHANGELOG.md](CHANGELOG.md) for details.
 
@@ -27,6 +28,7 @@ See [CHANGELOG.md](CHANGELOG.md) for details.
 
 | Version | Highlights |
 |---------|-----------|
+| **v2.5.14** | Opt-in support for SDK v149's GCC16-built libraries, with a toolchain compatibility warning (slim2diretta issue #10, sheviks) |
 | **v2.5.13** | Signal-handling race fix (PR #88, hoorna/Alfred) — a second Ctrl-C/SIGTERM during a slow shutdown could crash the renderer; each worker thread now blocks SIGINT/SIGTERM on itself so a second signal can never land anywhere but the main thread |
 | **v2.5.12** | `start-renderer.sh`: a failed `ethtool` link-tuning call no longer prevents the renderer from starting (reported by Daniel via TuneOS/fedora-audiophile-setup) |
 | **v2.5.11** | Live stream stall recovery + automatic reconnect (PR #84/#85, hoorna/Alfred); raw packet bypass decoder for bit-perfect zero-overhead PCM passthrough (PR #86, hoorna/Alfred) |
@@ -1159,4 +1161,4 @@ This software is provided "as is" without warranty. While designed for high-qual
 
 **Enjoy bit-perfect, low-latency audio streaming!**
 
-*Last updated: 2026-08-26 (v2.5.14)*
+*Last updated: 2026-09-06 (v2.5.15)*

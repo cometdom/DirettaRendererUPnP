@@ -29,7 +29,7 @@
 #include <cerrno>
 #include <cstring>
 
-#define RENDERER_VERSION "2.5.14"
+#define RENDERER_VERSION "2.5.15"
 #define RENDERER_BUILD_DATE __DATE__
 #define RENDERER_BUILD_TIME __TIME__
 
