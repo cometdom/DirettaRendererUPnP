@@ -790,6 +790,12 @@ bool DirettaSync::open(const AudioFormat& format) {
         return false;
     }
 
+    // Apply the sink format determined earlier by configureSinkPCM()/
+    // configureSinkDSD() — deferred until now because setSinkConfigure()
+    // must be called AFTER setSink(), not before (see m_pendingSinkFormat's
+    // doc comment; Yu Harada, 2026-09-06).
+    setSinkConfigure(m_pendingSinkFormat);
+
     // SDK 148: Query format support after setSink to initialize internal structures
     // This may be required for stream objects to be properly allocated
     if (needFullConnect) {
@@ -1049,7 +1055,9 @@ void DirettaSync::configureSinkPCM(int rate, int channels, int inputBits, int& a
     if (inputBits >= 32) {
         fmt.setFormat(DIRETTA::FormatID::FMT_PCM_SIGNED_32);
         if (checkSinkSupport(fmt)) {
-            setSinkConfigure(fmt);
+            // Stashed, not applied yet — setSinkConfigure() must be called AFTER
+        // setSink(), not before (see m_pendingSinkFormat's doc comment).
+        m_pendingSinkFormat = fmt;
             acceptedBits = 32;
             DIRETTA_LOG("Sink PCM: " << rate << "Hz " << channels << "ch 32-bit");
             return;
@@ -1058,7 +1066,9 @@ void DirettaSync::configureSinkPCM(int rate, int channels, int inputBits, int& a
 
     fmt.setFormat(DIRETTA::FormatID::FMT_PCM_SIGNED_24);
     if (checkSinkSupport(fmt)) {
-        setSinkConfigure(fmt);
+        // Stashed, not applied yet — setSinkConfigure() must be called AFTER
+        // setSink(), not before (see m_pendingSinkFormat's doc comment).
+        m_pendingSinkFormat = fmt;
         acceptedBits = 24;
         DIRETTA_LOG("Sink PCM: " << rate << "Hz " << channels << "ch 24-bit");
         return;
@@ -1066,7 +1076,9 @@ void DirettaSync::configureSinkPCM(int rate, int channels, int inputBits, int& a
 
     fmt.setFormat(DIRETTA::FormatID::FMT_PCM_SIGNED_16);
     if (checkSinkSupport(fmt)) {
-        setSinkConfigure(fmt);
+        // Stashed, not applied yet — setSinkConfigure() must be called AFTER
+        // setSink(), not before (see m_pendingSinkFormat's doc comment).
+        m_pendingSinkFormat = fmt;
         acceptedBits = 16;
         DIRETTA_LOG("Sink PCM: " << rate << "Hz " << channels << "ch 16-bit");
         return;
@@ -1099,7 +1111,9 @@ void DirettaSync::configureSinkDSD(uint32_t dsdBitRate, int channels, const Audi
                   DIRETTA::FormatID::FMT_DSD_LSB |
                   DIRETTA::FormatID::FMT_DSD_BIG);
     if (checkSinkSupport(fmt)) {
-        setSinkConfigure(fmt);
+        // Stashed, not applied yet — setSinkConfigure() must be called AFTER
+        // setSink(), not before (see m_pendingSinkFormat's doc comment).
+        m_pendingSinkFormat = fmt;
         m_needDsdBitReversal.store(!sourceIsLSB, std::memory_order_release);  // Reverse if source is MSB (DFF)
         m_needDsdByteSwap.store(false, std::memory_order_release);  // BIG endian = no swap
         // Set cached conversion mode: no swap, maybe bit reverse
@@ -1118,7 +1132,9 @@ void DirettaSync::configureSinkDSD(uint32_t dsdBitRate, int channels, const Audi
                   DIRETTA::FormatID::FMT_DSD_MSB |
                   DIRETTA::FormatID::FMT_DSD_BIG);
     if (checkSinkSupport(fmt)) {
-        setSinkConfigure(fmt);
+        // Stashed, not applied yet — setSinkConfigure() must be called AFTER
+        // setSink(), not before (see m_pendingSinkFormat's doc comment).
+        m_pendingSinkFormat = fmt;
         m_needDsdBitReversal.store(sourceIsLSB, std::memory_order_release);  // Reverse if source is LSB (DSF)
         m_needDsdByteSwap.store(false, std::memory_order_release);  // BIG endian = no swap
         // Set cached conversion mode: no swap, maybe bit reverse
@@ -1137,7 +1153,9 @@ void DirettaSync::configureSinkDSD(uint32_t dsdBitRate, int channels, const Audi
                   DIRETTA::FormatID::FMT_DSD_LSB |
                   DIRETTA::FormatID::FMT_DSD_LITTLE);
     if (checkSinkSupport(fmt)) {
-        setSinkConfigure(fmt);
+        // Stashed, not applied yet — setSinkConfigure() must be called AFTER
+        // setSink(), not before (see m_pendingSinkFormat's doc comment).
+        m_pendingSinkFormat = fmt;
         m_needDsdBitReversal.store(!sourceIsLSB, std::memory_order_release);
         m_needDsdByteSwap.store(true, std::memory_order_release);  // LITTLE endian = swap bytes
         // Set cached conversion mode: always swap, maybe bit reverse
@@ -1156,7 +1174,9 @@ void DirettaSync::configureSinkDSD(uint32_t dsdBitRate, int channels, const Audi
                   DIRETTA::FormatID::FMT_DSD_MSB |
                   DIRETTA::FormatID::FMT_DSD_LITTLE);
     if (checkSinkSupport(fmt)) {
-        setSinkConfigure(fmt);
+        // Stashed, not applied yet — setSinkConfigure() must be called AFTER
+        // setSink(), not before (see m_pendingSinkFormat's doc comment).
+        m_pendingSinkFormat = fmt;
         m_needDsdBitReversal.store(sourceIsLSB, std::memory_order_release);
         m_needDsdByteSwap.store(true, std::memory_order_release);  // LITTLE endian = swap bytes
         // Set cached conversion mode: always swap, maybe bit reverse
@@ -1172,7 +1192,9 @@ void DirettaSync::configureSinkDSD(uint32_t dsdBitRate, int channels, const Audi
     // Last resort - assume LSB | BIG target
     fmt.setFormat(DIRETTA::FormatID::FMT_DSD1);
     if (checkSinkSupport(fmt)) {
-        setSinkConfigure(fmt);
+        // Stashed, not applied yet — setSinkConfigure() must be called AFTER
+        // setSink(), not before (see m_pendingSinkFormat's doc comment).
+        m_pendingSinkFormat = fmt;
         m_needDsdBitReversal.store(!sourceIsLSB, std::memory_order_release);
         m_needDsdByteSwap.store(false, std::memory_order_release);
         DIRETTA_LOG("Sink DSD: FMT_DSD1 only"
