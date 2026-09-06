@@ -523,7 +523,16 @@ protected:
     bool getNewStream(diretta_stream& stream) override;
     bool getNewStreamCmp() override { return true; }
     bool startSyncWorker() override;
-    void statusUpdate() override {}
+
+    // Was an empty stub — Yu Harada (2026-09-06): "If you are handling
+    // statusUpdate in a derived class, be sure to call the statusUpdate
+    // method of the base class. Otherwise, the notification will not reach
+    // ConnectWait." Confirmed by a packet capture during a live stall: the
+    // actual UDP negotiation with the target completes and streams normally
+    // within ~1s, continuously, for the full ~50s+ duration — connectWait()
+    // was simply never being woken up despite the connection already being
+    // good, and sitting out its full internal timeout every time.
+    void statusUpdate() override { DIRETTA::Sync::statusUpdate(); }
 
 private:
     //=========================================================================
@@ -575,6 +584,21 @@ private:
     int m_targetIndex = -1;
     uint32_t m_mtuOverride = 0;
     uint32_t m_effectiveMTU = 1500;
+
+    // The format configureSinkPCM()/configureSinkDSD() determined is
+    // supported (via checkSinkSupport()'s trial-and-error), stashed here so
+    // open() can call setSinkConfigure() with it AFTER setSink() — Yu Harada
+    // (2026-09-06): "It is assumed that Sync::setSinkConfigure is always
+    // called after Sync::setSink... I fixed an issue where [an] internal
+    // flag was not being initialized by Sync::setSink, and have now
+    // initialized it. Therefore, if you call Sync::setSink, you must also
+    // call Sync::setSinkConfigure; otherwise, the behavior will be
+    // unpredictable." We called setSinkConfigure() BEFORE setSink() (see
+    // open()'s history), which SDK 149's uninitialized-flag bug tolerated;
+    // SDK 150 fixed that flag, exposing the wrong order as the ~50s
+    // connectWait() stall / outright setSink failures. See
+    // tune-diretta-hardware-test-rig memory note for the full writeup.
+    DIRETTA::FormatConfigure m_pendingSinkFormat;
 
     // Connection state
     std::atomic<bool> m_enabled{false};      // Target discovered, ready to use

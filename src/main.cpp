@@ -11,6 +11,7 @@
 #include "DirettaSync.h"
 #include "LogLevel.h"
 #include "TimestampedLogger.h"
+#include <SysLog.hpp>
 #include <iostream>
 #include <csignal>
 #include <memory>
@@ -433,6 +434,24 @@ int main(int argc, char* argv[]) {
     signal(SIGINT, signalHandler);
     signal(SIGTERM, signalHandler);
     signal(SIGUSR1, statsSignalHandler);
+
+    // DIRETTA_SDK_SYSLOG_DEBUG=1 turns on the SDK's own internal syslog
+    // output (DIRETTA::SysLogDiretta, Host/SysLog.hpp) at Debug level —
+    // never enabled before now. Added while investigating the SDK 150.x
+    // connection stall at Yu Harada's request ("Is it possible to capture
+    // logs from DirettaHost?"). Off by default: untested verbosity/
+    // performance impact, no reason to enable in normal use.
+    //
+    // The `st` param's doc comment ("true: stdout output enabled (is false
+    // direct to stdout)") is self-contradictory in the shipped header — a
+    // first attempt with `true` produced no extra output at all (confirmed
+    // we ARE linking the logging-capable library variant, not -nolog, so
+    // this isn't a missing-symbols issue). Trying `false` here instead.
+    if (std::getenv("DIRETTA_SDK_SYSLOG_DEBUG")) {
+        DIRETTA::SysLogDiretta::initialize(ACQUA::SysLog::user, 0, false);
+        DIRETTA::SysLogDiretta::changeLevel(ACQUA::SysLog::Debug, 0);
+        std::cout << "[main] Diretta SDK internal syslog enabled (Debug level, st=false)" << std::endl;
+    }
 
     // SIGINT/SIGTERM are never blocked on the main thread — it must stay the
     // sole, always-interruptible receiver of a process-directed signal,
