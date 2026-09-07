@@ -21,3 +21,16 @@ ffmpeg-headers/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Audio test material (never commit music)
+*.flac
+*.m4a
+*.mp3
+*.wav
+*.aif
+*.aiff
+*.dsf
+*.dff
+*.wv
+*.ogg
+*.opus

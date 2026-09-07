@@ -68,6 +68,7 @@ DirettaRendererUPnP-L is the **low-latency optimized** fork of DirettaRendererUP
 | `src/DirettaRingBuffer.h` | Lock-free SPSC ring buffer with AVX2 format conversion | **Critical** |
 | `src/DirettaRenderer.cpp/h` | Orchestrates playback, UPnP callbacks, threading | Partial |
 | `src/AudioEngine.cpp/h` | FFmpeg decode, format detection, sample reading | No |
+| `src/PrefetchReader.cpp/h` | HTTP source reader on its own thread, custom `AVIOContext` feeding the demuxer | No (keeps I/O off the decode thread) |
 | `src/UPnPDevice.cpp/hpp` | UPnP/DLNA protocol, SSDP discovery, HTTP server | No |
 | `src/ProtocolInfoBuilder.h` | UPnP protocol info generation | No |
 | `src/main.cpp` | CLI parsing, initialization, signal handling | No |
@@ -75,6 +76,9 @@ DirettaRendererUPnP-L is the **low-latency optimized** fork of DirettaRendererUP
 | `src/fastmemcpy-avx.c` | C AVX implementation (x86 only) | **Critical** |
 | `src/LogLevel.h` | Centralized log level system (ERROR/WARN/INFO/DEBUG) | No |
 | `src/test_audio_memory.cpp` | 20 unit tests for DirettaRingBuffer | No |
+| `src/test_decode.cpp` | `make test-decode`: decode a URL through `AudioDecoder` without the SDK, print frames + FNV-1a hash | No |
+| `tests/decode_suite.sh` | Regression suite over a directory of real files (full decode, prefetch vs no-prefetch, seeks) | No |
+| `tools/range_server.py` | Static HTTP server with `Range` support for the suite (`python3 -m http.server` has none) | No |
 
 ## Diretta SDK Reference
 
@@ -131,9 +135,12 @@ RAT_MP4 = 0x2000_00000000    // 4x (176.4/192k)
 
 ## Bit Depth Handling
 
-`configureSinkPCM()` negotiates the PCM format with the Diretta sink based on the source bit depth (`inputBits`):
-- **16-bit and 24-bit sources**: Only negotiate up to 24-bit. Prevents silence/noise on DACs that report 32-bit support at the Diretta target level but are physically limited to 24-bit.
-- **32-bit sources**: Try 32-bit first, fall back to 24-bit if the sink doesn't support it.
+`configureSinkPCM()` negotiates the PCM format with the Diretta sink based on the source bit depth (`inputBits`) and returns `bool` (an unsupported format fails the track, never throws through `open()`):
+- **16-bit sources**: 24 → 16 → 32 (the historical 24 → 16, plus 32 as a last resort).
+- **24-bit sources**: 24 → 32 → 16. 24 first keeps the v2.4.4 behaviour on DACs that report 32-bit support at the Diretta target level but are physically 24-bit (TEAC UD-701N); 32 is only reached on a sink that refuses 24-bit, where it is lossless (the ring already holds S24 in an S32 container, the 32-bit sink path is a plain copy) and beats truncating to 16.
+- **32-bit sources**: 32 → 24 → 16.
+- 32-bit is never offered first to a 16/24-bit source.
+- A 24/32-bit source on a 16-bit-only sink goes through `push32To16()` (explicit MSB truncation, logged as a warning). DoP requires an exact 24-bit sink.
 
 `AudioEngine.cpp` detects the real bit depth via FFmpeg's `bits_per_raw_sample` (authoritative when set) or the `sample_fmt` fallback. The detected `bitDepth` is passed through `TrackInfo` → `AudioFormat` → `configureSinkPCM()`.
 
@@ -173,6 +180,24 @@ Mode is determined once at track open in `configureSinkDSD()`:
 - Predictable branch patterns
 - Use `memcpy_audio()` instead of `std::memcpy`
 - 64-byte alignment for SIMD buffers (`alignas(64)`)
+- **No iostream / syscall in `getNewStream()`** (SDK real-time thread). Events that deserve a log line (underrun, rebuffering complete) are raised as bits in `m_rtEvents` (`consumeRtEvents()`) and logged by the decode thread. `m_workerActive` stores are `release`, the stream counter is a plain load+store, the flow-control condvar is only touched when `m_producerWaiting` is set (DSD producer).
+- Every PCM `push*()` rounds a partial write down to whole frames (`getFreeSpace()` is `size − used − 1`, never a frame multiple when the ring is nearly full).
+
+### Threads and cores
+
+| Thread | Policy / core | Role |
+|--------|---------------|------|
+| Diretta worker (SDK) | `SCHED_FIFO RT_PRIORITY` on `--cpu-audio`; `Sync::connect()` gets the first audio core | `getNewStream()` pops the ring |
+| Audio (decode) thread | `SCHED_FIFO RT_PRIORITY` on `--cpu-decode` | `AudioEngine::process()`: decode + push, hysteresis flow control |
+| Prefetch thread (`PrefetchReader`) | `SCHED_OTHER` on `--cpu-other` | reads the HTTP source with `avio_read_partial()` up to 4 MB ahead into a byte ring (256 KB only while the decoder is a preloaded next track — e4c4428); the demuxer reads from it through a custom `AVIOContext` |
+| Preload thread | `SCHED_OTHER` on `--cpu-other` (demoted explicitly: a `std::thread` inherits its creator's FIFO policy and core) | opens the next track for gapless |
+| main / libupnp / position / log drain | `SCHED_OTHER` on `--cpu-other` | control plane; main blocks in `read()` on a self-pipe written by the signal handler (no polling) |
+
+Decode-thread flow control is a hysteresis: fill the ring to 70 %, sleep (5–100 ms, sized from the drain rate, the ring duration cached per format) until 30 %, fill again — with a 0.5 s ring ≈ 20 wake-ups and ≈ 5 decode bursts per second instead of 100 wake-ups. `--no-prefetch` restores synchronous FFmpeg reads on the decode thread for A/B.
+
+Helper threads (`AudioEngine::demoteToHelperThread()`) block SIGINT/SIGTERM like every other worker thread, and `PrefetchReader` opens its HTTP context with its own interrupt callback (abort on stop, otherwise chained to the decoder's stall deadline) so `stop()` never waits on a stalled network read. `Sync::connect()` is called through `sdkConnect()`, which picks the one-argument (SDK ≤ 149) or two-argument (SDK 150, `rapidStart`) overload at compile time — the tree must keep building against SDK 149.
+
+Other host-side rules: `mallopt(M_MMAP_THRESHOLD = 32 MB, M_TRIM_THRESHOLD = -1, M_TOP_PAD = 1 MB)` before `mlockall()` so the buffers this process uses stay in the heap and the heap never shrinks (glibc rejects a threshold above 32 MB, and `M_TOP_PAD` is per arena and locked under `MCL_FUTURE` — keep both small); `--quiet` replaces `std::cout`'s buffer with a null sink (warnings/errors use `std::cerr`), so raw `std::cout` on the track path costs no syscall in production; FFmpeg probe is capped for every URL (32 KB local, 256 KB / 1 s remote).
 
 ## Lock-Free Patterns
 
@@ -224,16 +249,17 @@ std::lock_guard<std::recursive_mutex> lifecycleLock(m_lifecycleMutex);
 
 | Format | Bit Depth | Sample Rates | Ring Buffer Method | SIMD |
 |--------|-----------|--------------|-------------------|------|
-| PCM | 16-bit | 44.1kHz - 384kHz | `push16To32()` | AVX2 16x |
+| PCM | 16-bit | 44.1kHz - 384kHz | `push16To24()` (24-bit sink, the usual case) / `push16To32()` | scalar / AVX2 16x |
 | PCM | 24-bit | 44.1kHz - 384kHz | `push24BitPacked()` | AVX2 8x |
 | PCM | 32-bit | 44.1kHz - 384kHz | `push()` | memcpy |
+| PCM | 24/32-bit → 16-bit-only sink | 44.1kHz - 384kHz | `push32To16()` | scalar (MSB truncation) |
 | DSD | 1-bit | DSD64 - DSD512 | `pushDSDPlanarOptimized()` | AVX2 32x |
 
-### S24 Format Auto-Detection
+### S24 Alignment
 
-The ring buffer auto-detects 24-bit sample alignment on first push:
-- **LSB-aligned**: bytes 0-2 contain data (standard S24_LE) → `convert24BitPacked_AVX2()`
-- **MSB-aligned**: bytes 1-3 contain data (S24_32BE-style) → `convert24BitPackedShifted_AVX2()`
+FFmpeg has no S24 sample format: 24-bit content always reaches the ring as S32 with the audio in the upper 24 bits (MSB-aligned, low byte zero), whatever the codec. `AudioEngine.cpp` therefore sets the `MsbAligned` hint for every 24-bit track, and the ring's sample-sniffing detection only runs when the hint is missing; its timeout and fallback default to `MsbAligned` (the former LSB default, reached after pause → resume during a quiet passage because `clear()` also forgot the hint, turned the music into full-scale white noise on x86). `clear()` keeps the hint (pause → resume never re-sets it); only `resize()` forgets it, and its caller re-sets it. Same code on x86 and ARM (no `#if __aarch64__`).
+- **MSB-aligned**: bytes 1-3 contain data → `convert24BitPackedShifted_AVX2()` (the normal path)
+- **LSB-aligned**: bytes 0-2 contain data → `convert24BitPacked_AVX2()` (only via an explicit hint)
 
 ### SIMD Format Conversions
 
@@ -257,11 +283,11 @@ From `DirettaSync.h` (low-latency tuned):
 namespace DirettaBuffer {
     constexpr float DSD_BUFFER_SECONDS = 0.8f;
     constexpr float PCM_BUFFER_SECONDS = 0.5f;          // Local playback
-    constexpr float PCM_REMOTE_BUFFER_SECONDS = 1.0f;   // Remote streaming (Tidal/Qobuz)
+    constexpr float PCM_REMOTE_BUFFER_SECONDS = 3.0f;   // Remote streaming (Tidal/Qobuz) - absorbs CDN reconnections
 
     constexpr size_t DSD_PREFILL_MS = 200;
     constexpr size_t PCM_PREFILL_MS = 80;
-    constexpr size_t PCM_REMOTE_PREFILL_MS = 150;        // Remote - larger prefill
+    constexpr size_t PCM_REMOTE_PREFILL_MS = 500;        // Remote - larger prefill
     constexpr size_t PCM_LOWRATE_PREFILL_MS = 100;
 
     constexpr float REBUFFER_THRESHOLD_PCT = 0.20f;      // Resume after 20% buffer refill
@@ -286,7 +312,17 @@ namespace FlowControl {
     constexpr int MAX_WAIT_MS = 20;              // Was 500ms
     constexpr float CRITICAL_BUFFER_LEVEL = 0.10f; // Early-return below 10%
 }
+// audioThreadFunc(): BUFFER_HIGH_THRESHOLD 0.70 / BUFFER_LOW_THRESHOLD 0.30 hysteresis,
+// SLEEP_MIN_MS 5 / SLEEP_MAX_MS 50 (see "Threads and cores")
 ```
+
+### Seek
+
+`AudioEngine::seek()` queues the request (atomic target + flag, consumed with `exchange()` by `process()` on the audio thread — never lose a request when several arrive). A seek while `PAUSED` is queued and applied on resume; `stop()` clears it. After the decoder has seeked, the `SeekCallback` calls `DirettaSync::flushForSeek()`: the ring is emptied under the reconfigure guard and the prefill restarts, so the new position is heard after one prefill instead of after the whole ring (up to 3 s remote) has drained. UPnP `Seek` with a non-time unit (`TRACK_NR`) is ignored. `AudioDecoder::seek()` uses `av_seek_frame(..., AVSEEK_FLAG_BACKWARD)`; it needs a server that honours HTTP `Range` (FFmpeg's generic FLAC seek bisects with backward seeks — `python3 -m http.server` breaks it, `tools/range_server.py` does not).
+
+### SDK options worth knowing
+
+`setSink(addr, sinkBufferTime, bool, MTU)`: the second argument is the target's buffer time, not a cycle — yet v2.5.15 passed the computed cycle time there (5–15 ms), and that is kept as the default so nothing changes silently; `--sink-buffer-ms 0` requests the sink's own default, a positive value a time in ms (the SDK sample host passes 100). `Sync::connect(cpu, rapidStart)` takes the audio core and, on SDK 150, `--rapid-start`. `--transfer-mode auto-sdk` maps to `configTransferAuto()` (the mode of the SDK's own sample host). The negotiated profile (cycle, min cycle, cycle size/packets, mode, MS mode, latency, `SinkInfo`) is logged at each `OPEN`; `dumpStats()` (SIGUSR1) reports the measured `getNewStream()` cadence against the expected cycle. `THRED_MODE` bit 8 (`SOCKETNOBLOCK`) is commented out in the SDK header; `FEEDBACKOFFSET` is a 3-bit field (32..224).
 
 ## Performance Summary
 
@@ -361,6 +397,21 @@ sudo ./bin/DirettaRendererUPnP --list-targets
 sudo ./bin/DirettaRendererUPnP --target 1 --verbose
 ```
 
+### Testing without a Diretta target
+
+```bash
+make test                      # DirettaRingBuffer unit tests
+make test-decode               # builds bin/test_decode (AudioDecoder only, no SDK)
+bin/test_decode http://host/file.flac 24 [--no-prefetch] [--seek 30] [--seeks 30,120,10]
+tests/decode_suite.sh ~/testfiles   # every file of a directory: full decode (frames == container
+                                    # duration, same hash with/without prefetch), 5-seek sequence
+                                    # in both modes, 30 random rapid seeks — served by tools/range_server.py
+```
+
+Keep the test material outside the repository (real music is not redistributable); the suite takes a directory argument. With LTO builds (`LLVM=1`) the objects are bitcode: link the test with `-flto` too (the Makefile target does).
+
+DSD: `test_decode` understands DSF (through FFmpeg and the prefetch thread) and DFF (the built-in DSDIFF parser, direct avio); it reports 1-bit samples per channel. `tools/dsf2dff.py` converts a DSF to DFF losslessly (bit reversal + byte interleaving), so the two parsers can be compared on the same content: the DFF output must equal the bit-reversed DSF output. The DSF/DFF bit order is left as is by the decoder; `DirettaRingBuffer` reverses per `dsdSourceFormat`. Free native DSD64/128/256 test material: HifiStatement, "A Trace of Grace" (Godard).
+
 **Note:** Building requires Linux. macOS builds are not supported due to missing FFmpeg/libupnp compatibility.
 
 ## SDK Library Variants
@@ -421,7 +472,7 @@ sudo apt install build-essential libavformat-dev libavcodec-dev libavutil-dev li
 - [x] UPnP Stop closes Diretta connection properly
 - [x] PCM FIFO with AVAudioFifo (O(1) circular buffer)
 - [x] PCM bypass mode for bit-perfect playback
-- [x] FLAC bypass bug fix (compressed formats never bypass)
+- [x] FLAC bypass bug fix (compressed formats never bypass) — superseded on `pm/sq-improvements`: the decoder's output format decides (FLAC emits packed S16/S32 and takes the bypass; ALAC/WavPack are planar and do not)
 - [x] DSD conversion function specialization (4 modes, no per-iteration branches)
 - [x] Pre-transition silence for DSD format changes
 - [x] DSD512 Zen3 warmup fix (MTU-aware buffer scaling)
@@ -437,7 +488,7 @@ sudo apt install build-essential libavformat-dev libavcodec-dev libavutil-dev li
 - [x] Resilient target discovery (retry indefinitely at startup instead of exiting)
 - [x] Fix: removed `verifyTargetAvailable()` pre-check in `DirettaRenderer::start()` that bypassed retry loop
 - [x] RENDERER_NAME configuration option
-- [x] Bit depth negotiation fix — only offer 32-bit when source is 32-bit
+- [x] Bit depth negotiation fix — only offer 32-bit when source is 32-bit — refined on `pm/sq-improvements`: never *first* for a 16/24-bit source; 32-bit is a last resort on a sink that refuses 24-bit (see Bit Depth Handling)
 - [x] Audirvana preload probe fix — limit `probesize` to 32KB for local servers (herisson-88, PR #61)
 - [x] First-play pre-connect — eliminates cold connect silence on first track
 - [x] UAPP milliseconds fix — `HH:MM:SS` without fractional seconds in GetPositionInfo
@@ -493,6 +544,8 @@ sudo apt install build-essential libavformat-dev libavcodec-dev libavutil-dev li
 
   Confirmed on real hardware (SDK 150_4, DDC-0 target firmware 150_1): `OPEN` → `OPEN COMPLETE` completes in well under a second on both boot warmup and real playback — matching SDK 149.x — across repeated restarts, with `Stop` during playback transitioning cleanly instead of appearing ignored. Also added `DIRETTA_SDK_SYSLOG_DEBUG=1` (env var, off by default): wires up the SDK's own internal syslog (`DIRETTA::SysLogDiretta`, `Host/SysLog.hpp`) into the renderer's log, added at Yu Harada's request while investigating this stall — kept as diagnostic tooling for future SDK-level issues.
 
+- [x] Sound-quality pass on the host side (branch `pm/sq-improvements`, 2026-09, analysis in `docs/analysis/2026-09-sq-review/`). Fixes: S24 alignment (hint kept across pause → resume, MSB default), whole-frame ring pushes (latent), FFmpeg's EOF drain sequence (output-neutral on FLAC/ALAC/MP3, measured), `configureSinkPCM()` → `bool` with 24→32 lossless fallback and explicit 32→16 truncation, no iostream on the SDK thread, seek flush of the Diretta ring + request consumption + seek while paused. Host activity: `PrefetchReader` (HTTP I/O off the decode thread), FLAC on the bit-perfect bypass, decode hysteresis, real `--quiet`, `mallopt` before `mlockall`, dead threads removed, preload thread demoted. SDK: `--sink-buffer-ms`, `connect(cpu)`, `--transfer-mode auto-sdk`, `--rapid-start`, negotiated profile log, cadence stats. Deployment: no process-wide `CPUSchedulingPolicy` in the tuner drop-ins (`SystemCallFilter=` is kept). Test tooling: `make test-decode`, `tests/decode_suite.sh`, `tools/range_server.py`. Everything verified bit-exact against reference PCM on FLAC 16/44, FLAC 24/192, ALAC 24/96, MP3 (with and without the prefetch thread, with seek sequences). No DSD-specific code changes; DSD was tested anyway: decoder suite on DSF64/DSF128/DFF64 (prefetch vs not, seeks, DFF == bit-reversed DSF), native DSD and DoP (`DOP=msb` for DSF) listened to on the Red.
+
 ### Potential Future Work
 - [ ] AVX-512 format conversions (currently only memcpy uses AVX-512)
 - [ ] Multi-producer ring buffer for multiple audio sources
@@ -535,9 +588,11 @@ When modifying this codebase:
 
 1. **Check if hot path** - `DirettaRingBuffer`, `sendAudio()`, `getNewStream()` need extra scrutiny
 2. **Test with DSD** - DSD is more timing-sensitive than PCM
-3. **Verify lock-free** - No mutex in audio path
+3. **Verify lock-free** - No mutex, no iostream, no syscall in the SDK thread
 4. **Check alignment** - New buffers should be `alignas(64)` if atomics are involved
 5. **Test format transitions** - PCM↔DSD transitions are most problematic
+6. **Run `tests/decode_suite.sh`** on real files after touching `AudioEngine`, `PrefetchReader` or the ring pushes — it is bit-exact and catches torn frames, lost tails and seek regressions without a target
+7. **Keep the tree LF** - the launcher scripts are executed by systemd; a CRLF shebang fails with "No such file or directory"
 
 ## Reference Documents
 
@@ -549,6 +604,7 @@ When modifying this codebase:
 | `docs/PCM_OPTIMIZATION_CHANGES.md` | Low-latency PCM optimizations, buffer tuning |
 | `docs/SIMD_OPTIMIZATION_CHANGES.md` | AVX2/AVX-512 SIMD, lock-free patterns |
 | `docs/FORK_CHANGES.md` | Detailed diff from original v1.2.1 |
+| `docs/analysis/2026-09-sq-review/` | Sound-quality review of v2.5.15 + SDK 150 (French): synthesis + four audits (data path, timing path, host activity, SDK 150 opportunities) behind `pm/sq-improvements` |
 | `docs/plans/` | Design documents for each optimization |
 | `CHANGELOG.md` | Chronological change history |
 | `README.md` | User documentation |
