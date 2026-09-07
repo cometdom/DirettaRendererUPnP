@@ -22,6 +22,8 @@
 #include "LogLevel.h"
 #define DEBUG_LOG(x) LOG_DEBUG(x)
 
+extern bool g_prefetchEnabled;  // defined in main.cpp, --no-prefetch
+
 extern "C" {
 #include <libavutil/opt.h>
 }
@@ -338,6 +340,37 @@ bool AudioDecoder::open(const std::string& url) {
             avio_context_free(&audirvanaWrap);
             av_free(buf);
             avio_closep(&m_audirvanaHttp);
+        }
+    } else if (g_prefetchEnabled &&
+               (strncasecmp(urlCStr, "http://", 7) == 0 || strncasecmp(urlCStr, "https://", 8) == 0)) {
+        // HTTP source: read it on the prefetch thread (see PrefetchReader.h).
+        // FFmpeg's own avio buffer becomes redundant: keep it small.
+        av_dict_set(&options, "buffer_size", "65536", 0);
+        m_prefetch = std::make_unique<PrefetchReader>();
+        AVIOContext* pb = m_prefetch->open(url, &options, &m_formatContext->interrupt_callback,
+                                           [] { AudioEngine::demoteToHelperThread("Prefetch Thread"); });
+        if (!pb) {
+            m_prefetch.reset();
+            av_dict_free(&options);
+            avformat_free_context(m_formatContext);
+            m_formatContext = nullptr;
+            std::cerr << "[AudioDecoder] Failed to open input: " << url << std::endl;
+            return false;
+        }
+        m_formatContext->pb = pb;
+        m_formatContext->flags |= AVFMT_FLAG_CUSTOM_IO;
+
+        // Protocol options were consumed by avio_open2 inside the reader;
+        // the demuxer gets none (same as the plain path after probing).
+        av_dict_free(&options);
+        ret = avformat_open_input(&m_formatContext, nullptr, inputFormat, &options);
+        if (ret < 0) {
+            // avformat_open_input nulled m_formatContext but not our custom pb
+            m_prefetch->stop();
+            unsigned char* buf = pb->buffer;
+            avio_context_free(&pb);
+            av_free(buf);
+            m_prefetch.reset();
         }
     } else {
         ret = avformat_open_input(&m_formatContext, url.c_str(), inputFormat, &options);
@@ -1021,9 +1054,14 @@ void AudioDecoder::close() {
     if (m_dffIO) {  // Close DFF/DSDIFF I/O context
         avio_closep(&m_dffIO);
     }
+    if (m_prefetch) {
+        // Reader thread must be idle before the format context (and with it
+        // our custom pb) goes away.
+        m_prefetch->stop();
+    }
     if (m_formatContext) {
-        // For Audirvana PCM, we set AVFMT_FLAG_CUSTOM_IO with a custom AVIOContext
-        // wrapping m_audirvanaHttp. avformat_close_input does NOT free the custom
+        // For Audirvana PCM and the prefetch reader, we set AVFMT_FLAG_CUSTOM_IO
+        // with a custom AVIOContext. avformat_close_input does NOT free the custom
         // pb (per FFmpeg semantics), so capture and free its buffer + struct
         // ourselves before closing the format context.
         AVIOContext* customPb = (m_formatContext->flags & AVFMT_FLAG_CUSTOM_IO)
@@ -1035,6 +1073,7 @@ void AudioDecoder::close() {
             av_free(buf);
         }
     }
+    m_prefetch.reset();
     if (m_audirvanaHttp) {  // Close inner HTTP context (Audirvana PCM workaround)
         avio_closep(&m_audirvanaHttp);
     }
@@ -1874,13 +1913,12 @@ bool AudioDecoder::canBypass(uint32_t outputRate, uint32_t outputBits) const {
         return false;
     }
 
-    // Compressed formats (FLAC, ALAC, etc.) NEVER bypass
-    // They decode to planar format which requires conversion
-    if (m_trackInfo.isCompressed) {
-        DEBUG_LOG("[AudioDecoder] canBypass: NO (compressed format requires decoding)");
-        return false;
-    }
-
+    // Compressed formats are judged on what their decoder emits, not on the
+    // container: FLAC decodes to packed S16/S32 (S24 content left-justified
+    // in S32, exactly what the resampler would have produced) and takes the
+    // bypass below; ALAC/WavPack decode planar and fail the planar check.
+    // The old blanket "compressed → never bypass" sent every FLAC frame
+    // through swr_convert() for an identity copy.
     if (!m_codecContext) {
         return false;
     }

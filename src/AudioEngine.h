@@ -14,6 +14,8 @@
 #include <thread>
 #include <vector>
 
+#include "PrefetchReader.h"
+
 extern "C" {
 #include <libavformat/avformat.h>
 #include <libavcodec/avcodec.h>
@@ -169,6 +171,10 @@ private:
     // its strict RFC 2586 check, allowing our forced sample_rate/channels.
     AVIOContext* m_audirvanaHttp = nullptr;
 
+    // HTTP prefetch reader (own thread, see PrefetchReader.h). When active the
+    // format context's pb is the reader's custom AVIOContext (CUSTOM_IO).
+    std::unique_ptr<PrefetchReader> m_prefetch;
+
     // DSD packet remainder ring buffer (O(1) push/pop, replaces O(n) memmove)
     // Stores leftover bytes when DSD packets don't align with request size
     // Layout: [leftChannel bytes][rightChannel bytes] - each channel has same count
@@ -309,10 +315,13 @@ public:
     };
 
     /**
-     * @brief Cores for the engine's transient helper threads (preload).
+     * @brief Cores for the engine's helper threads (preload, HTTP prefetch).
      * Set by DirettaRenderer from --cpu-other; empty = inherit.
      */
     static void setHelperThreadCores(const std::vector<int>& cores);
+
+    /** @brief Make the calling thread SCHED_OTHER on the helper cores. */
+    static void demoteToHelperThread(const char* name);
 
     /**
      * @brief Callback for audio data ready
@@ -451,7 +460,6 @@ public:
 
 private:
     static std::vector<int> s_helperCores;
-    static void demoteToHelperThread(const char* name);
 
     std::atomic<State> m_state;
     std::atomic<int> m_trackNumber;
