@@ -60,7 +60,12 @@ RestrictAddressFamilies=AF_INET AF_INET6 AF_NETLINK AF_UNIX AF_PACKET
 
 # --- System call filtering ---
 SystemCallArchitectures=native
-SystemCallFilter=~@mount @keyring @debug @module @swap @reboot @obsolete
+# SystemCallFilter installs a seccomp BPF program that runs on EVERY syscall
+# of the process — including each sendto()/recvfrom() of the Diretta worker
+# on the audio core, several hundred times per second. The hardening value
+# for a LAN-only audio daemon running as root is nil; the cost is on the hot
+# path. Uncomment if you want the filter back.
+#SystemCallFilter=~@mount @keyring @debug @module @swap @reboot @obsolete
 
 # --- Performance ---
 # Nice and IOScheduling are now configurable via /etc/default/diretta-renderer
