@@ -1,5 +1,32 @@
 # Changelog
 
+## [Unreleased] — branch `pm/sq-improvements`
+
+Sound-quality oriented pass over the host side (no DSD-specific work: not testable here). Every item was built and run on an x86 Fedora RT host with SDK 150_4; decode paths were verified bit-exact against reference PCM (`make test-decode`). Listening validation on the Holo Red target is pending.
+
+### Fixed
+- **24-bit alignment**: the ring buffer's S24 detection now defaults to MSB-aligned (FFmpeg only ever hands us S24 in an S32 container) instead of LSB — a quiet track start used to time out into full-scale white noise on x86; the `#if __aarch64__` that forced MSB on ARM only hid that default on one platform. The alignment hint is set for every 24-bit codec (was per-codec) and survives pause→resume (`clear()` no longer forgets it; only `resize()` does).
+- **Torn frames on a nearly-full ring**: every PCM push now rounds partial writes down to whole frames. `getFreeSpace()` is `size − used − 1`, never a frame multiple, so the byte-granular clamp could hand a half frame to the consumer and desync the producer's remaining-samples arithmetic (channel swap until the next open).
+- **Decoder tail**: the decoder is drained at EOF (`avcodec_send_packet(NULL)` + resampler flush) and the FIFO tail is served after EOF instead of discarded — codecs with lookahead (ALAC, AAC, MP3, Vorbis, Opus, WavPack) lost their last frames.
+- **Sink negotiation**: `configureSinkPCM()` returns `false` instead of throwing through `open()` (an unsupported format fails the track, not the process); a 24-bit source tries a 32-bit sink (lossless) before falling to 16-bit; a 24/32-bit source on a 16-bit-only sink is explicitly truncated (`push32To16`) instead of memcpy'ing 4-byte samples as 2-byte ones; DoP requires an exact 24-bit sink.
+- **Logging from the SDK real-time thread**: `getNewStream()` no longer touches iostreams for underrun / rebuffering-complete; it raises bits in an atomic mailbox that the decode thread logs.
+- **Docs**: `--thread-mode` table (bit 8 is not `SOCKETNOBLOCK`, it is commented out in the SDK; `FEEDBACKOFFSET` is a 3-bit field), `--cycle-time` default/range, remote buffer defaults (3.0 s / 500 ms, not 1.0 s / 150 ms), dead `src/sync/` copy removed.
+
+### Changed (host activity)
+- **HTTP prefetch thread** (`PrefetchReader`): every HTTP source is read by a dedicated `SCHED_OTHER` thread on the `--cpu-other` cores, 4 MB ahead of the demuxer, through a custom `AVIOContext` (seeks forwarded as Range requests). The decode thread never does network I/O any more. `--no-prefetch` / `NO_PREFETCH=1` restores the previous behaviour for A/B.
+- **FLAC takes the bit-perfect bypass**: the decoder's output format decides (FLAC emits packed S16/S32), not the container; ALAC/WavPack stay on the resampler (planar).
+- **Decode thread hysteresis**: fill the ring to 70 %, sleep until 30 % (sleep sized from the drain rate, 5–50 ms), instead of a 10 ms poll and a chunk as soon as it dips under 50 %.
+- **`--quiet` is real**: stdout is discarded entirely (≈250 raw `std::cout` on the track path no longer become `write(2)` to journald from the decode thread); warnings go to stderr with errors.
+- **Stable heap**: `mallopt(M_MMAP_THRESHOLD/M_TRIM_THRESHOLD/M_TOP_PAD)` before `mlockall` — no per-track `mmap`/`munmap`/page faults.
+- Removed the empty 1 Hz "UPnP Thread" and the main thread's 1 Hz poll; preload thread demoted to `SCHED_OTHER` on the other cores (it inherited SCHED_FIFO on the decode core); FFmpeg probe capped for every URL.
+- Hot path: `m_workerActive` stores are release (were seq_cst), stream counter is a plain store, the flow-control condvar is only touched when a DSD producer waits, worker-only state on its own cache line.
+- Tuner drop-ins no longer set a process-wide `CPUSchedulingPolicy=fifo`/`Priority=90` (which put every control thread above the audio worker at 80 and made `NICE_LEVEL` a no-op); `SystemCallFilter=` commented out in the unit (seccomp BPF on every `sendto()` of the worker).
+
+### Added
+- `--transfer-mode auto-sdk` (`Sync::configTransferAuto`, the SDK sample host's mode), `--sink-buffer-ms` (`setSink()`'s documented sink buffer time; was hard-wired to 0 under a "cycle" name), `--rapid-start` (SDK 150). `Sync::connect()` is now given the first `--cpu-audio` core.
+- The negotiated profile (cycle, min cycle, cycle size/packets, mode, MS mode, latency, `SinkInfo`) is logged at each `OPEN`; `dumpStats()` (SIGUSR1) reports the measured `getNewStream()` cadence (mean/min/max/late vs expected cycle).
+- `make test-decode`: decode any URL through `AudioDecoder` without the SDK and print frame count + hash.
+
 ## [2.5.15] - 2026-09-06
 
 ### Fixed

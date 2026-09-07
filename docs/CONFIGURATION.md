@@ -110,9 +110,9 @@ These options allow fine-tuning the Diretta SDK transmission behavior. **Leave a
 | CRITICAL | 1 | Set sending thread to critical priority |
 | NOSHORTSLEEP | 2 | Busy-loop for short waits (reduces jitter, uses more CPU) |
 | NOSLEEP4CORE | 4 | Only busy-loop if >= 4 CPU cores available |
-| SOCKETNOBLOCK | 8 | Non-blocking socket |
-| OCCUPIED | 16 | Pin SDK thread to CPU core |
-| FEEDBACK | 32/64/128 | Moving average feedback (3 bits) |
+| (8) | 8 | Reserved — SOCKETNOBLOCK is commented out in the SDK header, the bit is ignored |
+| OCCUPIED | 16 | Pin SDK thread to CPU core (added automatically with `--cpu-audio`) |
+| FEEDBACKOFFSET | 32/64/128 | Moving-average window for the feedback (3-bit field, 0..7) |
 | NOFASTFEEDBACK | 256 | Disable fast feedback mechanism |
 | IDLEONE | 512 | Run idle handler once per cycle |
 | IDLEALL | 1024 | Always run idle handler (busy-loop variant) |
@@ -132,8 +132,8 @@ sudo ./DirettaRendererUPnP --target 1 --thread-mode 17
 ```
 
 #### `--cycle-time <microseconds>`
-**Default**: Auto-calculated (2620 µs base, adapts to format)
-**Range**: 333-10000
+**Default**: Auto-calculated — one MTU of audio per cycle: `(MTU − 3) / (rate × channels × bytes)`, e.g. ≈ 5660 µs for 44.1 kHz stereo once the sink negotiates 24-bit at MTU 1500 (≈ 14 400 µs at MTU 3824), ≈ 2600 µs for 96 kHz/24-bit at MTU 1500
+**Range**: 100-50000 (the renderer warns outside this range)
 **Description**: Maximum packet transmission cycle time. When specified, disables automatic cycle time calculation. Lower values = more frequent transmissions = lower latency but higher CPU.
 **Example**:
 ```bash
@@ -167,11 +167,24 @@ sudo ./DirettaRendererUPnP --target 1 --transfer-mode random --cycle-min-time 33
 | `varauto` | Flex cycle, auto-tuned |
 | `fixauto` | Fixed cycle, auto-tuned |
 | `random` | Random cycle (uses `--cycle-min-time` as minimum) |
+| `auto-sdk` | `Sync::configTransferAuto()` — the mode the SDK's own sample host uses; lets the SDK pick between fixed and variable cycles itself (`--cycle-min-time` as the floor) |
 
 **Example**:
 ```bash
 sudo ./DirettaRendererUPnP --target 1 --transfer-mode fixauto
 ```
+
+#### `--sink-buffer-ms <ms>`
+**Default**: unset = the cycle time (what v2.5.15 always passed); `0` = the sink's own default
+**Description**: Buffer time requested from the target at `Sync::setSink()`. The SDK documentation names this parameter "sink buffer time"; the SDK sample host passes 100 ms. Leave at 0 unless you are comparing values with the negotiated profile logged at each `OPEN` (`cycle`, `latency`, `SinkInfo`).
+
+#### `--rapid-start`
+**Default**: off
+**Description**: SDK 150 `Sync::connect(cpu, rapidStart=true)`. Undocumented beyond its name; provided for A/B testing only.
+
+#### `--no-prefetch`
+**Default**: prefetch enabled
+**Description**: By default every HTTP source is read by a dedicated `SCHED_OTHER` thread pinned to the `--cpu-other` cores, 4 MB ahead of the demuxer, so the decode thread never performs network I/O. `--no-prefetch` restores FFmpeg's synchronous reads on the decode thread.
 
 #### `--target-profile-limit <microseconds>`
 **Default**: 0

@@ -549,7 +549,7 @@ An audio sample travels through several stages between the upstream HTTP source 
    │  ┌──────────────────────────────────────────────────────────┐     │
    │  │ ④ DirettaRingBuffer (lock-free SPSC, the main buffer)    │     │
    │  │    PCM local  : 0.5 s   (PCM_BUFFER_SECONDS)             │     │
-   │  │    PCM remote : 1.0 s   (PCM_REMOTE_BUFFER_SECONDS)      │     │
+   │  │    PCM remote : 3.0 s   (PCM_REMOTE_BUFFER_SECONDS)      │     │
    │  │    DSD        : 0.8 s   (DSD_BUFFER_SECONDS)             │     │
    │  │    Prefill    : 80-200 ms before playback starts         │     │
    │  └─────────────────────────┬────────────────────────────────┘     │
@@ -582,7 +582,7 @@ An audio sample travels through several stages between the upstream HTTP source 
 
 | Symptom | Action |
 |---------|--------|
-| Drops on Internet radio / Qobuz / Tidal | Raise `PCM_REMOTE_BUFFER_SECONDS` (default 1.0 s → 2-3 s) and `PCM_REMOTE_PREFILL_MS` |
+| Drops on Internet radio / Qobuz / Tidal | Raise `PCM_REMOTE_BUFFER_SECONDS` (default 3.0 s) and `PCM_REMOTE_PREFILL_MS` (default 500 ms) |
 | Too long a delay before sound starts | Reduce `PCM_PREFILL_MS` (default 80 ms) |
 | Underruns at DSD512+ | Raise `DSD_BUFFER_SECONDS` (default 0.8 s) |
 | 16 MB sysctl (`rmem_max` / `wmem_max`) | Generic, set once via `install.sh` and forget |
@@ -978,10 +978,13 @@ These options allow fine-tuning the Diretta SDK transmission behavior. **Leave a
 
 ```bash
 --thread-mode <mode>        SDK thread mode bitmask (default: 1=CRITICAL)
---cycle-time <us>           Max cycle time in microseconds (333-10000, default: auto)
---cycle-min-time <us>       Min cycle time in microseconds (random mode only)
+--cycle-time <us>           Max cycle time in microseconds (100-50000, default: auto = one MTU of audio)
+--cycle-min-time <us>       Min cycle time in microseconds (random and auto-sdk modes)
 --info-cycle <us>           Info packet cycle in microseconds (default: 100000)
---transfer-mode <mode>      Transfer mode: auto, varmax, varauto, fixauto, random
+--transfer-mode <mode>      Transfer mode: auto, varmax, varauto, fixauto, random, auto-sdk
+--sink-buffer-ms <ms>       Sink buffer time at setSink (default: the cycle time; 0 = sink default)
+--rapid-start               SDK 150 rapid start (A/B only)
+--no-prefetch               Read HTTP sources on the decode thread instead of the prefetch thread
 --target-profile-limit <us> Target profile limit (0=SelfProfile (stable), default: 0, >0=experimental)
 --mtu <bytes>               MTU override (default: auto-detect)
 ```

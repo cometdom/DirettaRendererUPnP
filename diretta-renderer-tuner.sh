@@ -338,11 +338,13 @@ apply_service_override() {
 # Use dedicated CPU slice
 Slice=${SLICE_NAME}
 
-# Real-time scheduling for audio hot path
-CPUSchedulingPolicy=fifo
-CPUSchedulingPriority=90
+# No process-wide CPUSchedulingPolicy/Priority here: the renderer sets
+# SCHED_FIFO itself, per thread (Diretta worker and decode thread at
+# RT_PRIORITY). A process-wide FIFO 90 made every other thread (main,
+# libupnp SOAP/SSDP, position, log drain, preload, HTTP prefetch) run
+# ABOVE the audio worker, and turned NICE_LEVEL into a no-op.
 
-# High process priority
+# High process priority (for the SCHED_OTHER threads)
 Nice=-19
 
 # I/O scheduling - realtime class
