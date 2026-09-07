@@ -87,11 +87,47 @@ bool UPnPDevice::start() {
         std::cout << "🌐 Using default interface for UPnP (auto-detect)" << std::endl;
     }
     
-    int ret = UpnpInit2(interfaceName, m_config.port);
-    if (ret != UPNP_E_SUCCESS) {
-        std::cerr << "[UPnPDevice] UpnpInit2 failed: " << ret << std::endl;
-        UpnpFinish();  // Clean up for potential retry
-        return false;
+    // libupnp is normally built without SO_REUSEADDR on its miniserver
+    // (UPNP_MINISERVER_REUSEADDR undefined in upnpconfig.h). After a hot
+    // restart the control point's connections to the old instance are
+    // still in TIME_WAIT on our port, bind() fails, and libupnp silently
+    // takes port+1. The control point keeps the cached LOCATION on the
+    // configured port and never reaches us again. When a fixed port was
+    // asked for, insist on it: tear down and retry every 2 s until the
+    // TIME_WAIT sockets have expired (60 s on Linux), a little longer as
+    // a safety margin.
+    constexpr int PORT_RETRY_INTERVAL_S = 2;
+    constexpr int PORT_RETRY_MAX_S = 75;
+    int ret;
+    int waitedS = 0;
+    for (;;) {
+        ret = UpnpInit2(interfaceName, m_config.port);
+        if (ret != UPNP_E_SUCCESS) {
+            std::cerr << "[UPnPDevice] UpnpInit2 failed: " << ret << std::endl;
+            UpnpFinish();  // Clean up for potential retry
+            return false;
+        }
+        if (m_config.port == 0 || UpnpGetServerPort() == m_config.port) break;
+
+        unsigned short got = UpnpGetServerPort();
+        UpnpFinish();
+        if (waitedS >= PORT_RETRY_MAX_S) {
+            std::cerr << "[UPnPDevice] Port " << m_config.port << " still busy after "
+                      << waitedS << "s — giving up on the fixed port, using " << got << std::endl;
+            ret = UpnpInit2(interfaceName, m_config.port);
+            if (ret != UPNP_E_SUCCESS) { UpnpFinish(); return false; }
+            break;
+        }
+        if (waitedS == 0) {
+            std::cout << "[UPnPDevice] Port " << m_config.port << " busy (TIME_WAIT from the previous "
+                      << "instance?), libupnp offered " << got << " — waiting for the configured port"
+                      << std::endl;
+        }
+        std::this_thread::sleep_for(std::chrono::seconds(PORT_RETRY_INTERVAL_S));
+        waitedS += PORT_RETRY_INTERVAL_S;
+    }
+    if (waitedS > 0) {
+        std::cout << "[UPnPDevice] Port " << m_config.port << " acquired after " << waitedS << "s" << std::endl;
     }
 
     // Afficher l'IP et port utilisés
