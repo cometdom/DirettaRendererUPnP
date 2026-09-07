@@ -464,6 +464,8 @@ public:
     void requestPostReconnectRebuffering();
 
     float getBufferLevel() const;
+    /** @brief Ring capacity in seconds of audio at the current format (0 if unknown) */
+    float getBufferSeconds() const;
     const AudioFormat& getFormat() const { return m_currentFormat; }
 
     /**
@@ -473,6 +475,16 @@ public:
      * Called by SIGUSR1 handler for runtime diagnostics.
      */
     void dumpStats() const;
+
+    /** @brief Reset the getNewStream() interval statistics (worker must be idle). */
+    void resetStreamStats() {
+        m_streamLastNs.store(0, std::memory_order_relaxed);
+        m_streamIntervalMinNs.store(0, std::memory_order_relaxed);
+        m_streamIntervalMaxNs.store(0, std::memory_order_relaxed);
+        m_streamIntervalSumNs.store(0, std::memory_order_relaxed);
+        m_streamIntervalCount.store(0, std::memory_order_relaxed);
+        m_streamIntervalLate.store(0, std::memory_order_relaxed);
+    }
 
     /**
      * @brief Events raised by the SDK worker thread, to be logged elsewhere.
@@ -486,7 +498,12 @@ public:
         RT_EVENT_UNDERRUN          = 1u << 0,  // Entered rebuffering
         RT_EVENT_REBUFFER_COMPLETE = 1u << 1,  // Left rebuffering
     };
-    uint32_t consumeRtEvents() { return m_rtEvents.exchange(0, std::memory_order_acq_rel); }
+    uint32_t consumeRtEvents() {
+        // Polled every decode-loop iteration: a relaxed load keeps the line
+        // Shared in steady state; the locked exchange only runs on an event.
+        if (m_rtEvents.load(std::memory_order_relaxed) == 0) return 0;
+        return m_rtEvents.exchange(0, std::memory_order_acq_rel);
+    }
     size_t lastUnderrunAvail() const { return m_rtUnderrunAvail.load(std::memory_order_relaxed); }
     size_t lastRebufferAvail() const { return m_rtRebufferAvail.load(std::memory_order_relaxed); }
     size_t lastRebufferThreshold() const { return m_rtRebufferThreshold.load(std::memory_order_relaxed); }
@@ -524,7 +541,12 @@ public:
     template<typename Rep, typename Period>
     bool waitForSpace(std::unique_lock<std::mutex>& lock,
                       std::chrono::duration<Rep, Period> timeout) {
-        return m_spaceAvailable.wait_for(lock, timeout) == std::cv_status::no_timeout;
+        // Flag lets getNewStream() skip the mutex/notify entirely when
+        // nobody is waiting (the PCM path never waits: it micro-sleeps).
+        m_producerWaiting.store(true, std::memory_order_release);
+        bool notified = m_spaceAvailable.wait_for(lock, timeout) == std::cv_status::no_timeout;
+        m_producerWaiting.store(false, std::memory_order_release);
+        return notified;
     }
 
     /**
@@ -672,6 +694,7 @@ private:
     // without burning CPU or introducing 5ms sleep jitter
     std::mutex m_flowMutex;
     std::condition_variable m_spaceAvailable;
+    std::atomic<bool> m_producerWaiting{false};
 
     // G1: Condition variable for interruptible format transition waits
     // Allows blocking waits to be interrupted on shutdown rather than sleeping
@@ -727,8 +750,9 @@ private:
     // Incremented alongside m_formatGeneration in configureRingXXX
     std::atomic<uint32_t> m_consumerStateGen{0};
 
-    // Cached consumer state (only accessed by worker thread)
-    uint32_t m_cachedConsumerGen{0};
+    // Cached consumer state (only accessed by worker thread), on its own
+    // cache line so producer-side writes never invalidate it.
+    alignas(64) uint32_t m_cachedConsumerGen{0};
     int m_cachedBytesPerBuffer{176};
     uint8_t m_cachedSilenceByte{0};
     bool m_cachedConsumerIsDsd{false};
@@ -737,9 +761,22 @@ private:
     int m_cachedConsumerSampleRate{44100};
     int m_cachedBytesPerFrame{0};
     uint32_t m_cachedFramesPerBufferRemainder{0};
+    int64_t m_cachedExpectedCycleNs{0};       // nominal call interval for the stats
+
+    // getNewStream() call-interval statistics: written by the worker only,
+    // read by dumpStats() from another thread — relaxed atomics (plain
+    // loads/stores on x86/ARM64, no RMW on the hot path). Measured only while
+    // real audio is being popped, so silence/prefill/stabilization phases do
+    // not pollute them.
+    std::atomic<int64_t> m_streamLastNs{0};           // worker-written, reset by configureRing*
+    std::atomic<int64_t> m_streamIntervalMinNs{0};
+    std::atomic<int64_t> m_streamIntervalMaxNs{0};
+    std::atomic<int64_t> m_streamIntervalSumNs{0};
+    std::atomic<int64_t> m_streamIntervalCount{0};
+    std::atomic<int64_t> m_streamIntervalLate{0};     // intervals > 2 × expected cycle
 
     // Prefill and stabilization
-    size_t m_prefillTarget = 0;
+    alignas(64) size_t m_prefillTarget = 0;
     std::atomic<bool> m_prefillComplete{false};
     std::atomic<bool> m_postOnlineDelayDone{false};
     bool m_isFirstConnect = true;  // Extra stabilization on very first connect after startup
@@ -754,8 +791,10 @@ private:
     std::atomic<bool> m_rebuffering{false};              // Rebuffering after sustained underrun
     std::atomic<bool> m_postReconnectRebuffering{false}; // Use 50% threshold for one cycle after live stream reconnect
 
-    // Worker → decode thread event mailbox (see consumeRtEvents())
-    std::atomic<uint32_t> m_rtEvents{0};
+    // Worker → decode thread event mailbox (see consumeRtEvents()), on its
+    // own cache line: the decode thread polls it while the worker writes
+    // m_streamCount / reads m_prefillComplete on every call.
+    alignas(64) std::atomic<uint32_t> m_rtEvents{0};
     std::atomic<size_t> m_rtUnderrunAvail{0};
     std::atomic<size_t> m_rtRebufferAvail{0};
     std::atomic<size_t> m_rtRebufferThreshold{0};

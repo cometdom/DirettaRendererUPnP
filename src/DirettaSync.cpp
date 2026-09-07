@@ -1359,6 +1359,8 @@ void DirettaSync::configureRingPCM(int rate, int channels, int direttaBps, int i
         DIRETTA_LOG("PCM buffer (MTU): " << bytesPerBuffer << " bytes (" << framesPerBuffer << " frames)");
     }
 
+    resetStreamStats();
+
     bool highRate = static_cast<uint32_t>(rate) > DirettaBuffer::HIGHRATE_THRESHOLD;
     // Use config override if provided, else default
     unsigned int prefillMsOverride = 0;
@@ -1439,6 +1441,7 @@ void DirettaSync::configureRingDSD(uint32_t byteRate, int channels) {
     m_bytesPerBuffer.store(static_cast<int>(bytesPerBuffer), std::memory_order_release);
     m_bytesPerFrame.store(0, std::memory_order_release);
     m_framesPerBufferRemainder.store(0, std::memory_order_release);
+    resetStreamStats();
     m_framesPerBufferAccumulator.store(0, std::memory_order_release);
 
     if (m_config.dsdPrefillMs > 0) {
@@ -1705,13 +1708,40 @@ float DirettaSync::getBufferLevel() const {
     return static_cast<float>(m_ringBuffer.getAvailable()) / static_cast<float>(size);
 }
 
+float DirettaSync::getBufferSeconds() const {
+    RingAccessGuard ringGuard(m_ringUsers, m_reconfiguring);
+    if (!ringGuard.active()) return 0.0f;
+    size_t size = m_ringBuffer.size();
+    int rate = m_sampleRate.load(std::memory_order_relaxed);
+    int channels = m_channels.load(std::memory_order_relaxed);
+    int bps = m_bytesPerSample.load(std::memory_order_relaxed);
+    if (size == 0 || rate <= 0 || channels <= 0 || bps <= 0) return 0.0f;
+    double bytesPerSecond = m_isDsdMode.load(std::memory_order_relaxed)
+        ? static_cast<double>(rate) * channels / 8.0
+        : static_cast<double>(rate) * channels * bps;
+    return static_cast<float>(size / bytesPerSecond);
+}
+
+// Nominal time between two getNewStream() calls for a given callback size,
+// from the current format — what the cadence statistics compare against.
+int64_t DirettaSync::expectedCycleNs(int bytesPerBuffer) const {
+    int rate = m_sampleRate.load(std::memory_order_relaxed);
+    int channels = m_channels.load(std::memory_order_relaxed);
+    int bps = m_bytesPerSample.load(std::memory_order_relaxed);
+    if (bytesPerBuffer <= 0 || rate <= 0 || channels <= 0) return 0;
+    double bytesPerSecond = m_isDsdMode.load(std::memory_order_relaxed)
+        ? static_cast<double>(rate) * channels / 8.0
+        : static_cast<double>(rate) * channels * std::max(1, bps);
+    return static_cast<int64_t>(1e9 * bytesPerBuffer / bytesPerSecond);
+}
+
 void DirettaSync::dumpStats() const {
-    std::cout << "\n════════════════════════════════════════" << std::endl;
-    std::cout << "[DirettaSync] Runtime Statistics" << std::endl;
-    std::cout << "════════════════════════════════════════" << std::endl;
+    std::cerr << "\n════════════════════════════════════════" << std::endl;
+    std::cerr << "[DirettaSync] Runtime Statistics" << std::endl;
+    std::cerr << "════════════════════════════════════════" << std::endl;
 
     // Connection state
-    std::cout << "  State:       "
+    std::cerr << "  State:       "
               << (m_playing.load(std::memory_order_relaxed) ? "PLAYING" :
                   m_paused.load(std::memory_order_relaxed) ? "PAUSED" :
                   m_open.load(std::memory_order_relaxed) ? "OPEN" : "STOPPED")
@@ -1720,7 +1750,7 @@ void DirettaSync::dumpStats() const {
     // Format
     const auto& fmt = m_currentFormat;
     if (m_open.load(std::memory_order_relaxed)) {
-        std::cout << "  Format:      " << fmt.sampleRate << "Hz/"
+        std::cerr << "  Format:      " << fmt.sampleRate << "Hz/"
                   << fmt.bitDepth << "bit/" << fmt.channels << "ch "
                   << (fmt.isDSD ? "DSD" : "PCM") << std::endl;
     }
@@ -1729,17 +1759,30 @@ void DirettaSync::dumpStats() const {
     size_t ringSize = m_ringBuffer.size();
     size_t avail = m_ringBuffer.getAvailable();
     float fillPct = ringSize > 0 ? (100.0f * avail / ringSize) : 0.0f;
-    std::cout << "  Buffer:      " << avail << "/" << ringSize
+    std::cerr << "  Buffer:      " << avail << "/" << ringSize
               << " bytes (" << std::fixed << std::setprecision(1) << fillPct << "%)"
               << std::endl;
-    std::cout << "  MTU:         " << m_effectiveMTU << std::endl;
+    std::cerr << "  MTU:         " << m_effectiveMTU << std::endl;
 
     // Counters
-    std::cout << "  Streams:     " << m_streamCount.load(std::memory_order_relaxed) << std::endl;
-    std::cout << "  Pushes:      " << m_pushCount.load(std::memory_order_relaxed) << std::endl;
-    std::cout << "  Underruns:   " << m_underrunCount.load(std::memory_order_relaxed) << std::endl;
+    std::cerr << "  Streams:     " << m_streamCount.load(std::memory_order_relaxed) << std::endl;
+    std::cerr << "  Pushes:      " << m_pushCount.load(std::memory_order_relaxed) << std::endl;
+    std::cerr << "  Underruns:   " << m_underrunCount.load(std::memory_order_relaxed) << std::endl;
 
-    std::cout << "════════════════════════════════════════\n" << std::endl;
+    // getNewStream() cadence as seen by the host (the SDK's own view of the
+    // link is in its ClockDiff / feedback machinery, not exposed here)
+    constexpr auto rx = std::memory_order_relaxed;
+    int64_t n = m_streamIntervalCount.load(rx);
+    if (n > 0) {
+        int64_t expected = expectedCycleNs(m_bytesPerBuffer.load(rx));
+        std::cerr << "  Cycle:       expected " << expected / 1000 << "µs, measured mean "
+                  << (m_streamIntervalSumNs.load(rx) / n) / 1000 << "µs, min "
+                  << m_streamIntervalMinNs.load(rx) / 1000 << "µs, max "
+                  << m_streamIntervalMaxNs.load(rx) / 1000 << "µs over " << n << " calls, "
+                  << m_streamIntervalLate.load(rx) << " late (>2× expected)" << std::endl;
+    }
+
+    std::cerr << "════════════════════════════════════════\n" << std::endl;
 }
 
 void DirettaSync::requestPostReconnectRebuffering() {
@@ -1757,7 +1800,7 @@ bool DirettaSync::getNewStream(diretta_stream& baseStream) {
     // The application must manage memory: allocate buffer, assign to Data.P and Size
     // (Confirmed by Yu Harada: memory management is application's responsibility)
 
-    m_workerActive = true;
+    m_workerActive.store(true, std::memory_order_release);
 
     // C1: Generation counter optimization for stable state
     // Single atomic load in common case (format rarely changes during playback)
@@ -1773,6 +1816,7 @@ bool DirettaSync::getNewStream(diretta_stream& baseStream) {
         // PCM buffer rounding drift fix values (stable per-track)
         m_cachedBytesPerFrame = m_bytesPerFrame.load(std::memory_order_acquire);
         m_cachedFramesPerBufferRemainder = m_framesPerBufferRemainder.load(std::memory_order_acquire);
+        m_cachedExpectedCycleNs = expectedCycleNs(m_cachedBytesPerBuffer);
         m_cachedConsumerGen = gen;
     }
 
@@ -1834,7 +1878,7 @@ bool DirettaSync::getNewStream(diretta_stream& baseStream) {
     RingAccessGuard ringGuard(m_ringUsers, m_reconfiguring);
     if (!ringGuard.active()) {
         fillSilence(dest, currentBytesPerBuffer);
-        m_workerActive = false;
+        m_workerActive.store(false, std::memory_order_release);
         return true;
     }
 
@@ -1846,21 +1890,21 @@ bool DirettaSync::getNewStream(diretta_stream& baseStream) {
     if (silenceRemaining > 0) {
         fillSilence(dest, currentBytesPerBuffer);
         m_silenceBuffersRemaining.fetch_sub(1, std::memory_order_acq_rel);
-        m_workerActive = false;
+        m_workerActive.store(false, std::memory_order_release);
         return true;
     }
 
     // Stop requested
     if (m_stopRequested.load(std::memory_order_acquire)) {
         fillSilence(dest, currentBytesPerBuffer);
-        m_workerActive = false;
+        m_workerActive.store(false, std::memory_order_release);
         return true;
     }
 
     // Prefill not complete
     if (!m_prefillComplete.load(std::memory_order_acquire)) {
         fillSilence(dest, currentBytesPerBuffer);
-        m_workerActive = false;
+        m_workerActive.store(false, std::memory_order_release);
         return true;
     }
 
@@ -1928,12 +1972,35 @@ bool DirettaSync::getNewStream(diretta_stream& baseStream) {
             }
         }
         fillSilence(dest, currentBytesPerBuffer);
-        m_workerActive = false;
+        m_workerActive.store(false, std::memory_order_release);
         return true;
     }
 
-    int count = m_streamCount.fetch_add(1, std::memory_order_relaxed) + 1;
+    // Single writer: plain load/store instead of a locked RMW every cycle
+    int count = m_streamCount.load(std::memory_order_relaxed) + 1;
+    m_streamCount.store(count, std::memory_order_relaxed);
     size_t avail = m_ringBuffer.getAvailable();
+
+    // Call-interval statistics (steady_clock is a vDSO read, ~20 ns)
+    {
+        int64_t nowNs = std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count();
+        constexpr auto rx = std::memory_order_relaxed;
+        int64_t last = m_streamLastNs.load(rx);
+        if (last != 0) {
+            int64_t d = nowNs - last;
+            int64_t n = m_streamIntervalCount.load(rx);
+            if (n == 0 || d < m_streamIntervalMinNs.load(rx)) m_streamIntervalMinNs.store(d, rx);
+            if (d > m_streamIntervalMaxNs.load(rx)) m_streamIntervalMaxNs.store(d, rx);
+            m_streamIntervalSumNs.store(m_streamIntervalSumNs.load(rx) + d, rx);
+            m_streamIntervalCount.store(n + 1, rx);
+            int64_t expected = m_cachedExpectedCycleNs;
+            if (expected > 0 && d > 2 * expected) {
+                m_streamIntervalLate.store(m_streamIntervalLate.load(rx) + 1, rx);
+            }
+        }
+        m_streamLastNs.store(nowNs, rx);
+    }
 
     if (g_verbose && (count <= 5 || count % 5000 == 0)) {
         float fillPct = (currentRingSize > 0) ? (100.0f * avail / currentRingSize) : 0.0f;
@@ -1964,7 +2031,7 @@ bool DirettaSync::getNewStream(diretta_stream& baseStream) {
             // Fall through to normal pop below
         } else {
             fillSilence(dest, currentBytesPerBuffer);
-            m_workerActive = false;
+            m_workerActive.store(false, std::memory_order_release);
             return true;
         }
     }
@@ -1978,7 +2045,7 @@ bool DirettaSync::getNewStream(diretta_stream& baseStream) {
             m_rtEvents.fetch_or(RT_EVENT_UNDERRUN, std::memory_order_release);
         }
         fillSilence(dest, currentBytesPerBuffer);
-        m_workerActive = false;
+        m_workerActive.store(false, std::memory_order_release);
         return true;
     }
 
@@ -2006,15 +2073,16 @@ bool DirettaSync::getNewStream(diretta_stream& baseStream) {
         }
     }
 
-    // G1: Signal producer that space is now available
-    // Use try_lock to avoid blocking the time-critical consumer thread
-    // If producer isn't waiting, this is a no-op (harmless notification)
-    if (m_flowMutex.try_lock()) {
+    // G1: Signal producer that space is now available — only if it is
+    // actually waiting (DSD path); the PCM producer never waits, so the
+    // mutex/condvar are not even touched in the common case.
+    // try_lock keeps the time-critical consumer from ever blocking.
+    if (m_producerWaiting.load(std::memory_order_acquire) && m_flowMutex.try_lock()) {
         m_flowMutex.unlock();
         m_spaceAvailable.notify_one();
     }
 
-    m_workerActive = false;
+    m_workerActive.store(false, std::memory_order_release);
     return true;
 }
 

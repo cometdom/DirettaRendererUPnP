@@ -12,6 +12,7 @@
 #include <condition_variable>
 #include <functional>
 #include <thread>
+#include <vector>
 
 extern "C" {
 #include <libavformat/avformat.h>
@@ -308,6 +309,12 @@ public:
     };
 
     /**
+     * @brief Cores for the engine's transient helper threads (preload).
+     * Set by DirettaRenderer from --cpu-other; empty = inherit.
+     */
+    static void setHelperThreadCores(const std::vector<int>& cores);
+
+    /**
      * @brief Callback for audio data ready
      * @param buffer Audio buffer
      * @param samples Number of samples
@@ -443,6 +450,9 @@ public:
     bool process(size_t samplesNeeded);
 
 private:
+    static std::vector<int> s_helperCores;
+    static void demoteToHelperThread(const char* name);
+
     std::atomic<State> m_state;
     std::atomic<int> m_trackNumber;
 
