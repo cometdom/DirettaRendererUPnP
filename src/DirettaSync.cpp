@@ -11,8 +11,11 @@
  */
 
 #include "DirettaSync.h"
+#include <Release.hpp>
 #include <stdexcept>
 #include <iomanip>
+#include <type_traits>
+#include <utility>
 #include <pthread.h>
 #include <sched.h>
 #include <vector>
@@ -75,6 +78,25 @@ bool setRealtimePriority(int priority = 50) {
         std::cout << "[DirettaSync] Worker thread set to SCHED_FIFO priority " << priority << std::endl;
     }
     return true;
+}
+
+// SDK 150 added a second parameter to Sync::connect(int cpu, bool rapidStart);
+// SDK 149 has connect(int) only and still builds and runs this renderer.
+// Resolve the overload at compile time instead of pinning the SDK version.
+template <typename S, typename = void>
+struct SdkHasRapidStart : std::false_type {};
+template <typename S>
+struct SdkHasRapidStart<S, std::void_t<decltype(std::declval<S&>().connect(int{}, bool{}))>>
+    : std::true_type {};
+
+template <typename S>
+static bool sdkConnect(S& sync, int cpu, bool rapidStart) {
+    if constexpr (SdkHasRapidStart<S>::value) {
+        return sync.connect(cpu, rapidStart);
+    } else {
+        (void)rapidStart;
+        return sync.connect(cpu);
+    }
 }
 
 class RingAccessGuard {
@@ -777,12 +799,20 @@ bool DirettaSync::open(const AudioFormat& format) {
     bool sinkSet = false;
     int maxAttempts = needFullConnect ? DirettaRetry::SETSINK_RETRIES_FULL : DirettaRetry::SETSINK_RETRIES_QUICK;
     int retryDelayMs = needFullConnect ? DirettaRetry::SETSINK_DELAY_FULL_MS : DirettaRetry::SETSINK_DELAY_QUICK_MS;
+    // setSink()'s 2nd argument is the SINK BUFFER TIME ("if zero use default
+    // sink buffer time" — Sync.hpp), not the host cycle time. v2.5.15 passed
+    // the cycle time here (5-15 ms depending on rate and MTU). That is kept
+    // as the default so nothing changes silently; --sink-buffer-ms 0 asks for
+    // the sink's own default, >0 a value in ms.
+    ACQUA::Clock sinkBuffer = (m_config.sinkBufferMs < 0) ? cycleTime
+        : (m_config.sinkBufferMs == 0) ? ACQUA::Clock::MicroSeconds(0)
+        : ACQUA::Clock::MilliSeconds(m_config.sinkBufferMs);
     for (int attempt = 0; attempt < maxAttempts && !sinkSet; attempt++) {
         if (attempt > 0) {
             DIRETTA_LOG("setSink retry #" << attempt);
             std::this_thread::sleep_for(std::chrono::milliseconds(retryDelayMs));
         }
-        sinkSet = setSink(m_targetAddress, cycleTime, false, m_effectiveMTU);
+        sinkSet = setSink(m_targetAddress, sinkBuffer, false, m_effectiveMTU);
     }
 
     if (!sinkSet) {
@@ -803,6 +833,8 @@ bool DirettaSync::open(const AudioFormat& format) {
     }
 
     applyTransferMode(m_config.transferMode, cycleTime);
+    logNegotiatedProfile("after applyTransferMode");
+    alignBufferToNegotiatedCycle();
 
     // Connect sequence - only needed after disconnect
     if (needFullConnect) {
@@ -811,13 +843,26 @@ bool DirettaSync::open(const AudioFormat& format) {
             return false;
         }
 
+        // connect()'s 1st argument is the "CPU number occupied by the send
+        // thread (default -1 not set CPU occupied)" — Sync.hpp (SDK 150 wording).
+        // Earlier versions passed 0, i.e. asked the SDK to occupy CPU 0 — the
+        // housekeeping core carrying every IRQ — while the worker was pinned to
+        // --cpu-audio. Use the same core as the worker, or -1 when unpinned.
+        auto audioCores = parseCoreListStr(m_config.cpuAudio);
+        int sdkConnectCpu = audioCores.empty() ? -1 : audioCores[0];
+
+        if (m_config.rapidStart && !SdkHasRapidStart<DIRETTA::Sync>::value) {
+            LOG_WARN("[DirettaSync] --rapid-start needs SDK 150+ (built against "
+                     << DIRETTA::ReleaseNo << "), ignored");
+        }
+
         bool connected = false;
         for (int attempt = 0; attempt < DirettaRetry::CONNECT_RETRIES && !connected; attempt++) {
             if (attempt > 0) {
                 DIRETTA_LOG("connect retry #" << attempt);
                 std::this_thread::sleep_for(std::chrono::milliseconds(DirettaRetry::CONNECT_DELAY_MS));
             }
-            connected = connect(0);
+            connected = sdkConnect(*this, sdkConnectCpu, m_config.rapidStart);
         }
 
         if (!connected) {
@@ -830,6 +875,8 @@ bool DirettaSync::open(const AudioFormat& format) {
             disconnect();
             return false;
         }
+        logNegotiatedProfile("after connectWait");
+        alignBufferToNegotiatedCycle();
     } else {
         DIRETTA_LOG("Skipping connect sequence (still connected)");
     }
@@ -2127,6 +2174,18 @@ void DirettaSync::applyTransferMode(DirettaTransferMode mode, ACQUA::Clock cycle
 
     // SelfProfile path: direct Sync calls (no target adaptation)
     switch (effectiveMode) {
+        case DirettaTransferMode::AUTO_SDK: {
+            // Sync::configTransferAuto(minSyncTime, targetCycle, maxCycle):
+            // "Minimum Sync System Time / Target Cycle Time (zero = default) /
+            // Maximum Cycle Time (recovery when the system is busy)". SinHost
+            // uses (200 µs, 0, 100 ms); --cycle-min-time overrides the minimum.
+            ACQUA::Clock minSync = (m_config.cycleMinTime > 0)
+                ? ACQUA::Clock::MicroSeconds(m_config.cycleMinTime)
+                : ACQUA::Clock::MicroSeconds(200);
+            DIRETTA_LOG("Using SDK Auto (min=" << minSync.getMicroSeconds() << "us, target=default, max=100ms)");
+            configTransferAuto(minSync, ACQUA::Clock::MicroSeconds(0), ACQUA::Clock::MilliSeconds(100));
+            break;
+        }
         case DirettaTransferMode::FIX_AUTO:
             DIRETTA_LOG("Using FixAuto");
             configTransferFixAuto(cycleTime);
@@ -2149,6 +2208,65 @@ void DirettaSync::applyTransferMode(DirettaTransferMode mode, ACQUA::Clock cycle
             configTransferVarMax(cycleTime);
             break;
     }
+}
+
+// In a FIX profile the SDK sends exactly getCycleSize() bytes per cycle and
+// expects getNewStream() to hand it that much: with our usual 1 ms buffers
+// (half a 2 ms cycle) the target stayed silent although the ring was full
+// and every callback answered (observed with --transfer-mode auto-sdk on a
+// Holo Red: cycle=2000µs cycleSize=704B, ourBytesPerBuffer=352). VARIABLE
+// profiles adapt to whatever we give, so nothing changes for them. The
+// 44.1 kHz drift accumulator is disabled: a fixed cycle is a fixed byte
+// count, the SDK's clock feedback owns the timing.
+void DirettaSync::alignBufferToNegotiatedCycle() {
+    if (static_cast<int>(getMode()) != 1 /* FIX */) return;
+    size_t cycleSize = getCycleSize();
+    if (cycleSize == 0) return;
+
+    int channels = m_channels.load(std::memory_order_acquire);
+    int bytesPerFrame = m_bytesPerFrame.load(std::memory_order_acquire);
+    if (bytesPerFrame <= 0) bytesPerFrame = 4 * std::max(1, channels);  // DSD: 32-bit groups
+    int frames = static_cast<int>(cycleSize / bytesPerFrame);
+    // DoP keeps every pop an even number of frames so a silence -> audio
+    // transition always resumes on a 0x05 marker (v2.5.8 invariant).
+    if (m_isDoPMode.load(std::memory_order_acquire) && (frames & 1)) frames--;
+    int bytesPerBuffer = frames * bytesPerFrame;
+    if (bytesPerBuffer <= 0) return;
+
+    int previous = m_bytesPerBuffer.load(std::memory_order_acquire);
+    if (bytesPerBuffer == previous && m_framesPerBufferRemainder.load(std::memory_order_acquire) == 0) return;
+
+    m_bytesPerBuffer.store(bytesPerBuffer, std::memory_order_release);
+    m_framesPerBufferRemainder.store(0, std::memory_order_release);
+    m_framesPerBufferAccumulator.store(0, std::memory_order_release);
+    m_consumerStateGen.fetch_add(1, std::memory_order_release);
+
+    LOG_INFO("[DirettaSync] FIX profile: callback buffer " << previous << " -> " << bytesPerBuffer
+             << " bytes (cycleSize=" << cycleSize << ", " << bytesPerBuffer / bytesPerFrame << " frames)");
+}
+
+// What the SDK actually negotiated. DRUP never read these before, so nobody
+// knew whether the "1 ms" callback size, the computed cycle and the packet
+// count the SDK settled on matched — every tuning discussion was blind.
+void DirettaSync::logNegotiatedProfile(const char* when) {
+    static const char* modeNames[] = {"VARIABLE", "FIX", "RANDOM", "TRIANGOLO"};
+    int mode = static_cast<int>(getMode());
+    const char* modeName = (mode >= 0 && mode < 4) ? modeNames[mode] : "?";
+    const auto& info = getSinkInfo();
+    LOG_INFO("[DirettaSync] SDK profile " << when
+             << ": cycle=" << getCycleTime().getMicroSeconds() << "us"
+             << " minCycle=" << getMinCycleTime().getMicroSeconds() << "us"
+             << " cycleSize=" << getCycleSize() << "B"
+             << " packets/cycle=" << getCyclePackets()
+             << " mode=" << modeName
+             << " msMode=" << static_cast<int>(is_MSmode())
+             << " latency=" << getLatency().getMicroSeconds() << "us"
+             << " sink{latencyBuffer=" << info.latencyBuffer
+             << " latencyMax=" << info.latencyMax
+             << " maxSize=" << info.maxSize
+             << " reqMTU=" << info.reqMTU
+             << " maxMTU=" << info.maxMTU << "}"
+             << " ourBytesPerBuffer=" << m_bytesPerBuffer.load(std::memory_order_relaxed));
 }
 
 unsigned int DirettaSync::calculateCycleTime(uint32_t sampleRate, int channels, int bitsPerSample) {

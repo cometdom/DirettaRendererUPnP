@@ -247,11 +247,15 @@ bool DirettaRenderer::start(std::atomic<bool>* stopSignal) {
                 syncConfig.transferMode = DirettaTransferMode::FIX_AUTO;
             else if (m_config.transferMode == "random")
                 syncConfig.transferMode = DirettaTransferMode::RANDOM;
+            else if (m_config.transferMode == "auto-sdk")
+                syncConfig.transferMode = DirettaTransferMode::AUTO_SDK;
             else
                 syncConfig.transferMode = DirettaTransferMode::AUTO;
         }
         if (m_config.targetProfileLimitTime >= 0)
             syncConfig.targetProfileLimitTime = static_cast<unsigned int>(m_config.targetProfileLimitTime);
+        syncConfig.sinkBufferMs = m_config.sinkBufferMs;   // <0 keeps the v2.5.15 behaviour
+        syncConfig.rapidStart = m_config.rapidStart;
 
         // CPU affinity (pass full core list to DirettaSync for worker thread pinning)
         syncConfig.cpuAudio = m_config.cpuAudio;

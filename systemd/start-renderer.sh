@@ -205,6 +205,18 @@ if [ -n "$TARGET_PROFILE_LIMIT" ]; then
     CMD+=("--target-profile-limit" "$TARGET_PROFILE_LIMIT")
 fi
 
+# Sink (target) buffer time requested at setSink(), ms (0 = sink default).
+SINK_BUFFER_MS="${SINK_BUFFER_MS:-}"
+if [ -n "$SINK_BUFFER_MS" ]; then
+    CMD+=("--sink-buffer-ms" "$SINK_BUFFER_MS")
+fi
+
+# SDK 150 Rapid Start (A/B only; semantics undocumented).
+RAPID_START="${RAPID_START:-}"
+if [ "$RAPID_START" = "1" ]; then
+    CMD+=("--rapid-start")
+fi
+
 if [ -n "$MTU" ]; then
     CMD+=("--mtu" "$MTU")
 fi
