@@ -760,8 +760,13 @@ bool DirettaSync::open(const AudioFormat& format) {
                   << " -> " << pcmRate << "Hz 24-bit PCM" << std::endl;
         DIRETTA_LOG("DoP: dsdBitRate=" << dsdBitRate << " pcmRate=" << pcmRate);
 
-        int acceptedBits;
-        configureSinkPCM(static_cast<int>(pcmRate), format.channels, 24, acceptedBits);
+        int acceptedBits = 0;
+        if (!configureSinkPCM(static_cast<int>(pcmRate), format.channels, 24, acceptedBits)
+            || acceptedBits != 24) {
+            // DoP needs exactly 24-bit frames on the wire (markers in the top byte)
+            std::cerr << "[DirettaSync] DoP needs a 24-bit PCM sink at " << pcmRate << "Hz" << std::endl;
+            return false;
+        }
         // isDoPMode=true: sets m_isDoPMode atomic before the gen bump
         configureRingPCM(static_cast<int>(pcmRate), format.channels, 3, 3, true);
     } else if (m_isDsdMode.load(std::memory_order_acquire)) {
@@ -777,8 +782,12 @@ bool DirettaSync::open(const AudioFormat& format) {
     } else {
         effectiveSampleRate = format.sampleRate;
 
-        int acceptedBits;
-        configureSinkPCM(format.sampleRate, format.channels, format.bitDepth, acceptedBits);
+        int acceptedBits = 0;
+        if (!configureSinkPCM(format.sampleRate, format.channels, format.bitDepth, acceptedBits)) {
+            // Unsupported format is a per-track condition, not a crash: the
+            // renderer reports the failure and moves on to the next track.
+            return false;
+        }
         bitsPerSample = acceptedBits;
 
         int direttaBps = (acceptedBits == 32) ? 4 : (acceptedBits == 24) ? 3 : 2;
@@ -1072,6 +1081,7 @@ void DirettaSync::fullReset() {
         m_need24BitPack.store(false, std::memory_order_release);
         m_need16To32Upsample.store(false, std::memory_order_release);
         m_need16To24Upsample.store(false, std::memory_order_release);
+        m_need32To16Truncate.store(false, std::memory_order_release);
         m_bytesPerFrame.store(0, std::memory_order_release);
         m_framesPerBufferRemainder.store(0, std::memory_order_release);
         m_framesPerBufferAccumulator.store(0, std::memory_order_release);
@@ -1089,49 +1099,48 @@ void DirettaSync::fullReset() {
 // Sink Configuration
 //=============================================================================
 
-void DirettaSync::configureSinkPCM(int rate, int channels, int inputBits, int& acceptedBits) {
+bool DirettaSync::configureSinkPCM(int rate, int channels, int inputBits, int& acceptedBits) {
     std::lock_guard<std::mutex> lock(m_configMutex);
 
     DIRETTA::FormatConfigure fmt;
     fmt.setSpeed(rate);
     fmt.setChannel(channels);
 
-    // Only try 32-bit if source is actually 32-bit.
-    // Prevents silence/noise on DACs that report 32-bit support
-    // but are physically limited to 24-bit.
-    if (inputBits >= 32) {
-        fmt.setFormat(DIRETTA::FormatID::FMT_PCM_SIGNED_32);
-        if (checkSinkSupport(fmt)) {
-            // Stashed, not applied yet — setSinkConfigure() must be called AFTER
+    // Candidate sink widths, in order of preference for this input. 32-bit
+    // is never offered FIRST to a 16/24-bit source (v2.4.4: DACs such as the
+    // TEAC UD-701N announce 32-bit at the Diretta level but are physically
+    // 24-bit and play silence/noise) — it is only a last resort on a sink
+    // that refuses 24-bit, where it is lossless for us (the ring holds S24
+    // in an S32 container; the 32-bit sink path is a plain copy) and beats
+    // a truncation to 16 or a hard failure.
+    //  - 32-bit input: 32 → 24 → 16
+    //  - 24-bit input: 24 → 32 → 16
+    //  - 16-bit input: 24 → 16 → 32 (the historical 24 → 16, plus 32 as last resort)
+    int order[3];
+    if (inputBits >= 32)      { order[0] = 32; order[1] = 24; order[2] = 16; }
+    else if (inputBits == 24) { order[0] = 24; order[1] = 32; order[2] = 16; }
+    else                      { order[0] = 24; order[1] = 16; order[2] = 32; }
+
+    for (int bits : order) {
+        fmt.setFormat(bits == 32 ? DIRETTA::FormatID::FMT_PCM_SIGNED_32
+                    : bits == 24 ? DIRETTA::FormatID::FMT_PCM_SIGNED_24
+                                 : DIRETTA::FormatID::FMT_PCM_SIGNED_16);
+        if (!checkSinkSupport(fmt)) continue;
+        // Stashed, not applied yet — setSinkConfigure() must be called AFTER
         // setSink(), not before (see m_pendingSinkFormat's doc comment).
         m_pendingSinkFormat = fmt;
-            acceptedBits = 32;
-            DIRETTA_LOG("Sink PCM: " << rate << "Hz " << channels << "ch 32-bit");
-            return;
+        acceptedBits = bits;
+        if (bits < inputBits) {
+            LOG_WARN("[DirettaSync] Sink accepts " << bits << "-bit only for a "
+                     << inputBits << "-bit source at " << rate << "Hz — truncating");
         }
+        DIRETTA_LOG("Sink PCM: " << rate << "Hz " << channels << "ch " << bits << "-bit");
+        return true;
     }
 
-    fmt.setFormat(DIRETTA::FormatID::FMT_PCM_SIGNED_24);
-    if (checkSinkSupport(fmt)) {
-        // Stashed, not applied yet — setSinkConfigure() must be called AFTER
-        // setSink(), not before (see m_pendingSinkFormat's doc comment).
-        m_pendingSinkFormat = fmt;
-        acceptedBits = 24;
-        DIRETTA_LOG("Sink PCM: " << rate << "Hz " << channels << "ch 24-bit");
-        return;
-    }
-
-    fmt.setFormat(DIRETTA::FormatID::FMT_PCM_SIGNED_16);
-    if (checkSinkSupport(fmt)) {
-        // Stashed, not applied yet — setSinkConfigure() must be called AFTER
-        // setSink(), not before (see m_pendingSinkFormat's doc comment).
-        m_pendingSinkFormat = fmt;
-        acceptedBits = 16;
-        DIRETTA_LOG("Sink PCM: " << rate << "Hz " << channels << "ch 16-bit");
-        return;
-    }
-
-    throw std::runtime_error("No supported PCM format found");
+    LOG_ERROR("[DirettaSync] No supported PCM format for " << rate << "Hz "
+              << channels << "ch " << inputBits << "-bit");
+    return false;
 }
 
 void DirettaSync::configureSinkDSD(uint32_t dsdBitRate, int channels, const AudioFormat& format) {
@@ -1281,6 +1290,7 @@ void DirettaSync::configureRingPCM(int rate, int channels, int direttaBps, int i
     m_need24BitPack.store(direttaBps == 3 && inputBps == 4, std::memory_order_release);
     m_need16To32Upsample.store(direttaBps == 4 && inputBps == 2, std::memory_order_release);
     m_need16To24Upsample.store(direttaBps == 3 && inputBps == 2, std::memory_order_release);
+    m_need32To16Truncate.store(direttaBps == 2 && inputBps == 4, std::memory_order_release);
     m_isDsdMode.store(false, std::memory_order_release);
     m_isDoPMode.store(isDoPMode, std::memory_order_release);
     m_needDsdBitReversal.store(false, std::memory_order_release);
@@ -1383,6 +1393,7 @@ void DirettaSync::configureRingDSD(uint32_t byteRate, int channels) {
     m_need24BitPack.store(false, std::memory_order_release);
     m_need16To32Upsample.store(false, std::memory_order_release);
     m_need16To24Upsample.store(false, std::memory_order_release);
+    m_need32To16Truncate.store(false, std::memory_order_release);
     m_channels.store(channels, std::memory_order_release);
     m_sampleRate.store(static_cast<int>(byteRate * 8), std::memory_order_release);
     m_bytesPerSample.store(1, std::memory_order_release);
@@ -1567,6 +1578,7 @@ size_t DirettaSync::sendAudio(const uint8_t* data, size_t numSamples) {
         m_cachedPack24bit = m_need24BitPack.load(std::memory_order_acquire);
         m_cachedUpsample16to32 = m_need16To32Upsample.load(std::memory_order_acquire);
         m_cachedUpsample16to24 = m_need16To24Upsample.load(std::memory_order_acquire);
+        m_cachedTruncate32to16 = m_need32To16Truncate.load(std::memory_order_acquire);
         m_cachedChannels = m_channels.load(std::memory_order_acquire);
         m_cachedBytesPerSample = m_bytesPerSample.load(std::memory_order_acquire);
         m_cachedDsdConversionMode = m_dsdConversionMode.load(std::memory_order_acquire);
@@ -1579,6 +1591,7 @@ size_t DirettaSync::sendAudio(const uint8_t* data, size_t numSamples) {
     bool pack24bit = m_cachedPack24bit;
     bool upsample16to32 = m_cachedUpsample16to32;
     bool upsample16to24 = m_cachedUpsample16to24;
+    bool truncate32to16 = m_cachedTruncate32to16;
     int numChannels = m_cachedChannels;
     int bytesPerSample = m_cachedBytesPerSample;
 
@@ -1625,7 +1638,7 @@ size_t DirettaSync::sendAudio(const uint8_t* data, size_t numSamples) {
         size_t bytesPerFrame = 4 * numChannels;  // S24_P32
         totalBytes = numSamples * bytesPerFrame;
 
-        written = m_ringBuffer.push24BitPacked(data, totalBytes);
+        written = m_ringBuffer.push24BitPacked(data, totalBytes, numChannels);
         formatLabel = "PCM24";
 
     } else if (upsample16to32) {
@@ -1633,7 +1646,7 @@ size_t DirettaSync::sendAudio(const uint8_t* data, size_t numSamples) {
         size_t bytesPerFrame = 2 * numChannels;
         totalBytes = numSamples * bytesPerFrame;
 
-        written = m_ringBuffer.push16To32(data, totalBytes);
+        written = m_ringBuffer.push16To32(data, totalBytes, numChannels);
         formatLabel = "PCM16->32";
 
     } else if (upsample16to24) {
@@ -1641,15 +1654,23 @@ size_t DirettaSync::sendAudio(const uint8_t* data, size_t numSamples) {
         size_t bytesPerFrame = 2 * numChannels;
         totalBytes = numSamples * bytesPerFrame;
 
-        written = m_ringBuffer.push16To24(data, totalBytes);
+        written = m_ringBuffer.push16To24(data, totalBytes, numChannels);
         formatLabel = "PCM16->24";
+
+    } else if (truncate32to16) {
+        // PCM 24/32 (S32 container) -> 16 (sink only supports 16-bit)
+        size_t bytesPerFrame = 4 * numChannels;
+        totalBytes = numSamples * bytesPerFrame;
+
+        written = m_ringBuffer.push32To16(data, totalBytes, numChannels);
+        formatLabel = "PCM32->16";
 
     } else {
         // PCM direct copy
         size_t bytesPerFrame = static_cast<size_t>(bytesPerSample) * numChannels;
         totalBytes = numSamples * bytesPerFrame;
 
-        written = m_ringBuffer.push(data, totalBytes);
+        written = m_ringBuffer.push(data, totalBytes, bytesPerFrame);
         formatLabel = "PCM";
     }
 
@@ -1935,9 +1956,11 @@ bool DirettaSync::getNewStream(diretta_stream& baseStream) {
         if (avail >= threshold) {
             m_postReconnectRebuffering.store(false, std::memory_order_relaxed);
             m_rebuffering.store(false, std::memory_order_release);
-            LOG_WARN("[DirettaSync] Rebuffering complete — resuming playback (avail="
-                     << avail << ", threshold=" << threshold << ")"
-                     << (postReconnect ? " [post-reconnect]" : ""));
+            // No iostream here (RT thread): hand the event to the decode thread
+            m_rtRebufferAvail.store(avail, std::memory_order_relaxed);
+            m_rtRebufferThreshold.store(threshold, std::memory_order_relaxed);
+            m_rtRebufferPostReconnect.store(postReconnect, std::memory_order_relaxed);
+            m_rtEvents.fetch_or(RT_EVENT_REBUFFER_COMPLETE, std::memory_order_release);
             // Fall through to normal pop below
         } else {
             fillSilence(dest, currentBytesPerBuffer);
@@ -1951,7 +1974,8 @@ bool DirettaSync::getNewStream(diretta_stream& baseStream) {
         m_underrunCount.fetch_add(1, std::memory_order_relaxed);
         if (!m_rebuffering.load(std::memory_order_relaxed)) {
             m_rebuffering.store(true, std::memory_order_release);
-            LOG_WARN("[DirettaSync] Buffer underrun — entering rebuffering mode (avail=" << avail << ")");
+            m_rtUnderrunAvail.store(avail, std::memory_order_relaxed);
+            m_rtEvents.fetch_or(RT_EVENT_UNDERRUN, std::memory_order_release);
         }
         fillSilence(dest, currentBytesPerBuffer);
         m_workerActive = false;

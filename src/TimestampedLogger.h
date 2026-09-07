@@ -20,6 +20,7 @@
 #include <chrono>
 #include <iomanip>
 #include <sstream>
+#include <cstring>
 
 /**
  * @brief Custom streambuf that automatically adds timestamps to each line
@@ -71,6 +72,42 @@ protected:
 
         // Forward the character to the destination buffer
         return m_dest->sputc(c);
+    }
+
+    /**
+     * @brief Block write: one sputn per line segment instead of one sputc per
+     *        character. std::cerr's stdio stream is unbuffered, so the
+     *        per-character path cost one write(2) per character on every
+     *        warning/error line.
+     */
+    std::streamsize xsputn(const char* s, std::streamsize n) override {
+        std::streamsize done = 0;
+        while (done < n) {
+            if (m_atLineStart && s[done] != '\n') {
+                std::string timestamp = "[" + getTimestamp() + "] ";
+                m_dest->sputn(timestamp.c_str(), timestamp.size());
+                m_atLineStart = false;
+            }
+            const char* nl = static_cast<const char*>(memchr(s + done, '\n', n - done));
+            std::streamsize len = nl ? (nl - (s + done)) + 1 : n - done;
+            if (m_dest->sputn(s + done, len) != len) return done;
+            done += len;
+            if (nl) m_atLineStart = true;
+        }
+        return done;
+    }
+
+    /**
+     * @brief Propagate flushes (std::endl, std::flush) to the wrapped buffer.
+     *
+     * Without this override a flush stopped here and never reached the
+     * stdio buffer behind std::cout. On a terminal that buffer is
+     * line-buffered so nothing was noticed; under systemd stdout is a
+     * socket, fully buffered (4 KB), and log lines only surfaced once
+     * enough of them had piled up — or never, for a quiet renderer.
+     */
+    int sync() override {
+        return m_dest->pubsync();
     }
 
 public:

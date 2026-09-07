@@ -30,6 +30,10 @@ bool test_pushDSD_optimized_integration();
 bool test_pushDSD_dop_encoding();
 bool test_pushDSD_dop_msb_encoding();
 bool test_pushDSD_dop_marker_phase_invariant();
+bool test_s24_hint_survives_clear();
+bool test_s24_timeout_defaults_to_msb();
+bool test_push_whole_frames_only();
+bool test_push32To16_correctness();
 
 int main() {
     std::cout << "=== DirettaRingBuffer Unit Tests ===" << std::endl;
@@ -75,6 +79,12 @@ int main() {
     RUN_TEST(test_pushDSD_dop_encoding);
     RUN_TEST(test_pushDSD_dop_msb_encoding);
     RUN_TEST(test_pushDSD_dop_marker_phase_invariant);
+
+    std::cout << "\n--- Group 7: S24 hint lifecycle, frame alignment, 32->16 ---" << std::endl;
+    RUN_TEST(test_s24_hint_survives_clear);
+    RUN_TEST(test_s24_timeout_defaults_to_msb);
+    RUN_TEST(test_push_whole_frames_only);
+    RUN_TEST(test_push32To16_correctness);
 
     std::cout << std::endl;
     std::cout << "=== Results: " << passed << " passed, " << failed << " failed ===" << std::endl;
@@ -916,5 +926,124 @@ bool test_pushDSD_optimized_integration() {
                 popped[6] == 0x82 && popped[7] == 0x83,
         "DSD R channel interleave incorrect");
 
+    return true;
+}
+
+//=============================================================================
+// Group 7: S24 hint lifecycle, frame alignment, 32->16
+//=============================================================================
+
+// One S24-in-S32 sample, little-endian bytes 44 33 22 11:
+// LSB mode keeps bytes 0-2 (44 33 22), MSB mode keeps bytes 1-3 (33 22 11).
+static void fillS24Pattern(std::vector<uint8_t>& v, size_t samples) {
+    v.resize(samples * 4);
+    for (size_t i = 0; i < samples; i++) {
+        v[i * 4 + 0] = 0x44; v[i * 4 + 1] = 0x33; v[i * 4 + 2] = 0x22; v[i * 4 + 3] = 0x11;
+    }
+}
+
+// resumePlayback() calls clear() and does not re-set the hint: it must survive.
+bool test_s24_hint_survives_clear() {
+    DirettaRingBuffer ring;
+    ring.resize(1 << 16, 0x00);
+    ring.setS24PackModeHint(DirettaRingBuffer::S24PackMode::LsbAligned);
+    ring.clear();   // pause -> resume
+
+    std::vector<uint8_t> in;
+    fillS24Pattern(in, 64);
+    size_t consumed = ring.push24BitPacked(in.data(), in.size(), 2);
+    TEST_ASSERT_EQ(consumed, in.size(), "All samples pushed");
+
+    uint8_t out[6];
+    ring.pop(out, sizeof(out));
+    TEST_ASSERT(out[0] == 0x44 && out[1] == 0x33 && out[2] == 0x22,
+                "Hint (LSB) still applied after clear()");
+
+    // resize() is a new format: the hint is forgotten and sample detection
+    // runs again. A low byte of zero on every sample is what FFmpeg produces
+    // (S24 in S32, left-justified): detection must pick MSB, bytes 1-3.
+    ring.resize(1 << 16, 0x00);
+    for (size_t i = 0; i < in.size(); i += 4) in[i] = 0x00;
+    consumed = ring.push24BitPacked(in.data(), in.size(), 2);
+    ring.pop(out, sizeof(out));
+    TEST_ASSERT(out[0] == 0x33 && out[1] == 0x22 && out[2] == 0x11,
+                "After resize() the hint is gone and detection picks MSB (bytes 1-3)");
+    return true;
+}
+
+// No hint, more than DEFERRED_TIMEOUT_SAMPLES of silence: the lock must be MSB
+// (the only alignment FFmpeg produces), not the former LSB.
+bool test_s24_timeout_defaults_to_msb() {
+    DirettaRingBuffer ring;
+    ring.resize(1 << 20, 0x00);
+
+    std::vector<uint8_t> silence(16384 * 4, 0x00);
+    size_t pushed = 0;
+    uint8_t sink[1 << 15];
+    while (pushed < 60000) {   // > 48000-sample timeout
+        size_t c = ring.push24BitPacked(silence.data(), silence.size(), 2);
+        TEST_ASSERT(c > 0, "Silence push should make progress");
+        pushed += c / 4;
+        while (ring.getAvailable() > 0) ring.pop(sink, sizeof(sink));
+    }
+
+    std::vector<uint8_t> in;
+    fillS24Pattern(in, 64);
+    ring.push24BitPacked(in.data(), in.size(), 2);
+    uint8_t out[6];
+    ring.pop(out, sizeof(out));
+    TEST_ASSERT(out[0] == 0x33 && out[1] == 0x22 && out[2] == 0x11,
+                "Timed-out detection locked MSB (bytes 1-3), not LSB");
+    return true;
+}
+
+// getFreeSpace() is size - used - 1: a push into an almost-full ring must
+// never leave a partial frame behind.
+bool test_push_whole_frames_only() {
+    DirettaRingBuffer ring;
+    ring.resize(1024, 0x00);   // free = 1023 bytes
+
+    // Direct PCM copy, 8-byte frames: 1023 free -> 1016 written (127 frames)
+    std::vector<uint8_t> pcm(2048, 0xAB);
+    size_t w = ring.push(pcm.data(), pcm.size(), 8);
+    TEST_ASSERT_EQ(w, static_cast<size_t>(1016), "push() rounds down to whole 8-byte frames");
+    TEST_ASSERT_EQ(ring.getAvailable() % 8, static_cast<size_t>(0), "Ring holds whole frames only");
+    TEST_ASSERT_EQ(ring.push(pcm.data(), pcm.size(), 8), static_cast<size_t>(0),
+                   "No room for another frame -> 0, not a torn frame");
+
+    // 24-bit packing, stereo: 3 bytes per sample, 6 per frame. Ring 1024 ->
+    // 1023 free -> 341 samples fit, but only 340 (170 frames) may be written.
+    DirettaRingBuffer ring24;
+    ring24.resize(1024, 0x00);
+    ring24.setS24PackModeHint(DirettaRingBuffer::S24PackMode::MsbAligned);
+    std::vector<uint8_t> in;
+    fillS24Pattern(in, 400);
+    size_t consumed = ring24.push24BitPacked(in.data(), in.size(), 2);
+    TEST_ASSERT_EQ(consumed, static_cast<size_t>(340 * 4), "push24BitPacked stops at a frame boundary");
+    TEST_ASSERT_EQ(ring24.getAvailable(), static_cast<size_t>(340 * 3), "1020 bytes = 170 whole frames");
+
+    // 16 -> 32 upsample, stereo: 4 bytes per sample, 8 per frame -> 1016
+    DirettaRingBuffer ring16;
+    ring16.resize(1024, 0x00);
+    std::vector<uint8_t> s16(1024, 0x5A);
+    consumed = ring16.push16To32(s16.data(), s16.size(), 2);
+    TEST_ASSERT_EQ(consumed, static_cast<size_t>(254 * 2), "push16To32 stops at a frame boundary");
+    TEST_ASSERT_EQ(ring16.getAvailable() % 8, static_cast<size_t>(0), "16->32 ring holds whole frames");
+    return true;
+}
+
+bool test_push32To16_correctness() {
+    DirettaRingBuffer ring;
+    ring.resize(4096, 0x00);
+    // Four S32 samples: keep the two most significant bytes of each
+    const uint8_t in[16] = { 0x01, 0x02, 0x03, 0x04,   0x11, 0x12, 0x13, 0x14,
+                             0xA1, 0xA2, 0xA3, 0xA4,   0xF1, 0xF2, 0xF3, 0xF4 };
+    size_t consumed = ring.push32To16(in, sizeof(in), 2);
+    TEST_ASSERT_EQ(consumed, sizeof(in), "All four samples consumed");
+    TEST_ASSERT_EQ(ring.getAvailable(), static_cast<size_t>(8), "Four 16-bit samples in the ring");
+    uint8_t out[8];
+    ring.pop(out, sizeof(out));
+    const uint8_t expect[8] = { 0x03, 0x04, 0x13, 0x14, 0xA3, 0xA4, 0xF3, 0xF4 };
+    TEST_ASSERT(memcmp(out, expect, 8) == 0, "MSB bytes kept, LSB bytes dropped");
     return true;
 }

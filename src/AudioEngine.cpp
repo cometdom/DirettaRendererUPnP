@@ -733,38 +733,15 @@ bool AudioDecoder::open(const std::string& url) {
     // on DACs that only support 24-bit (e.g., TEAC UD-701N).
     m_trackInfo.s24Alignment = TrackInfo::S24Alignment::Unknown;
     if (realBitDepth == 24) {
-        // PCM_S24LE/BE codecs: decoded to S32, audio in upper 24 bits (MSB-aligned)
-        if (codecpar->codec_id == AV_CODEC_ID_PCM_S24LE ||
-            codecpar->codec_id == AV_CODEC_ID_PCM_S24BE) {
-            m_trackInfo.s24Alignment = TrackInfo::S24Alignment::MsbAligned;
-            DEBUG_LOG("[AudioDecoder] S24 hint: MSB-aligned (PCM_S24 in S32)");
-        }
-        // FLAC/ALAC with 24-bit: decoded to S32, audio in upper 24 bits (MSB-aligned)
-        else if (codecpar->codec_id == AV_CODEC_ID_FLAC ||
-                 codecpar->codec_id == AV_CODEC_ID_ALAC) {
-            m_trackInfo.s24Alignment = TrackInfo::S24Alignment::MsbAligned;
-            DEBUG_LOG("[AudioDecoder] S24 hint: MSB-aligned (FLAC/ALAC in S32)");
-        }
-        // Other decoders with S32 format: audio in upper 24 bits (MSB-aligned)
-        else if (m_codecContext->sample_fmt == AV_SAMPLE_FMT_S32 ||
-                 m_codecContext->sample_fmt == AV_SAMPLE_FMT_S32P) {
-            m_trackInfo.s24Alignment = TrackInfo::S24Alignment::MsbAligned;
-            DEBUG_LOG("[AudioDecoder] S24 hint: MSB-aligned (S32 format)");
-        }
-        // Lossy codecs (AAC/MP3/Vorbis/Opus/AC-3/WMA), capped to 24-bit by the
-        // AV_CODEC_PROP_LOSSY block above, decode as float (FLT/FLTP) but the
-        // resampler converts that to AV_SAMPLE_FMT_S32 — so the 24-bit data
-        // sits in the upper 24 bits of S32, MSB-aligned. Without this hint the
-        // ring buffer auto-detects on first push and can pick LsbAligned on
-        // dynamic/silent content, producing white noise on 24-bit-only DACs
-        // (companion to the v2.4.4 sink-negotiation cap; reported by Laurent
-        // for France Musique AAC on TEAC UD-701N via JPLAY iOS).
-        else if (codecDesc &&
-                 (codecDesc->props & AV_CODEC_PROP_LOSSY) &&
-                 !(codecDesc->props & AV_CODEC_PROP_LOSSLESS)) {
-            m_trackInfo.s24Alignment = TrackInfo::S24Alignment::MsbAligned;
-            DEBUG_LOG("[AudioDecoder] S24 hint: MSB-aligned (lossy codec via S32 resampler)");
-        }
+        // Whatever the codec (PCM_S24, FLAC, ALAC, WavPack, TTA, lossy capped
+        // to 24...), the samples handed to the ring are produced by FFmpeg as
+        // S32 (decoder output or swr conversion): audio in the upper 24 bits,
+        // low byte zero — MSB-aligned, always. The old per-codec special cases
+        // and the "leave Unknown" fallback only let the ring's sample-sniffing
+        // heuristic run, and that heuristic mis-fires on a quiet track start.
+        m_trackInfo.s24Alignment = TrackInfo::S24Alignment::MsbAligned;
+        DEBUG_LOG("[AudioDecoder] S24 hint: MSB-aligned (24-bit in S32 container, codec "
+                  << (codecDesc ? codecDesc->name : "?") << ")");
     }
 
     DEBUG_LOG("[AudioDecoder] PCM: " << m_trackInfo.codec
@@ -1292,7 +1269,12 @@ size_t AudioDecoder::readSamples(AudioBuffer& buffer, size_t numSamples,
     // PCM MODE - Normal decoding with resampling
     // ══════════════════════════════════════════════════════════════
 
-    if (!m_codecContext || m_eof || m_readTimeout) {
+    if (!m_codecContext || m_readTimeout) {
+        return 0;
+    }
+    // After EOF the FIFO may still hold the drained decoder tail: serve it
+    // until empty, only then report "no more samples".
+    if (m_eof && (!m_pcmFifo || av_audio_fifo_size(m_pcmFifo) <= 0)) {
         return 0;
     }
 
@@ -1341,6 +1323,9 @@ size_t AudioDecoder::readSamples(AudioBuffer& buffer, size_t numSamples,
             return totalSamplesRead;
         }
     }
+    if (m_eof) {
+        return totalSamplesRead;  // FIFO tail after EOF: nothing left to read
+    }
 
     // Lazy initialization of reusable structures (allocated once, reused via unref)
     if (!m_packet) {
@@ -1355,6 +1340,7 @@ size_t AudioDecoder::readSamples(AudioBuffer& buffer, size_t numSamples,
     }
 
     while (totalSamplesRead < numSamples && !m_eof && !m_readTimeout) {
+        bool draining = false;  // set at EOF: flush packet sent, receive everything
         // Read packet — set 5s deadline so av_read_frame() cannot block indefinitely
         // (protects against live streams via proxy keeping TCP alive with no audio data)
         m_readDeadlineNs.store(
@@ -1374,9 +1360,18 @@ size_t AudioDecoder::readSamples(AudioBuffer& buffer, size_t numSamples,
             if (ret == AVERROR_EOF) {
                 m_eof = true;
                 DEBUG_LOG("[AudioDecoder] EOF reached");
+                LOG_INFO("[AudioDecoder] Samples decoded before EOF: " << totalSamplesRead);
 
-                // Check if we read the expected duration
-                std::cout << "[AudioDecoder] Samples decoded: " << totalSamplesRead << std::endl;
+                // Drain the decoder: codecs with lookahead/overlap (ALAC, AAC,
+                // MP3, Vorbis, Opus, WavPack…) still hold the last frame(s)
+                // until they receive the flush packet. Without it the tail of
+                // every such track was cut. Drained frames beyond this call's
+                // quota go to the FIFO, which later calls serve (see the
+                // m_eof handling at the top of this function).
+                if (!m_rawPacketBypass && !m_trackInfo.isDSD && m_pcmFifo) {
+                    draining = true;
+                    ret = avcodec_send_packet(m_codecContext, nullptr);
+                }
             } else if (ret == AVERROR(ETIMEDOUT)) {
                 std::cerr << "[AudioDecoder] Timeout - connection too slow or lost" << std::endl;
                 m_eof = true;
@@ -1400,11 +1395,11 @@ size_t AudioDecoder::readSamples(AudioBuffer& buffer, size_t numSamples,
                 std::cerr << "[AudioDecoder] Read error (" << ret << "): " << errbuf << std::endl;
                 m_eof = true;
             }
-            break;
+            if (!draining || ret < 0) break;
         }
 
         // Skip non-audio packets
-        if (m_packet->stream_index != m_audioStreamIndex) {
+        if (!draining && m_packet->stream_index != m_audioStreamIndex) {
             av_packet_unref(m_packet);
             continue;
         }
@@ -1412,7 +1407,7 @@ size_t AudioDecoder::readSamples(AudioBuffer& buffer, size_t numSamples,
         // RAW PACKET BYPASS: copy packet data directly, skip codec entirely.
         // Safe only when raw bytes/frame == output bytes/frame (detected in initResampler).
         // Truncated packets (e.g. < 1 complete sample) are silently discarded — no error.
-        if (m_rawPacketBypass) {
+        if (!draining && m_rawPacketBypass) {
             size_t packetSamples = (size_t)m_packet->size / bytesPerSample;
             if (packetSamples > 0) {
                 size_t samplesToCopy = std::min(packetSamples, numSamples - totalSamplesRead);
@@ -1436,16 +1431,18 @@ size_t AudioDecoder::readSamples(AudioBuffer& buffer, size_t numSamples,
         }
 
         // Send packet to decoder
-        ret = avcodec_send_packet(m_codecContext, m_packet);
-        av_packet_unref(m_packet);
+        if (!draining) {
+            ret = avcodec_send_packet(m_codecContext, m_packet);
+            av_packet_unref(m_packet);
 
-        if (ret < 0) {
-            std::cerr << "[AudioDecoder] Error sending packet to decoder" << std::endl;
-            break;
+            if (ret < 0) {
+                std::cerr << "[AudioDecoder] Error sending packet to decoder" << std::endl;
+                break;
+            }
         }
 
-        // Receive decoded frames
-        while (ret >= 0 && totalSamplesRead < numSamples) {
+        // Receive decoded frames (all of them when draining: excess → FIFO)
+        while (ret >= 0 && (draining || totalSamplesRead < numSamples)) {
             ret = avcodec_receive_frame(m_codecContext, m_frame);
 
             if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
@@ -1500,7 +1497,10 @@ size_t AudioDecoder::readSamples(AudioBuffer& buffer, size_t numSamples,
 
             } else {
                 // PCM: Resample if needed, or bypass for bit-perfect playback
-                size_t samplesNeeded = numSamples - totalSamplesRead;
+                // Every copy below is clamped by samplesNeeded, so totalSamplesRead
+                // never exceeds numSamples (while draining it stays there and
+                // whole frames go to the FIFO); the guard makes that explicit.
+                size_t samplesNeeded = (totalSamplesRead < numSamples) ? numSamples - totalSamplesRead : 0;
 
                 // Check for bypass format mismatch (canBypass checked codec context,
                 // but actual frame format could differ at runtime)
@@ -1638,6 +1638,22 @@ size_t AudioDecoder::readSamples(AudioBuffer& buffer, size_t numSamples,
             }
 
             av_frame_unref(m_frame);
+        }
+
+        if (draining) {
+            // The resampler keeps a few output samples of its own — flush them too
+            if (m_swrContext && !m_bypassMode) {
+                uint8_t* tempPtr = m_resampleBuffer.data();
+                int maxOut = static_cast<int>(m_resampleBufferCapacity / bytesPerSample);
+                int flushed = swr_convert(m_swrContext, &tempPtr, maxOut, nullptr, 0);
+                if (flushed > 0) {
+                    uint8_t* ptrs[1] = { tempPtr };
+                    av_audio_fifo_write(m_pcmFifo, (void**)ptrs, flushed);
+                }
+            }
+            DEBUG_LOG("[AudioDecoder] Decoder drained, " << av_audio_fifo_size(m_pcmFifo)
+                      << " samples left in FIFO");
+            break;
         }
     }
 
@@ -2259,28 +2275,6 @@ bool AudioEngine::process(size_t samplesNeeded) {
         lock.lock();
     }
 
-    if (samplesRead > 0) {
-        // Call audio callback to send data to output
-        if (m_audioCallback) {
-            bool continuePlayback = m_audioCallback(
-                m_buffer,
-                samplesRead,
-                outputRate,
-                outputBits,
-                outputChannels
-            );
-
-            if (!continuePlayback) {
-                std::cout << "[AudioEngine] Playback stopped by callback" << std::endl;
-                m_state = State::STOPPED;
-                return false;
-            }
-        }
-
-        m_samplesPlayed += samplesRead;
-        m_liveStreamReconnects = 0;  // Good audio received — reset reconnect counter
-    }
-
     // Fatal decoder conditions checked before samplesRead == 0 because an error
     // can occur after a partial read (samplesRead > 0). Both trigger an immediate
     // clean stop without drain delay — mirrors v2.4.5 teardown ordering.
@@ -2303,6 +2297,31 @@ bool AudioEngine::process(size_t samplesNeeded) {
             m_trackEndCallback();
         }
     };
+
+    if (samplesRead > 0) {
+        // Call audio callback to send data to output
+        if (m_audioCallback) {
+            bool continuePlayback = m_audioCallback(
+                m_buffer,
+                samplesRead,
+                outputRate,
+                outputBits,
+                outputChannels
+            );
+
+            if (!continuePlayback) {
+                // The output refused the track (e.g. sink negotiation failed):
+                // tear down like any fatal error so the UPnP side sees STOPPED
+                // and the idle release timer starts — not a silent PLAYING zombie.
+                triggerFatalStop("Playback stopped by output, triggering clean stop");
+                return false;
+            }
+        }
+
+        m_samplesPlayed += samplesRead;
+        m_liveStreamReconnects = 0;  // Good audio received — reset reconnect counter
+    }
+
 
     if (m_currentDecoder && m_currentDecoder->hasDecodeError()) {
         triggerFatalStop("Fatal decoder error (corrupt packet), triggering clean stop");

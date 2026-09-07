@@ -959,6 +959,20 @@ void DirettaRenderer::audioThreadFunc() {
                 bufferLevel = m_direttaSync->getBufferLevel();
             }
 
+            // Log what the SDK worker thread could not (no iostream on the RT path)
+            if (uint32_t ev = m_direttaSync ? m_direttaSync->consumeRtEvents() : 0) {
+                if (ev & DirettaSync::RT_EVENT_UNDERRUN) {
+                    LOG_WARN("[DirettaSync] Buffer underrun — entering rebuffering mode (avail="
+                             << m_direttaSync->lastUnderrunAvail() << ")");
+                }
+                if (ev & DirettaSync::RT_EVENT_REBUFFER_COMPLETE) {
+                    LOG_WARN("[DirettaSync] Rebuffering complete — resuming playback (avail="
+                             << m_direttaSync->lastRebufferAvail() << ", threshold="
+                             << m_direttaSync->lastRebufferThreshold() << ")"
+                             << (m_direttaSync->lastRebufferWasPostReconnect() ? " [post-reconnect]" : ""));
+                }
+            }
+
             if (bufferLevel > BUFFER_HIGH_THRESHOLD) {
                 // Buffer is healthy - throttle to avoid wasting CPU
                 std::this_thread::sleep_for(std::chrono::milliseconds(10));
