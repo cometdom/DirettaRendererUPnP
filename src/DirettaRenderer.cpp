@@ -878,17 +878,7 @@ void DirettaRenderer::stop() {
     if (m_audioThread.joinable()) m_audioThread.join();
     if (m_positionThread.joinable()) m_positionThread.join();
 
-    {
-        std::lock_guard<std::mutex> lock(m_stopMutex);
-    }
-    m_stopCv.notify_all();
-
     DEBUG_LOG("[DirettaRenderer] Stopped");
-}
-
-void DirettaRenderer::waitUntilStopped() {
-    std::unique_lock<std::mutex> lock(m_stopMutex);
-    m_stopCv.wait(lock, [this] { return !m_running.load(std::memory_order_acquire); });
 }
 
 //=============================================================================

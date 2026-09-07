@@ -73,6 +73,19 @@ protected:
         return m_dest->sputc(c);
     }
 
+    /**
+     * @brief Propagate flushes (std::endl, std::flush) to the wrapped buffer.
+     *
+     * Without this override a flush stopped here and never reached the
+     * stdio buffer behind std::cout. On a terminal that buffer is
+     * line-buffered so nothing was noticed; under systemd stdout is a
+     * socket, fully buffered (4 KB), and log lines only surfaced once
+     * enough of them had piled up — or never, for a quiet renderer.
+     */
+    int sync() override {
+        return m_dest->pubsync();
+    }
+
 public:
     /**
      * @brief Constructor

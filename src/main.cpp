@@ -22,6 +22,8 @@
 #include <sched.h>
 #include <sys/mman.h>
 #include <malloc.h>
+#include <unistd.h>
+#include <fcntl.h>
 #include <vector>
 #include <sstream>
 #include <string>
@@ -55,14 +57,24 @@ void shutdownAsyncLogging() {
     }
 }
 
+// Shutdown wake-up: the handler only flips the flag and writes one byte to a
+// self-pipe (both async-signal-safe); the main thread, blocked in read() on
+// the other end, does the actual stop and returns from main() normally.
+// The previous handler called stop() and exit() from inside the handler;
+// exit() ran the destructors of the objects the interrupted main thread was
+// still using (a condition variable it was waiting on → pthread_cond_destroy
+// waits forever for the waiter → systemd stop timeout → SIGABRT).
+static int g_wakePipe[2] = {-1, -1};
+static std::atomic<int> g_lastSignal{0};
+
 void signalHandler(int signal) {
-    std::cout << "\nSignal " << signal << " received, shutting down..." << std::endl;
+    g_lastSignal.store(signal, std::memory_order_relaxed);
     g_running.store(false, std::memory_order_release);
-    if (g_renderer) {
-        g_renderer->stop();
+    if (g_wakePipe[1] >= 0) {
+        char c = 1;
+        ssize_t r = write(g_wakePipe[1], &c, 1);
+        (void)r;
     }
-    shutdownAsyncLogging();
-    exit(0);
 }
 
 void statsSignalHandler(int /*signal*/) {
@@ -452,6 +464,10 @@ int main(int argc, char* argv[]) {
     TimestampedStreambuf* cerrBuf = nullptr;
     installTimestampedLogging(coutBuf, cerrBuf);
 
+    if (pipe2(g_wakePipe, O_CLOEXEC) != 0) {
+        std::cerr << "pipe2 failed: " << std::strerror(errno) << std::endl;
+        return 1;
+    }
     signal(SIGINT, signalHandler);
     signal(SIGTERM, signalHandler);
     signal(SIGUSR1, statsSignalHandler);
@@ -651,8 +667,15 @@ int main(int argc, char* argv[]) {
         // Main thread has never had SIGINT/SIGTERM blocked (see the comment
         // near the top of main()) — nothing to unblock here.
 
-        // Block until stop() (signal handler) — no periodic wake-up.
-        g_renderer->waitUntilStopped();
+        // Block until a shutdown signal — no periodic wake-up. The byte is
+        // written by signalHandler(); a signal that arrived before this
+        // point has already left it in the pipe.
+        char wake;
+        while (read(g_wakePipe[0], &wake, 1) < 0 && errno == EINTR) {}
+
+        std::cout << "\nSignal " << g_lastSignal.load(std::memory_order_relaxed)
+                  << " received, shutting down..." << std::endl;
+        g_renderer->stop();
 
     } catch (const std::exception& e) {
         std::cerr << "Exception: " << e.what() << std::endl;
