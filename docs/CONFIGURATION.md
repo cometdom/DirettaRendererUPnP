@@ -182,6 +182,10 @@ sudo ./DirettaRendererUPnP --target 1 --transfer-mode fixauto
 **Default**: off
 **Description**: SDK 150 `Sync::connect(cpu, rapidStart=true)`. Undocumented beyond its name; provided for A/B testing only.
 
+#### `--port-strict`
+**Default**: off (libupnp's behaviour: if the configured port is still held by `TIME_WAIT` connections of the previous instance, take port+1 and announce it over SSDP)
+**Description**: Wait (up to 75 s) for the configured port instead. Only useful with control points that cache the renderer's address and ignore the SSDP announcement (JPLAY); it costs up to a minute without a renderer after a hot restart. `PORT_STRICT=1` in the conf file.
+
 #### `--no-prefetch`
 **Default**: prefetch enabled
 **Description**: By default every HTTP source is read by a dedicated `SCHED_OTHER` thread pinned to the `--cpu-other` cores, 4 MB ahead of the demuxer, so the decode thread never performs network I/O. `--no-prefetch` restores FFmpeg's synchronous reads on the decode thread.

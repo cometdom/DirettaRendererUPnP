@@ -350,6 +350,7 @@ bool DirettaRenderer::start(std::atomic<bool>* stopSignal) {
         upnpConfig.modelName = "Diretta UPnP Renderer";
         upnpConfig.uuid = m_config.uuid;
         upnpConfig.port = m_config.port;
+        upnpConfig.portStrict = m_config.portStrict;
         upnpConfig.networkInterface = m_config.networkInterface;
         upnpConfig.gaplessEnabled = m_config.gaplessEnabled;
 
@@ -778,6 +779,7 @@ bool DirettaRenderer::start(std::atomic<bool>* stopSignal) {
         };
 
         m_upnp->setCallbacks(callbacks);
+        m_upnp->setStopSignal(stopSignal);
 
         // Start UPnP server (retry until network is ready or cancelled)
         {

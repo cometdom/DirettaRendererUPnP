@@ -87,11 +87,59 @@ bool UPnPDevice::start() {
         std::cout << "🌐 Using default interface for UPnP (auto-detect)" << std::endl;
     }
     
-    int ret = UpnpInit2(interfaceName, m_config.port);
-    if (ret != UPNP_E_SUCCESS) {
-        std::cerr << "[UPnPDevice] UpnpInit2 failed: " << ret << std::endl;
-        UpnpFinish();  // Clean up for potential retry
-        return false;
+    // libupnp is normally built without SO_REUSEADDR on its miniserver
+    // (UPNP_MINISERVER_REUSEADDR undefined in upnpconfig.h). After a hot
+    // restart the control point's connections to the old instance are
+    // still in TIME_WAIT on our port, bind() fails, and libupnp silently
+    // takes port+1 and announces the new LOCATION over SSDP. Most control
+    // points follow that; some (JPLAY) keep the cached address and never
+    // reach the new instance. With --port-strict (PORT_STRICT=1) a fixed
+    // port is insisted on: tear down and retry every 2 s until the
+    // TIME_WAIT sockets have expired (60 s on Linux, not tunable) — at the
+    // cost of up to a minute without a renderer after a hot restart, which
+    // is why it is opt-in.
+    constexpr int PORT_RETRY_INTERVAL_S = 2;
+    constexpr int PORT_RETRY_MAX_S = 75;
+    int ret;
+    int waitedS = 0;
+    for (;;) {
+        ret = UpnpInit2(interfaceName, m_config.port);
+        if (ret != UPNP_E_SUCCESS) {
+            std::cerr << "[UPnPDevice] UpnpInit2 failed: " << ret << std::endl;
+            UpnpFinish();  // Clean up for potential retry
+            return false;
+        }
+        if (m_config.port == 0 || !m_config.portStrict || UpnpGetServerPort() == m_config.port) break;
+
+        unsigned short got = UpnpGetServerPort();
+        UpnpFinish();
+        if (waitedS >= PORT_RETRY_MAX_S) {
+            std::cerr << "[UPnPDevice] Port " << m_config.port << " still busy after "
+                      << waitedS << "s — giving up on the fixed port, using " << got << std::endl;
+            ret = UpnpInit2(interfaceName, m_config.port);
+            if (ret != UPNP_E_SUCCESS) { UpnpFinish(); return false; }
+            break;
+        }
+        if (waitedS == 0) {
+            LOG_WARN("[UPnPDevice] Port " << m_config.port << " busy (TIME_WAIT from the previous "
+                     << "instance?), libupnp offered " << got << " — waiting for the configured port");
+        }
+        // Stay interruptible: a shutdown during the wait must not sit it out
+        for (int slept = 0; slept < PORT_RETRY_INTERVAL_S * 10; slept++) {
+            if (m_stopSignal && !m_stopSignal->load(std::memory_order_acquire)) {
+                LOG_WARN("[UPnPDevice] Startup cancelled while waiting for port " << m_config.port);
+                return false;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+        waitedS += PORT_RETRY_INTERVAL_S;
+    }
+    if (waitedS > 0) {
+        LOG_WARN("[UPnPDevice] Port " << m_config.port << " acquired after " << waitedS << "s");
+    } else if (m_config.port != 0 && UpnpGetServerPort() != m_config.port) {
+        LOG_WARN("[UPnPDevice] Port " << m_config.port << " busy (TIME_WAIT from the previous instance?), "
+                 << "using " << UpnpGetServerPort() << " — control points that cache the address may "
+                 << "need a rescan; see --port-strict");
     }
 
     // Afficher l'IP et port utilisés

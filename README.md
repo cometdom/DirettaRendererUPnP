@@ -985,6 +985,7 @@ These options allow fine-tuning the Diretta SDK transmission behavior. **Leave a
 --sink-buffer-ms <ms>       Sink buffer time at setSink (default: the cycle time; 0 = sink default)
 --rapid-start               SDK 150 rapid start (A/B only)
 --no-prefetch               Read HTTP sources on the decode thread instead of the prefetch thread
+--port-strict               Wait for the configured UPnP port after a hot restart (control points caching the address, e.g. JPLAY)
 --target-profile-limit <us> Target profile limit (0=SelfProfile (stable), default: 0, >0=experimental)
 --mtu <bytes>               MTU override (default: auto-detect)
 ```

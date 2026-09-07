@@ -272,6 +272,9 @@ DirettaRenderer::Config parseArguments(int argc, char* argv[]) {
             g_minimalUPnP = true;
             std::cout << "Minimal UPnP mode enabled (no position polling, no events)" << std::endl;
         }
+        else if (arg == "--port-strict") {
+            config.portStrict = true;
+        }
         else if (arg == "--no-prefetch") {
             g_prefetchEnabled = false;
             std::cout << "HTTP prefetch thread disabled (FFmpeg reads on the decode thread)" << std::endl;
@@ -408,6 +411,9 @@ DirettaRenderer::Config parseArguments(int argc, char* argv[]) {
                       << "  --verbose, -v         Enable verbose debug output (log level: DEBUG)\n"
                       << "  --quiet, -q           Quiet mode - only errors and warnings (log level: WARN)\n"
                       << "  --minimal-upnp        Minimal UPnP mode (no position polling, no events)\n"
+                      << "  --port-strict         After a hot restart, wait (up to 75 s) for the configured UPnP port\n"
+                      << "                        instead of accepting port+1 — for control points that cache the\n"
+                      << "                        renderer's address (JPLAY)\n"
                       << "  --no-prefetch         Read HTTP sources on the decode thread (default: dedicated\n"
                       << "                        prefetch thread on --cpu-other, 4 MB ahead)\n"
                       << "  --dop                 DoP mode: encode DSD as 24-bit PCM (DSD over PCM)\n"

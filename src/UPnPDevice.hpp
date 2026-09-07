@@ -51,6 +51,7 @@ public:
         std::string modelName;
         std::string uuid;
         int port;
+        bool portStrict = false;   // wait for the configured port instead of accepting port+1
         std::string networkInterface;
         
         Config() 
@@ -71,6 +72,9 @@ public:
     // Lifecycle
     bool start();
     void stop();
+
+    /** @brief Optional shutdown flag (false = stop) checked by start()'s wait loops. */
+    void setStopSignal(std::atomic<bool>* stopSignal) { m_stopSignal = stopSignal; }
     bool isRunning() const { return m_running; }
     
     // Callbacks
@@ -178,6 +182,7 @@ private:
     
     // State
     mutable std::mutex m_stateMutex;
+    std::atomic<bool>* m_stopSignal = nullptr;
     bool m_running;
     std::string m_ipAddress;
     int m_actualPort;
