@@ -638,10 +638,15 @@ int UPnPDevice::actionSeek(UpnpActionRequest* request) {
     std::string target = getArgumentValue(actionDoc, "Target");
     
     std::cout << "[UPnPDevice] Seek: " << unit << " = " << target << std::endl;
-    
-    // Callback
+
+    // Callback — only time units. TRACK_NR / TRACK_INDEX targets are track
+    // numbers ("1"), which used to be applied as seconds.
     if (m_callbacks.onSeek) {
-        m_callbacks.onSeek(target);
+        if (unit == "REL_TIME" || unit == "ABS_TIME" || unit.empty()) {
+            m_callbacks.onSeek(target);
+        } else {
+            std::cout << "[UPnPDevice] Seek unit " << unit << " ignored (single-track renderer)" << std::endl;
+        }
     }
     
     // Response

@@ -350,6 +350,13 @@ public:
     using TrackEndCallback = std::function<void()>;
 
     /**
+     * @brief Callback invoked (on the audio thread) right after the decoder
+     *        seeked successfully — the output side drops what it buffered.
+     * @param seconds New position
+     */
+    using SeekCallback = std::function<void(double)>;
+
+    /**
      * @brief Constructor
      */
     AudioEngine();
@@ -370,6 +377,9 @@ public:
      * @param callback Callback function
      */
     void setTrackChangeCallback(const TrackChangeCallback& callback);
+
+    /** @brief Set the post-seek callback */
+    void setSeekCallback(const SeekCallback& callback) { m_seekCallback = callback; }
 
     /**
      * @brief Set track end callback
@@ -479,6 +489,7 @@ private:
     // Callbacks
     AudioCallback m_audioCallback;
     TrackChangeCallback m_trackChangeCallback;
+    SeekCallback m_seekCallback;
 
     // Synchronization
     mutable std::mutex m_mutex;
