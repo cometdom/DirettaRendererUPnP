@@ -1526,6 +1526,24 @@ void DirettaSync::pausePlayback() {
     m_paused = true;
 }
 
+void DirettaSync::flushForSeek() {
+    std::lock_guard<std::recursive_mutex> lifecycleLock(m_lifecycleMutex);
+    if (!m_playing || m_paused || !m_open) return;
+
+    size_t dropped;
+    {
+        std::lock_guard<std::mutex> lock(m_configMutex);
+        ReconfigureGuard guard(*this);   // worker is out of the ring while we clear it
+        dropped = m_ringBuffer.getAvailable();
+        m_ringBuffer.clear();            // keeps the S24 hint
+        m_prefillComplete = false;
+        m_rebuffering.store(false, std::memory_order_relaxed);
+        m_postReconnectRebuffering.store(false, std::memory_order_relaxed);
+        // m_postOnlineDelayDone stays true: the DAC is locked, no stabilization needed
+    }
+    LOG_INFO("[DirettaSync] Seek: dropped " << dropped << " buffered bytes, prefill restarted");
+}
+
 void DirettaSync::resumePlayback() {
     std::lock_guard<std::recursive_mutex> lifecycleLock(m_lifecycleMutex);
     if (!m_paused) return;

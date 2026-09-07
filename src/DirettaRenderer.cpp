@@ -566,6 +566,12 @@ bool DirettaRenderer::start(std::atomic<bool>* stopSignal) {
             }
         );
 
+        m_audioEngine->setSeekCallback([this](double /*seconds*/) {
+            if (m_direttaSync) {
+                m_direttaSync->flushForSeek();
+            }
+        });
+
         m_audioEngine->setTrackEndCallback([this]() {
             std::cout << "[DirettaRenderer] Track ended naturally" << std::endl;
 
