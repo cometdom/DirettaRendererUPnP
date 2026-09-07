@@ -464,6 +464,8 @@ public:
     void requestPostReconnectRebuffering();
 
     float getBufferLevel() const;
+    /** @brief Ring capacity in seconds of audio at the current format (0 if unknown) */
+    float getBufferSeconds() const;
     const AudioFormat& getFormat() const { return m_currentFormat; }
 
     /**
@@ -473,6 +475,16 @@ public:
      * Called by SIGUSR1 handler for runtime diagnostics.
      */
     void dumpStats() const;
+
+    /** @brief Reset the getNewStream() interval statistics (worker must be idle). */
+    void resetStreamStats() {
+        m_streamLastNs = 0;
+        m_streamIntervalMinNs = 0;
+        m_streamIntervalMaxNs = 0;
+        m_streamIntervalSumNs = 0;
+        m_streamIntervalCount = 0;
+        m_streamIntervalLate = 0;
+    }
 
     /**
      * @brief Events raised by the SDK worker thread, to be logged elsewhere.
@@ -524,7 +536,12 @@ public:
     template<typename Rep, typename Period>
     bool waitForSpace(std::unique_lock<std::mutex>& lock,
                       std::chrono::duration<Rep, Period> timeout) {
-        return m_spaceAvailable.wait_for(lock, timeout) == std::cv_status::no_timeout;
+        // Flag lets getNewStream() skip the mutex/notify entirely when
+        // nobody is waiting (the PCM path never waits: it micro-sleeps).
+        m_producerWaiting.store(true, std::memory_order_release);
+        bool notified = m_spaceAvailable.wait_for(lock, timeout) == std::cv_status::no_timeout;
+        m_producerWaiting.store(false, std::memory_order_release);
+        return notified;
     }
 
     /**
@@ -670,6 +687,7 @@ private:
     // without burning CPU or introducing 5ms sleep jitter
     std::mutex m_flowMutex;
     std::condition_variable m_spaceAvailable;
+    std::atomic<bool> m_producerWaiting{false};
 
     // G1: Condition variable for interruptible format transition waits
     // Allows blocking waits to be interrupted on shutdown rather than sleeping
@@ -725,8 +743,9 @@ private:
     // Incremented alongside m_formatGeneration in configureRingXXX
     std::atomic<uint32_t> m_consumerStateGen{0};
 
-    // Cached consumer state (only accessed by worker thread)
-    uint32_t m_cachedConsumerGen{0};
+    // Cached consumer state (only accessed by worker thread), on its own
+    // cache line so producer-side writes never invalidate it.
+    alignas(64) uint32_t m_cachedConsumerGen{0};
     int m_cachedBytesPerBuffer{176};
     uint8_t m_cachedSilenceByte{0};
     bool m_cachedConsumerIsDsd{false};
@@ -736,8 +755,19 @@ private:
     int m_cachedBytesPerFrame{0};
     uint32_t m_cachedFramesPerBufferRemainder{0};
 
+    // getNewStream() call-interval statistics (worker-only writes, relaxed
+    // reads from dumpStats). Measured only while real audio is being popped,
+    // so silence/prefill/stabilization phases do not pollute them.
+    int64_t m_streamLastNs{0};
+    int64_t m_streamIntervalMinNs{0};
+    int64_t m_streamIntervalMaxNs{0};
+    int64_t m_streamIntervalSumNs{0};
+    int64_t m_streamIntervalCount{0};
+    int64_t m_streamIntervalLate{0};      // intervals > 2 × expected cycle
+    std::atomic<int64_t> m_expectedCycleNs{0};  // set by configureRing*
+
     // Prefill and stabilization
-    size_t m_prefillTarget = 0;
+    alignas(64) size_t m_prefillTarget = 0;
     std::atomic<bool> m_prefillComplete{false};
     std::atomic<bool> m_postOnlineDelayDone{false};
     bool m_isFirstConnect = true;  // Extra stabilization on very first connect after startup

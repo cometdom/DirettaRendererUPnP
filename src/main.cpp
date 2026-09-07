@@ -21,6 +21,7 @@
 #include <pthread.h>
 #include <sched.h>
 #include <sys/mman.h>
+#include <malloc.h>
 #include <vector>
 #include <sstream>
 #include <string>
@@ -559,6 +560,19 @@ int main(int argc, char* argv[]) {
         skip_warn3:;
     }
 
+    // mlockall(MCL_FUTURE) only helps if the allocator stops handing memory
+    // back to the kernel: by default glibc serves large blocks (ring buffer,
+    // FFmpeg contexts, 256 KB resampler buffer…) with mmap() and trims the
+    // heap top on free(), so each track open/close is a fresh set of
+    // mmap/munmap/madvise calls and freshly-faulted pages — on the decode
+    // core, mid-playback. Keep everything in one heap that never shrinks
+    // (same recipe as JACK/PipeWire/Ardour).
+#ifdef __GLIBC__
+    mallopt(M_MMAP_THRESHOLD, 1 << 30);   // never mmap individual blocks
+    mallopt(M_TRIM_THRESHOLD, -1);        // never give heap top back
+    mallopt(M_TOP_PAD, 64 << 20);         // grow the heap in 64 MB steps
+#endif
+
     // Lock all process memory in RAM (current + future allocations) so no
     // page fault can ever interrupt the audio thread. Standard for RT audio
     // (JACK, PipeWire). Requires CAP_IPC_LOCK (running as root suffices) and
@@ -578,6 +592,11 @@ int main(int argc, char* argv[]) {
 
     // Store cpuOther for log drain thread (launched below)
     g_cpuOther = config.cpuOther;
+
+    // --quiet: errors and warnings only, for real (see installQuietStdout)
+    if (g_logLevel <= LogLevel::WARN) {
+        installQuietStdout();
+    }
 
     // Initialize async logging ring buffer (A3 optimization)
     // Only active in verbose mode to avoid overhead in production
@@ -625,9 +644,8 @@ int main(int argc, char* argv[]) {
         // Main thread has never had SIGINT/SIGTERM blocked (see the comment
         // near the top of main()) — nothing to unblock here.
 
-        while (g_renderer->isRunning()) {
-            std::this_thread::sleep_for(std::chrono::seconds(1));
-        }
+        // Block until stop() (signal handler) — no periodic wake-up.
+        g_renderer->waitUntilStopped();
 
     } catch (const std::exception& e) {
         std::cerr << "Exception: " << e.what() << std::endl;

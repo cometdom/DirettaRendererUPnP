@@ -108,4 +108,27 @@ inline void installTimestampedLogging(TimestampedStreambuf*& coutBuf, Timestampe
     std::cerr.rdbuf(cerrBuf);
 }
 
+/**
+ * @brief Sink that swallows everything written to it
+ *
+ * --quiet promises "errors and warnings only", but ~250 raw std::cout
+ * statements sit on the track path (open, gapless, prefill, format change…)
+ * and each std::endl is a write(2) into the journald pipe from whichever
+ * thread emits it — decode thread included. Rather than touching every
+ * call site, quiet mode replaces std::cout's buffer with this one: the
+ * formatting still happens, the syscall never does. Errors and warnings use
+ * std::cerr and are untouched.
+ */
+class NullStreambuf : public std::streambuf {
+protected:
+    int overflow(int c) override { return c == EOF ? '\0' : c; }
+    std::streamsize xsputn(const char*, std::streamsize n) override { return n; }
+};
+
+inline void installQuietStdout() {
+    static NullStreambuf nullBuf;
+    std::cout.flush();
+    std::cout.rdbuf(&nullBuf);
+}
+
 #endif // TIMESTAMPED_LOGGER_H
