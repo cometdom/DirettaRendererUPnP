@@ -13,6 +13,7 @@ NAME="${NAME:-${RENDERER_NAME:-}}"
 GAPLESS="${GAPLESS:-}"
 VERBOSE="${VERBOSE:-}"
 MINIMAL_UPNP="${MINIMAL_UPNP:-}"
+NO_PREFETCH="${NO_PREFETCH:-}"
 DOP="${DOP:-}"
 INTERFACE="${INTERFACE:-${NETWORK_INTERFACE:-}}"
 THREAD_MODE="${THREAD_MODE:-}"
@@ -169,6 +170,12 @@ fi
 # Minimal UPnP mode (no position polling, no events)
 if [ -n "$MINIMAL_UPNP" ] && [ "$MINIMAL_UPNP" = "1" ]; then
     CMD+=("--minimal-upnp")
+fi
+
+# NO_PREFETCH=1 → read HTTP sources on the decode thread (A/B against the
+# default dedicated prefetch thread on the --cpu-other cores)
+if [ -n "$NO_PREFETCH" ] && [ "$NO_PREFETCH" = "1" ]; then
+    CMD+=("--no-prefetch")
 fi
 
 # DoP: transmit DSD as 24-bit PCM with DoP markers

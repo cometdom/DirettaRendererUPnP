@@ -483,6 +483,7 @@ SOURCES = \
     $(SRCDIR)/DirettaRenderer.cpp \
     $(SRCDIR)/AudioEngine.cpp \
     $(SRCDIR)/DirettaSync.cpp \
+    $(SRCDIR)/PrefetchReader.cpp \
     $(SRCDIR)/UPnPDevice.cpp
 
 # C sources (AVX optimized memcpy - x86 with AVX2 only)
@@ -496,7 +497,7 @@ endif
 OBJECTS = $(SOURCES:$(SRCDIR)/%.cpp=$(OBJDIR)/%.o)
 C_OBJECTS = $(C_SOURCES:$(SRCDIR)/%.c=$(OBJDIR)/%.o)
 C_DEPENDS = $(C_OBJECTS:.o=.d)
-DEPENDS = $(OBJECTS:.o=.d) $(C_DEPENDS)
+DEPENDS = $(OBJECTS:.o=.d) $(C_DEPENDS) $(OBJDIR)/test_decode.d
 
 TARGET = $(BINDIR)/DirettaRendererUPnP
 
@@ -558,6 +559,14 @@ test: $(TEST_TARGET)
 $(TEST_TARGET): $(TEST_OBJECTS) | $(BINDIR)
 	@echo "Linking $(TEST_TARGET)..."
 	$(CXX) $(CXXFLAGS) $(INCLUDES) $(TEST_OBJECTS) -o $(TEST_TARGET)
+
+# Decode a URL through AudioDecoder (prefetch, bypass, EOF drain) without the
+# Diretta SDK: prints frame count + FNV-1a hash of the output for comparison.
+#   make test-decode && bin/test_decode http://host/file.flac 24 [--no-prefetch] [--seek 5]
+TEST_DECODE_TARGET = $(BINDIR)/test_decode
+test-decode: $(OBJDIR)/AudioEngine.o $(OBJDIR)/PrefetchReader.o $(C_OBJECTS) $(OBJDIR)/test_decode.o | $(BINDIR)
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) $(OBJDIR)/test_decode.o $(OBJDIR)/AudioEngine.o $(OBJDIR)/PrefetchReader.o $(C_OBJECTS) \
+	    $(FFMPEG_LDFLAGS) -lavformat -lavcodec -lavutil -lswresample -pthread -o $(TEST_DECODE_TARGET)
 
 # ============================================
 # Architecture Information

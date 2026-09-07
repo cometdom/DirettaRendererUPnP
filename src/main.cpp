@@ -85,6 +85,7 @@ void statsSignalHandler(int /*signal*/) {
 
 bool g_verbose = false;
 bool g_minimalUPnP = false;
+bool g_prefetchEnabled = true;
 bool g_dopEnabled = false;
 bool g_dopMsb = false;  // --dop-msb: bit-reverse DSD bytes in DoP frames (for DACs expecting MSB-first)
 int g_rtPriority = 50;
@@ -271,6 +272,10 @@ DirettaRenderer::Config parseArguments(int argc, char* argv[]) {
             g_minimalUPnP = true;
             std::cout << "Minimal UPnP mode enabled (no position polling, no events)" << std::endl;
         }
+        else if (arg == "--no-prefetch") {
+            g_prefetchEnabled = false;
+            std::cout << "HTTP prefetch thread disabled (FFmpeg reads on the decode thread)" << std::endl;
+        }
         else if (arg == "--dop") {
             g_dopEnabled = true;
             std::cout << "DoP mode enabled (DSD over PCM)" << std::endl;
@@ -403,6 +408,8 @@ DirettaRenderer::Config parseArguments(int argc, char* argv[]) {
                       << "  --verbose, -v         Enable verbose debug output (log level: DEBUG)\n"
                       << "  --quiet, -q           Quiet mode - only errors and warnings (log level: WARN)\n"
                       << "  --minimal-upnp        Minimal UPnP mode (no position polling, no events)\n"
+                      << "  --no-prefetch         Read HTTP sources on the decode thread (default: dedicated\n"
+                      << "                        prefetch thread on --cpu-other, 4 MB ahead)\n"
                       << "  --dop                 DoP mode: encode DSD as 24-bit PCM (DSD over PCM)\n"
                       << "                        DSD64->176.4kHz, DSD128->352.8kHz, DSD256->705.6kHz\n"
                       << "  --dop-msb             DoP mode with MSB-first bit order (implies --dop)\n"
