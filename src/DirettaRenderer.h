@@ -32,6 +32,7 @@ public:
     struct Config {
         std::string name = "Diretta UPnP Renderer";
         int port = 49152;
+        bool portStrict = false;   // --port-strict: wait for the configured port after a hot restart
         std::string uuid;
         bool gaplessEnabled = true;
         int targetIndex = -1;  // -1 = interactive, >= 0 = specific

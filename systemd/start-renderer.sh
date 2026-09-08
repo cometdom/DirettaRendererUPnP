@@ -14,6 +14,7 @@ GAPLESS="${GAPLESS:-}"
 VERBOSE="${VERBOSE:-}"
 MINIMAL_UPNP="${MINIMAL_UPNP:-}"
 DOP="${DOP:-}"
+PORT_STRICT="${PORT_STRICT:-}"
 INTERFACE="${INTERFACE:-${NETWORK_INTERFACE:-}}"
 THREAD_MODE="${THREAD_MODE:-}"
 CYCLE_TIME="${CYCLE_TIME:-}"
@@ -169,6 +170,13 @@ fi
 # Minimal UPnP mode (no position polling, no events)
 if [ -n "$MINIMAL_UPNP" ] && [ "$MINIMAL_UPNP" = "1" ]; then
     CMD+=("--minimal-upnp")
+fi
+
+# PORT_STRICT=1 → after a hot restart, wait for the configured UPnP port (up
+# to 75 s) instead of accepting port+1 — for control points that cache the
+# renderer's address (JPLAY)
+if [ -n "$PORT_STRICT" ] && [ "$PORT_STRICT" = "1" ]; then
+    CMD+=("--port-strict")
 fi
 
 # DoP: transmit DSD as 24-bit PCM with DoP markers

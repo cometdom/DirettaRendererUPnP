@@ -215,6 +215,10 @@ DirettaRenderer::Config parseArguments(int argc, char* argv[]) {
         }
         else if ((arg == "--port" || arg == "-p") && i + 1 < argc) {
             config.port = std::atoi(argv[++i]);
+            if (config.port < 0 || config.port > 65535) {
+                std::cerr << "Invalid port. Use 0 (auto) or 1-65535" << std::endl;
+                exit(1);
+            }
         }
         else if (arg == "--uuid" && i + 1 < argc) {
             config.uuid = argv[++i];
@@ -257,6 +261,9 @@ DirettaRenderer::Config parseArguments(int argc, char* argv[]) {
         else if (arg == "--minimal-upnp") {
             g_minimalUPnP = true;
             std::cout << "Minimal UPnP mode enabled (no position polling, no events)" << std::endl;
+        }
+        else if (arg == "--port-strict") {
+            config.portStrict = true;
         }
         else if (arg == "--dop") {
             g_dopEnabled = true;
@@ -380,6 +387,9 @@ DirettaRenderer::Config parseArguments(int argc, char* argv[]) {
                       << "  --verbose, -v         Enable verbose debug output (log level: DEBUG)\n"
                       << "  --quiet, -q           Quiet mode - only errors and warnings (log level: WARN)\n"
                       << "  --minimal-upnp        Minimal UPnP mode (no position polling, no events)\n"
+                      << "  --port-strict         After a hot restart, wait (up to 75 s) for the configured UPnP port\n"
+                      << "                        instead of accepting port+1 — for control points that cache the\n"
+                      << "                        renderer's address (JPLAY)\n"
                       << "  --dop                 DoP mode: encode DSD as 24-bit PCM (DSD over PCM)\n"
                       << "                        DSD64->176.4kHz, DSD128->352.8kHz, DSD256->705.6kHz\n"
                       << "  --dop-msb             DoP mode with MSB-first bit order (implies --dop)\n"

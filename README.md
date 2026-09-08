@@ -968,6 +968,7 @@ guidance, see [docs/CONFIGURATION.md](docs/CONFIGURATION.md#3-cpu-isolation-with
 --verbose, -v           Enable verbose debug output (log level: DEBUG)
 --quiet, -q             Quiet mode - only errors and warnings (log level: WARN)
 --interface <name>      Bind to specific network interface
+--port-strict           Wait for the configured UPnP port after a hot restart (opt-in; JPLAY)
 --dop                   DoP mode: transmit DSD as 24-bit PCM (DSD over PCM)
                         DSD64→176.4kHz, DSD128→352.8kHz, DSD256→705.6kHz
 ```
