@@ -80,6 +80,7 @@ public:
 private:
     // Thread functions
     void audioThreadFunc();
+    void logRtEvents();   // drain the worker's event mailbox to the log
     void upnpThreadFunc();
     void positionThreadFunc();
 
