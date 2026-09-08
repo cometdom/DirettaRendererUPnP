@@ -60,6 +60,9 @@ RestrictAddressFamilies=AF_INET AF_INET6 AF_NETLINK AF_UNIX AF_PACKET
 
 # --- System call filtering ---
 SystemCallArchitectures=native
+# The filter is a seccomp BPF program. Kernels before 5.11 run it on every
+# syscall of the process (tens of nanoseconds each); newer kernels cache the
+# verdict per syscall number. Comment it out only for an A/B, not as a default.
 SystemCallFilter=~@mount @keyring @debug @module @swap @reboot @obsolete
 
 # --- Performance ---

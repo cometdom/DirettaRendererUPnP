@@ -338,11 +338,14 @@ apply_service_override() {
 # Use dedicated CPU slice
 Slice=${SLICE_NAME}
 
-# Real-time scheduling for audio hot path
-CPUSchedulingPolicy=fifo
-CPUSchedulingPriority=90
+# No process-wide CPUSchedulingPolicy/Priority here: the renderer sets
+# SCHED_FIFO itself, per thread (Diretta worker at RT_PRIORITY, decode
+# thread too when CPU_DECODE is set — otherwise it is SCHED_OTHER now). A
+# process-wide FIFO 90 made every other thread (main, libupnp SOAP/SSDP,
+# position, log drain, preload) run ABOVE the audio worker, and nice is
+# ignored under SCHED_FIFO. Re-run the tuner to apply on an existing host.
 
-# High process priority
+# High process priority (for the SCHED_OTHER threads)
 Nice=-19
 
 # I/O scheduling - realtime class

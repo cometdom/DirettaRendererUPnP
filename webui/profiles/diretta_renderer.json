@@ -198,7 +198,7 @@
                     "key": "PCM_REMOTE_BUFFER_SECONDS",
                     "type": "text",
                     "label": "PCM remote buffer (seconds)",
-                    "description": "Remote (Qobuz/Tidal) PCM buffer size in seconds. Leave empty to use default (1.0).",
+                    "description": "Remote (Qobuz/Tidal) PCM buffer size in seconds. Leave empty to use default (3.0).",
                     "default": ""
                 },
                 {
@@ -221,7 +221,7 @@
                     "key": "PCM_REMOTE_PREFILL_MS",
                     "type": "number",
                     "label": "PCM remote prefill (ms)",
-                    "description": "Remote PCM prefill. Leave empty to use default (150 ms).",
+                    "description": "Remote PCM prefill. Leave empty to use default (500 ms).",
                     "default": "",
                     "min": 1,
                     "max": 5000
