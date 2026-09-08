@@ -426,6 +426,21 @@ public:
     bool isPlaying() const { return m_playing; }
     bool isPaused() const { return m_paused; }
 
+    /**
+     * @brief Drop everything buffered ahead of the target after a seek.
+     *
+     * Called by the decode thread right after the decoder has seeked. The
+     * ring is emptied under the reconfigure guard (the worker sends silence
+     * meanwhile) and the prefill cycle restarts, so the new position is
+     * heard after one host-side prefill (per format: 80 ms local PCM up to
+     * 1 s hi-res, 500 ms remote) plus whatever the target already holds,
+     * instead of after the whole host ring has drained (up to 0.5 s local /
+     * 3 s remote — several seconds of the OLD position after each seek,
+     * piling up on repeated seeks). No-op when not playing or paused
+     * (resume clears the ring).
+     */
+    void flushForSeek();
+
     //=========================================================================
     // Audio Data
     //=========================================================================
@@ -545,6 +560,7 @@ private:
     bool openSDK();  // Helper: calls DIRETTA::Sync::open() with config params
     bool reopenForFormatChange();
     void fullReset();
+    void resetRingForRestart();   // clear() keeping the S24 hint + prefill restart
     void shutdownWorker();
     bool joinWorkerWithTimeout(int timeoutMs = 1000);  // Timed worker thread join
 

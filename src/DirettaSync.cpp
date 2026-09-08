@@ -531,8 +531,7 @@ bool DirettaSync::open(const AudioFormat& format) {
             // NOTE: Do NOT reset m_postOnlineDelayDone for quick resume!
             // The DAC is already stable from the previous track - no need
             // to send additional silence after prefill completes.
-            m_ringBuffer.clear();
-            m_prefillComplete = false;
+            resetRingForRestart();
             m_rebuffering.store(false, std::memory_order_relaxed);
             m_postReconnectRebuffering.store(false, std::memory_order_relaxed);
             // m_postOnlineDelayDone stays true - DAC already stable
@@ -1465,6 +1464,34 @@ void DirettaSync::pausePlayback() {
     m_paused = true;
 }
 
+// Empty the ring and restart the prefill for a same-format restart (seek,
+// resume, quick resume). Keeps the S24 alignment hint: clear() forgets it and
+// only open() re-sets it, so a 24-bit track would otherwise fall back to
+// sample sniffing after every restart.
+void DirettaSync::resetRingForRestart() {
+    DirettaRingBuffer::S24PackMode hint = m_ringBuffer.getS24Hint();
+    m_ringBuffer.clear();
+    if (hint != DirettaRingBuffer::S24PackMode::Unknown) m_ringBuffer.setS24PackModeHint(hint);
+    m_prefillComplete = false;
+}
+
+void DirettaSync::flushForSeek() {
+    std::lock_guard<std::recursive_mutex> lifecycleLock(m_lifecycleMutex);
+    if (!m_playing || m_paused || !m_open) return;
+
+    size_t dropped;
+    {
+        std::lock_guard<std::mutex> lock(m_configMutex);
+        ReconfigureGuard guard(*this);   // worker is out of the ring while we clear it
+        dropped = m_ringBuffer.getAvailable();
+        resetRingForRestart();
+        m_rebuffering.store(false, std::memory_order_relaxed);
+        m_postReconnectRebuffering.store(false, std::memory_order_relaxed);
+        // m_postOnlineDelayDone stays true: the DAC is locked, no stabilization needed
+    }
+    LOG_INFO("[DirettaSync] Seek: dropped " << dropped << " buffered bytes, prefill restarted");
+}
+
 void DirettaSync::resumePlayback() {
     std::lock_guard<std::recursive_mutex> lifecycleLock(m_lifecycleMutex);
     if (!m_paused) return;
@@ -1477,8 +1504,7 @@ void DirettaSync::resumePlayback() {
     m_silenceBuffersRemaining = 0;
 
     // Clear stale buffer data and require fresh prefill
-    m_ringBuffer.clear();
-    m_prefillComplete = false;
+    resetRingForRestart();
 
     play();
     m_paused = false;

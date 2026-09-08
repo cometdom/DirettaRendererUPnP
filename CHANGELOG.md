@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+- **Seek**: (1) the Diretta ring is now flushed after the decoder seeks (`DirettaSync::flushForSeek()`, prefill restarts) — before, everything already buffered from the old position kept playing first (up to 0.5 s local / 3 s remote ring), so a seek was heard seconds late and repeated seeks piled up while the reported position had already jumped; (2) the async seek request is consumed with an `exchange()` before the target is read — the old load-then-clear order could drop a seek that arrived in between (scrubbing control points send several per second); (3) a seek while paused is queued and applied on resume instead of being refused ("Cannot seek when not playing"), and cleared on Stop or on a URI change; (4) `Seek` with a non-time unit (`TRACK_NR`) is ignored instead of being applied as seconds. Decoder-level seeking verified with `test_decode --seeks` (harness in the prefetch/tests PR) (5-seek sequences and 30 random rapid seeks on FLAC 16/44, FLAC 24/192, ALAC, MP3; identical output with and without the prefetch thread).
+
 ## [2.5.15] - 2026-09-06
 
 ### Fixed

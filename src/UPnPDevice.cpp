@@ -638,10 +638,19 @@ int UPnPDevice::actionSeek(UpnpActionRequest* request) {
     std::string target = getArgumentValue(actionDoc, "Target");
     
     std::cout << "[UPnPDevice] Seek: " << unit << " = " << target << std::endl;
-    
-    // Callback
+
+    // Callback — time units go through as they are. TRACK_NR / TRACK_INDEX
+    // targets are track numbers: on a single-track renderer "1" is the current
+    // track, i.e. "restart it" (some control points use it that way); it used
+    // to be applied as one second. Anything else is ignored.
     if (m_callbacks.onSeek) {
-        m_callbacks.onSeek(target);
+        if (unit == "REL_TIME" || unit == "ABS_TIME" || unit.empty()) {
+            m_callbacks.onSeek(target);
+        } else if ((unit == "TRACK_NR" || unit == "TRACK_INDEX") && target == "1") {
+            m_callbacks.onSeek("0");
+        } else {
+            std::cout << "[UPnPDevice] Seek unit " << unit << " ignored (single-track renderer)" << std::endl;
+        }
     }
     
     // Response
