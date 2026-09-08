@@ -546,7 +546,12 @@ test_ffmpeg_installation() {
     local decoders
     decoders=$("$ffmpeg_bin" -decoders 2>&1)
 
-    local required_decoders="flac alac dsd_lsbf dsd_msbf pcm_s16le pcm_s24le pcm_s32le pcm_f32le"
+    # dsd_lsbf_planar/dsd_msbf_planar (not just the base dsd_lsbf/dsd_msbf) are
+    # what FFmpeg's dsf demuxer actually requests for a real .dsf file — a
+    # build missing only the _planar variants passes this check if they're
+    # left out, while still failing "Codec not found" on every real DSD file
+    # (confirmed on a Fedora RPM Fusion ffmpeg-free build, 2026-09-08).
+    local required_decoders="flac alac dsd_lsbf dsd_msbf dsd_lsbf_planar dsd_msbf_planar pcm_s16le pcm_s24le pcm_s32le pcm_f32le"
     local all_found=true
 
     for dec in $required_decoders; do
