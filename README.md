@@ -1,4 +1,4 @@
-# Diretta UPnP Renderer v2.5.15
+# Diretta UPnP Renderer v2.5.16
 
 **The world's first native UPnP/DLNA renderer with Diretta protocol support - Low-Latency Edition**
 
@@ -8,19 +8,23 @@
 
 ---
 
-![Version](https://img.shields.io/badge/version-2.5.15-blue.svg)
+![Version](https://img.shields.io/badge/version-2.5.16-blue.svg)
 ![Low Latency](https://img.shields.io/badge/Latency-Low-green.svg)
 ![SDK](https://img.shields.io/badge/SDK-DIRETTA::Sync-orange.svg)
 ![Audirvana](https://img.shields.io/badge/Audirvana-Compatible-green.svg)
 
 ---
 
-## What's New in v2.5.15
+## What's New in v2.5.16
 
-**Fixes a ~50s connection stall on the new Diretta Host SDK 150.x.**
+**Six contributions from herisson-88: seek reliability, an HTTP prefetch thread, an EOF-drain memory-safety fix, and several smaller fixes.**
 
-- **SDK 150.x connection stall fixed** (PR #89): `OPEN` → `OPEN COMPLETE` could take ~50s, or fail outright with "Failed to set sink", against SDK 150.x — while the actual UDP link to the target was fine the whole time. Root cause (found by Yu Harada): our `statusUpdate()` override was an empty stub, silently swallowing the base class's wake-up notification that `connectWait()` needs. Fixed by chaining to `DIRETTA::Sync::statusUpdate()`. Also fixed a related but independent ordering bug — `setSinkConfigure()` must be called *after* `setSink()`, not before — that SDK 149's own uninitialized-flag bug happened to tolerate. Confirmed on real hardware: connections now complete in well under a second, matching SDK 149.x behavior.
-- **`DIRETTA_SDK_SYSLOG_DEBUG=1`**: new opt-in env var surfaces the Diretta SDK's own internal syslog output in the renderer's log, for future SDK-level diagnostics.
+- **Seek reliability** (PR #91): the Diretta ring is now flushed right when a seek lands (no more hearing the old position for up to a few seconds first), a race that could silently drop a seek arriving from a scrubbing control point is closed, and seeking while paused is now queued and applied on resume instead of refused.
+- **HTTP prefetch thread** (PR #96): every HTTP source is now read ahead by a dedicated thread, up to 4 MB ahead of the decoder — the decode thread no longer blocks on the network. Also: quieter `--quiet` mode, FLAC takes the bit-perfect bypass path, a SIGTERM-during-shutdown hang fixed, and a new standalone decode test harness.
+- **EOF-drain memory-safety fix** (PR #95): a `size_t` underflow in the end-of-stream drain path could write past the end of the output buffer on certain codecs (ALAC/AAC/MP3/Vorbis/WavPack) — fixed. Also refines the 16/24-bit sink negotiation fallback order and stops the SDK's real-time thread from touching iostreams directly.
+- **`--sink-buffer-ms`, `--rapid-start`, `auto-sdk` transfer mode** (PR #94): new SDK 150 knobs, plus a FIX-profile buffer-alignment fix so fixed-cycle targets (e.g. a Holo Red) aren't left silent.
+- **`--port-strict`** (PR #93, opt-in): waits for the configured UPnP port after a hot restart instead of silently drifting to port+1 — for control points (JPLAY) that cache the renderer's address.
+- **Tuner/doc fixes** (PR #92): the CPU tuner drop-ins no longer override every thread to SCHED_FIFO priority 90 (was defeating `NICE_LEVEL` and outranking the audio worker itself); several stale `docs/CONFIGURATION.md` claims corrected.
 
 See [CHANGELOG.md](CHANGELOG.md) for details.
 
@@ -28,6 +32,7 @@ See [CHANGELOG.md](CHANGELOG.md) for details.
 
 | Version | Highlights |
 |---------|-----------|
+| **v2.5.15** | SDK 150.x ~50s connection stall fixed (PR #89) — an empty `statusUpdate()` override silently swallowed the wake-up notification `connectWait()` needs |
 | **v2.5.14** | Opt-in support for SDK v149's GCC16-built libraries, with a toolchain compatibility warning (slim2diretta issue #10, sheviks) |
 | **v2.5.13** | Signal-handling race fix (PR #88, hoorna/Alfred) — a second Ctrl-C/SIGTERM during a slow shutdown could crash the renderer; each worker thread now blocks SIGINT/SIGTERM on itself so a second signal can never land anywhere but the main thread |
 | **v2.5.12** | `start-renderer.sh`: a failed `ethtool` link-tuning call no longer prevents the renderer from starting (reported by Daniel via TuneOS/fedora-audiophile-setup) |
@@ -1165,4 +1170,4 @@ This software is provided "as is" without warranty. While designed for high-qual
 
 **Enjoy bit-perfect, low-latency audio streaming!**
 
-*Last updated: 2026-09-06 (v2.5.15)*
+*Last updated: 2026-09-08 (v2.5.16)*
