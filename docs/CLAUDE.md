@@ -131,9 +131,12 @@ RAT_MP4 = 0x2000_00000000    // 4x (176.4/192k)
 
 ## Bit Depth Handling
 
-`configureSinkPCM()` negotiates the PCM format with the Diretta sink based on the source bit depth (`inputBits`):
-- **16-bit and 24-bit sources**: Only negotiate up to 24-bit. Prevents silence/noise on DACs that report 32-bit support at the Diretta target level but are physically limited to 24-bit.
-- **32-bit sources**: Try 32-bit first, fall back to 24-bit if the sink doesn't support it.
+`configureSinkPCM()` negotiates the PCM format with the Diretta sink based on the source bit depth (`inputBits`) and returns `bool` (an unsupported format fails the track, never throws through `open()`):
+- **16-bit sources**: 24 → 16 → 32 (the historical 24 → 16, plus 32 as a last resort).
+- **24-bit sources**: 24 → 32 → 16. 24 first keeps the v2.4.4 behaviour on DACs that report 32-bit support at the Diretta target level but are physically 24-bit (TEAC UD-701N); 32 is only reached on a sink that refuses 24-bit, where it is lossless (the ring already holds S24 in an S32 container, the 32-bit sink path is a plain copy) and beats truncating to 16.
+- **32-bit sources**: 32 → 24 → 16.
+- 32-bit is never offered first to a 16/24-bit source.
+- A 24/32-bit source on a 16-bit-only sink goes through `push32To16()` (explicit MSB truncation, logged as a warning). DoP requires an exact 24-bit sink.
 
 `AudioEngine.cpp` detects the real bit depth via FFmpeg's `bits_per_raw_sample` (authoritative when set) or the `sample_fmt` fallback. The detected `bitDepth` is passed through `TrackInfo` → `AudioFormat` → `configureSinkPCM()`.
 
@@ -229,11 +232,11 @@ std::lock_guard<std::recursive_mutex> lifecycleLock(m_lifecycleMutex);
 | PCM | 32-bit | 44.1kHz - 384kHz | `push()` | memcpy |
 | DSD | 1-bit | DSD64 - DSD512 | `pushDSDPlanarOptimized()` | AVX2 32x |
 
-### S24 Format Auto-Detection
+### S24 Alignment
 
-The ring buffer auto-detects 24-bit sample alignment on first push:
-- **LSB-aligned**: bytes 0-2 contain data (standard S24_LE) → `convert24BitPacked_AVX2()`
-- **MSB-aligned**: bytes 1-3 contain data (S24_32BE-style) → `convert24BitPackedShifted_AVX2()`
+FFmpeg has no S24 sample format: 24-bit content always reaches the ring as S32 with the audio in the upper 24 bits (MSB-aligned, low byte zero), whatever the codec. `AudioEngine.cpp` therefore sets the `MsbAligned` hint for every 24-bit track and `configureRingPCM()` sets it whenever a 32-bit container is packed to 24 bits (a 32-bit source on a sink that refuses 32-bit), and the ring's sample-sniffing detection only runs when the hint is missing; its timeout and fallback default to `MsbAligned` (the former LSB default, reached after pause → resume during a quiet passage because `clear()` also forgot the hint, turned the music into full-scale white noise on x86). `clear()` keeps the hint (pause → resume never re-sets it); only `resize()` forgets it, and its caller re-sets it. Same code on x86 and ARM (no `#if __aarch64__`).
+- **MSB-aligned**: bytes 1-3 contain data → `convert24BitPackedShifted_AVX2()` (the normal path)
+- **LSB-aligned**: bytes 0-2 contain data → `convert24BitPacked_AVX2()` (only via an explicit hint)
 
 ### SIMD Format Conversions
 
@@ -437,7 +440,7 @@ sudo apt install build-essential libavformat-dev libavcodec-dev libavutil-dev li
 - [x] Resilient target discovery (retry indefinitely at startup instead of exiting)
 - [x] Fix: removed `verifyTargetAvailable()` pre-check in `DirettaRenderer::start()` that bypassed retry loop
 - [x] RENDERER_NAME configuration option
-- [x] Bit depth negotiation fix — only offer 32-bit when source is 32-bit
+- [x] Bit depth negotiation fix — only offer 32-bit when source is 32-bit — refined: never *first* for a 16/24-bit source; 32-bit is a last resort on a sink that refuses 24-bit (see Bit Depth Handling)
 - [x] Audirvana preload probe fix — limit `probesize` to 32KB for local servers (herisson-88, PR #61)
 - [x] First-play pre-connect — eliminates cold connect silence on first track
 - [x] UAPP milliseconds fix — `HH:MM:SS` without fractional seconds in GetPositionInfo

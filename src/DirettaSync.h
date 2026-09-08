@@ -464,6 +464,28 @@ public:
     void dumpStats() const;
 
     /**
+     * @brief Events raised by the SDK worker thread, to be logged elsewhere.
+     *
+     * getNewStream() runs on the SDK's real-time thread: it must never touch
+     * iostreams (mutex + possible page fault + write(2) to a journal pipe).
+     * It only sets bits here; the decode thread consumes them and does the
+     * LOG_WARN. Values attached to the events are the most recent ones.
+     */
+    enum RtEvent : uint32_t {
+        RT_EVENT_UNDERRUN          = 1u << 0,  // Entered rebuffering
+        RT_EVENT_REBUFFER_COMPLETE = 1u << 1,  // Left rebuffering
+    };
+    uint32_t consumeRtEvents() {
+        // Plain load first: the common case is "nothing", no RMW on a line the worker writes
+        if (m_rtEvents.load(std::memory_order_relaxed) == 0) return 0;
+        return m_rtEvents.exchange(0, std::memory_order_acq_rel);
+    }
+    size_t lastUnderrunAvail() const { return m_rtUnderrunAvail.load(std::memory_order_relaxed); }
+    size_t lastRebufferAvail() const { return m_rtRebufferAvail.load(std::memory_order_relaxed); }
+    size_t lastRebufferThreshold() const { return m_rtRebufferThreshold.load(std::memory_order_relaxed); }
+    bool lastRebufferWasPostReconnect() const { return m_rtRebufferPostReconnect.load(std::memory_order_relaxed); }
+
+    /**
      * @brief Set S24 pack mode hint for 24-bit audio
      *
      * Propagates alignment hint from TrackInfo to ring buffer for better
@@ -548,7 +570,7 @@ private:
     void shutdownWorker();
     bool joinWorkerWithTimeout(int timeoutMs = 1000);  // Timed worker thread join
 
-    void configureSinkPCM(int rate, int channels, int inputBits, int& acceptedBits);
+    bool configureSinkPCM(int rate, int channels, int inputBits, int& acceptedBits);
     void configureSinkDSD(uint32_t dsdBitRate, int channels, const AudioFormat& format);
     void configureRingPCM(int rate, int channels, int direttaBps, int inputBps, bool isDoPMode = false);
     void configureRingDSD(uint32_t byteRate, int channels);
@@ -662,6 +684,7 @@ private:
     std::atomic<bool> m_need24BitPack{false};
     std::atomic<bool> m_need16To32Upsample{false};
     std::atomic<bool> m_need16To24Upsample{false};
+    std::atomic<bool> m_need32To16Truncate{false};
     std::atomic<bool> m_isDsdMode{false};
     std::atomic<bool> m_needDsdBitReversal{false};
     std::atomic<bool> m_needDsdByteSwap{false};  // For LITTLE endian targets
@@ -685,6 +708,7 @@ private:
     bool m_cachedPack24bit{false};
     bool m_cachedUpsample16to32{false};
     bool m_cachedUpsample16to24{false};
+    bool m_cachedTruncate32to16{false};
     int m_cachedChannels{2};
     int m_cachedBytesPerSample{2};
     DirettaRingBuffer::DSDConversionMode m_cachedDsdConversionMode{DirettaRingBuffer::DSDConversionMode::Passthrough};
@@ -719,6 +743,13 @@ private:
     std::atomic<uint32_t> m_underrunCount{0};
     std::atomic<bool> m_rebuffering{false};              // Rebuffering after sustained underrun
     std::atomic<bool> m_postReconnectRebuffering{false}; // Use 50% threshold for one cycle after live stream reconnect
+
+    // Worker → decode thread event mailbox (see consumeRtEvents())
+    std::atomic<uint32_t> m_rtEvents{0};
+    std::atomic<size_t> m_rtUnderrunAvail{0};
+    std::atomic<size_t> m_rtRebufferAvail{0};
+    std::atomic<size_t> m_rtRebufferThreshold{0};
+    std::atomic<bool> m_rtRebufferPostReconnect{false};
 };
 
 #endif // DIRETTA_SYNC_H

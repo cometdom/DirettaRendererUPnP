@@ -887,6 +887,24 @@ void DirettaRenderer::upnpThreadFunc() {
     DEBUG_LOG("[UPnP Thread] Stopped");
 }
 
+// What the SDK worker thread could not log itself (no iostream on the RT path).
+// Called from both branches of the audio thread loop: events are raised at any
+// time, an underrun during the end-of-track drain included.
+void DirettaRenderer::logRtEvents() {
+    uint32_t ev = m_direttaSync ? m_direttaSync->consumeRtEvents() : 0;
+    if (ev == 0) return;
+    if (ev & DirettaSync::RT_EVENT_UNDERRUN) {
+        LOG_WARN("[DirettaSync] Buffer underrun — entering rebuffering mode (avail="
+                 << m_direttaSync->lastUnderrunAvail() << ")");
+    }
+    if (ev & DirettaSync::RT_EVENT_REBUFFER_COMPLETE) {
+        LOG_WARN("[DirettaSync] Rebuffering complete — resuming playback (avail="
+                 << m_direttaSync->lastRebufferAvail() << ", threshold="
+                 << m_direttaSync->lastRebufferThreshold() << ")"
+                 << (m_direttaSync->lastRebufferWasPostReconnect() ? " [post-reconnect]" : ""));
+    }
+}
+
 void DirettaRenderer::audioThreadFunc() {
     blockShutdownSignalsOnThisThread();
     // Prefer --cpu-decode for the audio thread when set; otherwise fall back
@@ -955,6 +973,8 @@ void DirettaRenderer::audioThreadFunc() {
                 bufferLevel = m_direttaSync->getBufferLevel();
             }
 
+            logRtEvents();
+
             if (bufferLevel > BUFFER_HIGH_THRESHOLD) {
                 // Buffer is healthy - throttle to avoid wasting CPU
                 std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -977,6 +997,8 @@ void DirettaRenderer::audioThreadFunc() {
                 }
             }
         } else {
+            logRtEvents();   // an underrun raised while the last track drained belongs here, not to the next track
+
             // Auto-release Diretta target after idle timeout
             if (m_idleTimerActive.load(std::memory_order_acquire) &&
                 !m_direttaReleased.load(std::memory_order_acquire)) {
