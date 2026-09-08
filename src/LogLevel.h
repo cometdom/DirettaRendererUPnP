@@ -27,8 +27,10 @@ extern LogLevel g_logLevel;
     if (g_logLevel >= LogLevel::ERROR) { std::cerr << x << std::endl; } \
 } while(0)
 
+// Warnings go to stderr like errors: with --quiet, stdout is discarded
+// entirely (see installQuietStdout() in TimestampedLogger.h).
 #define LOG_WARN(x) do { \
-    if (g_logLevel >= LogLevel::WARN) { std::cout << "[WARN] " << x << std::endl; } \
+    if (g_logLevel >= LogLevel::WARN) { std::cerr << "[WARN] " << x << std::endl; } \
 } while(0)
 
 #define LOG_INFO(x) do { \

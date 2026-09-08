@@ -10,6 +10,17 @@
 - **Logging from the SDK real-time thread**: `getNewStream()` no longer touches iostreams for underrun / rebuffering-complete; it raises bits in an atomic mailbox that the decode thread logs.
 - **Sink negotiation failure no longer leaves a PLAYING zombie**: when the output refuses a track (unsupported format), `process()` tears down like any fatal decode error (STOPPED + track-end callback) instead of a bare `return false`.
 - **Log lines never reaching journald**: `TimestampedStreambuf` never propagated `std::endl` flushes to the stdio buffer behind `std::cout`; under systemd stdout is a socket (fully buffered), so log lines only surfaced once 4 KB had piled up — and not at all for a quiet renderer. `sync()` override added.
+- **Shutdown deadlock on SIGTERM** (found during the A/B session): the signal handler called `stop()` and `exit()` from inside the handler, and `exit()` destroyed objects the interrupted main thread was still using — with a condition-variable wait that is `pthread_cond_destroy()` on a live waiter, i.e. a hang until systemd's 45 s timeout and SIGABRT. The handler now only writes to a self-pipe; main does the stop and returns normally.
+
+### Changed (host activity)
+- **Decode thread hysteresis**: fill the ring to 70 %, sleep until 30 % (sleep sized from the drain rate, 5–100 ms), instead of a 10 ms poll and a chunk as soon as it dips under 50 % — about 20 wake-ups and 5 decode bursts per second with a 0.5 s ring.
+- **`--quiet` is real**: stdout is discarded entirely (≈250 raw `std::cout` on the track path no longer become `write(2)` to journald from the decode thread); warnings go to stderr with errors.
+- **Stable heap**: `mallopt(M_MMAP_THRESHOLD = 32 MB, M_TRIM_THRESHOLD = -1, M_TOP_PAD = 1 MB)` before `mlockall` so the process's buffers stay in the heap and it never shrinks. (An earlier revision asked for a 1 GB threshold, which glibc silently rejects, and a 64 MB top pad, which is per arena and locked under `MCL_FUTURE` — locked RSS went from ~100 MB to 600 MB+. Both corrected after review.)
+- Removed the empty 1 Hz "UPnP Thread" and the main thread's 1 Hz poll; preload thread demoted to `SCHED_OTHER` on the other cores (it inherited SCHED_FIFO on the decode core); FFmpeg probe capped for every URL.
+- Hot path: `m_workerActive` stores are release (were seq_cst), stream counter is a plain store, the flow-control condvar is only touched when a DSD producer waits, worker-only state on its own cache line.
+
+### Added
+- `dumpStats()` (SIGUSR1) reports the measured `getNewStream()` cadence (mean/min/max/late vs expected cycle).
 
 ## [2.5.15] - 2026-09-06
 

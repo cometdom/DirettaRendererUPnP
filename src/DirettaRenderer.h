@@ -78,7 +78,6 @@ private:
     // Thread functions
     void audioThreadFunc();
     void logRtEvents();   // drain the worker's event mailbox to the log
-    void upnpThreadFunc();
     void positionThreadFunc();
 
     // Helper to wait for audio callback completion
@@ -92,9 +91,8 @@ private:
     std::unique_ptr<AudioEngine> m_audioEngine;
     std::unique_ptr<DirettaSync> m_direttaSync;
 
-    // Threads
+    // Threads (libupnp runs its own; there is no "UPnP thread" of ours)
     std::thread m_audioThread;
-    std::thread m_upnpThread;
     std::thread m_positionThread;
 
     // State

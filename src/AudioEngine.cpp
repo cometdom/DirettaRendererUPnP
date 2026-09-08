@@ -26,6 +26,50 @@ extern "C" {
 #include <libavutil/opt.h>
 }
 
+#include <pthread.h>
+#include <sched.h>
+#include <csignal>
+
+// ============================================================================
+// Helper threads (preload): keep them off the real-time cores
+// ============================================================================
+
+std::vector<int> AudioEngine::s_helperCores;
+
+void AudioEngine::setHelperThreadCores(const std::vector<int>& cores) {
+    s_helperCores = cores;
+}
+
+// A std::thread inherits the scheduling policy and affinity of its creator.
+// The preload thread is spawned from process(), i.e. from the decode thread —
+// SCHED_FIFO on the decode core when --cpu-decode is set. Left as is, a
+// 300-500 ms HTTP open + probe ran at real-time priority on the decode core,
+// competing with the decoder that feeds the ring. Demote it to a normal
+// thread on the --cpu-other cores.
+void AudioEngine::demoteToHelperThread(const char* name) {
+    // Same rule as every other worker thread (v2.5.13): only the main
+    // thread receives SIGINT/SIGTERM.
+    sigset_t blockedSignals;
+    sigemptyset(&blockedSignals);
+    sigaddset(&blockedSignals, SIGINT);
+    sigaddset(&blockedSignals, SIGTERM);
+    pthread_sigmask(SIG_BLOCK, &blockedSignals, nullptr);
+
+    struct sched_param param;
+    param.sched_priority = 0;
+    pthread_setschedparam(pthread_self(), SCHED_OTHER, &param);
+
+    if (!s_helperCores.empty()) {
+        cpu_set_t cpuset;
+        CPU_ZERO(&cpuset);
+        for (int core : s_helperCores) CPU_SET(core, &cpuset);
+        if (pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset) != 0) {
+            DEBUG_LOG("[" << name << "] Failed to set CPU affinity");
+        }
+    }
+    (void)name;
+}
+
 // ============================================================================
 // AudioBuffer
 // ============================================================================
@@ -324,12 +368,20 @@ bool AudioDecoder::open(const std::string& url) {
     // Free unused options
     av_dict_free(&options);
 
-    // Limit probe for local servers: WAV headers are ~44 bytes, no need to
-    // read megabytes. Default probesize (5MB) causes massive concurrent reads
-    // during anticipated preload, saturating Audirvana's HTTP server.
+    // Limit the probe: WAV/FLAC/DSF headers are tiny, no need to read the
+    // default 5 MB (which, during an anticipated preload, used to be pulled
+    // over the LAN while the current track plays — a 5 MB burst of memory and
+    // network traffic on the host for nothing). Local servers get a 32 KB
+    // probe (analysis stops as soon as the codec parameters are known);
+    // remote/proxied streams (MP3/AAC/ADTS radios, Qobuz relays) keep a
+    // modest analysis window so codec parameters are found. This runs after
+    // avformat_open_input(): format probing itself is not affected.
     if (isLocalServer) {
         m_formatContext->probesize = 32768;       // 32KB — enough for any WAV/FLAC/DSF header
-        m_formatContext->max_analyze_duration = 0; // Don't analyze beyond header
+        m_formatContext->max_analyze_duration = 0; // 0 = FFmpeg's default; probesize is the cap
+    } else {
+        m_formatContext->probesize = 262144;                    // 256KB
+        m_formatContext->max_analyze_duration = AV_TIME_BASE;   // 1 s of stream
     }
 
     // Retrieve stream information
@@ -1139,7 +1191,7 @@ size_t AudioDecoder::readSamples(AudioBuffer& buffer, size_t numSamples,
                 }
 
                 // Debug first few reads
-                if (m_packetCount <= 3) {
+                if (g_logLevel >= LogLevel::DEBUG && m_packetCount <= 3) {
                     std::cout << "[DFF READ] Chunk " << m_packetCount
                               << ": read=" << bytesRead
                               << " deinterleaved=" << canTake
@@ -1215,7 +1267,7 @@ size_t AudioDecoder::readSamples(AudioBuffer& buffer, size_t numSamples,
                 rightOffset += toTake;
 
                 // Debug first few packets
-                if (m_packetCount <= 3) {
+                if (g_logLevel >= LogLevel::DEBUG && m_packetCount <= 3) {
                     std::cout << "[DSD READ] Packet " << m_packetCount
                               << ": size=" << packetSize
                               << " block=" << blockSize
@@ -1248,7 +1300,7 @@ size_t AudioDecoder::readSamples(AudioBuffer& buffer, size_t numSamples,
         }
 
         // Debug output
-        if (m_packetCount <= 5) {
+        if (g_logLevel >= LogLevel::DEBUG && m_packetCount <= 5) {
             std::cout << "[DSD OUT] " << totalBytes << " bytes, " << actualPerCh << " per ch" << std::endl;
             std::cout << "[DSD OUT]   L: ";
             for (size_t i = 0; i < 8 && i < actualPerCh; i++) printf("%02X ", buffer.data()[i]);
@@ -2036,6 +2088,7 @@ bool AudioEngine::play() {
         waitForPreloadThread();
         m_preloadRunning.store(true, std::memory_order_release);
         m_preloadThread = std::thread([this]() {
+            demoteToHelperThread("Preload Thread");
             preloadNextTrack();
             m_preloadRunning.store(false, std::memory_order_release);
         });
@@ -2205,6 +2258,7 @@ bool AudioEngine::process(size_t samplesNeeded) {
             waitForPreloadThread();
             m_preloadRunning.store(true, std::memory_order_release);
             m_preloadThread = std::thread([this]() {
+                demoteToHelperThread("Preload Thread");
                 preloadNextTrack();
                 m_preloadRunning.store(false, std::memory_order_release);
             });
