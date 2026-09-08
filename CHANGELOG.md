@@ -11,6 +11,7 @@
 - **Sink negotiation failure no longer leaves a PLAYING zombie**: when the output refuses a track (unsupported format), `process()` tears down like any fatal decode error (STOPPED + track-end callback) instead of a bare `return false`.
 - **Log lines never reaching journald**: `TimestampedStreambuf` never propagated `std::endl` flushes to the stdio buffer behind `std::cout`; under systemd stdout is a socket (fully buffered), so log lines only surfaced once 4 KB had piled up — and not at all for a quiet renderer. `sync()` override added.
 - **Shutdown deadlock on SIGTERM** (found during the A/B session): the signal handler called `stop()` and `exit()` from inside the handler, and `exit()` destroyed objects the interrupted main thread was still using — with a condition-variable wait that is `pthread_cond_destroy()` on a live waiter, i.e. a hang until systemd's 45 s timeout and SIGABRT. The handler now only writes to a self-pipe; main does the stop and returns normally.
+- Dead `src/sync/` copy of `DirettaSync`/`DirettaRingBuffer` removed (not built, had drifted from `src/`).
 
 ### Changed (host activity)
 - **Decode thread hysteresis**: fill the ring to 70 %, sleep until 30 % (sleep sized from the drain rate, 5–100 ms), instead of a 10 ms poll and a chunk as soon as it dips under 50 % — about 20 wake-ups and 5 decode bursts per second with a 0.5 s ring.
@@ -18,9 +19,12 @@
 - **Stable heap**: `mallopt(M_MMAP_THRESHOLD = 32 MB, M_TRIM_THRESHOLD = -1, M_TOP_PAD = 1 MB)` before `mlockall` so the process's buffers stay in the heap and it never shrinks. (An earlier revision asked for a 1 GB threshold, which glibc silently rejects, and a 64 MB top pad, which is per arena and locked under `MCL_FUTURE` — locked RSS went from ~100 MB to 600 MB+. Both corrected after review.)
 - Removed the empty 1 Hz "UPnP Thread" and the main thread's 1 Hz poll; preload thread demoted to `SCHED_OTHER` on the other cores (it inherited SCHED_FIFO on the decode core); FFmpeg probe capped for every URL.
 - Hot path: `m_workerActive` stores are release (were seq_cst), stream counter is a plain store, the flow-control condvar is only touched when a DSD producer waits, worker-only state on its own cache line.
+- **HTTP prefetch thread** (`PrefetchReader`): every HTTP source (except the Audirvana raw-PCM wrapper and the built-in DFF parser) is read by a dedicated `SCHED_OTHER` thread on the `--cpu-other` cores with `avio_read_partial()` — so a slow radio is forwarded as it arrives — up to 4 MB ahead of the demuxer through a custom `AVIOContext` (seeks forwarded as Range requests; own interrupt callback so `stop()` never waits on a stalled read). A preloaded next track is capped at 256 KB until it becomes current (e4c4428: Audirvana's server corrupts the active stream under concurrent multi-MB reads). The decode thread no longer blocks in network reads (opening the URL and Range seeks still run on the calling thread). `--no-prefetch` / `NO_PREFETCH=1` restores the previous behaviour for A/B.
+- **FLAC takes the bit-perfect bypass**: the decoder's output format decides (FLAC emits packed S16/S32), not the container; ALAC/WavPack stay on the resampler (planar).
 
 ### Added
 - `dumpStats()` (SIGUSR1) reports the measured `getNewStream()` cadence (mean/min/max/late vs expected cycle).
+- `make test-decode`: decode any URL through `AudioDecoder` without the SDK and print frame count + hash; `--seeks a,b,c` replays rapid successive seeks like a scrubbing control point.
 
 ## [2.5.15] - 2026-09-06
 

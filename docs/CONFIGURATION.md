@@ -173,6 +173,10 @@ sudo ./DirettaRendererUPnP --target 1 --transfer-mode random --cycle-min-time 33
 sudo ./DirettaRendererUPnP --target 1 --transfer-mode fixauto
 ```
 
+#### `--no-prefetch`
+**Default**: prefetch enabled
+**Description**: By default every HTTP source is read by a dedicated `SCHED_OTHER` thread pinned to the `--cpu-other` cores, 4 MB ahead of the demuxer, so the decode thread never performs network I/O. `--no-prefetch` restores FFmpeg's synchronous reads on the decode thread.
+
 #### `--target-profile-limit <microseconds>`
 **Default**: 0
 **Description**: Controls how the SDK manages transmission profiles.

@@ -110,6 +110,7 @@ extern LogRing* g_logRing;
 
 extern bool g_verbose;
 extern bool g_minimalUPnP;
+extern bool g_prefetchEnabled;
 extern bool g_dopEnabled;
 extern bool g_dopMsb;
 extern int g_rtPriority;
