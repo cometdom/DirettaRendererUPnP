@@ -1926,6 +1926,7 @@ void AudioEngine::setCurrentURI(const std::string& uri, const std::string& metad
 
     // NOUVEAU : Forcer la réouverture même si l'URI est la même (pour Stop)
     if (uriChanged || forceReopen) {
+        m_seekRequested.store(false, std::memory_order_release);  // a seek queued while paused targets the old track
         std::cout << "[AudioEngine] "
                   << (forceReopen ? "Forced reopen" : "URI changed")
                   << " - closing decoders to load new track" << std::endl;
@@ -2035,7 +2036,8 @@ void AudioEngine::stop() {
     // Changer l'état SANS mutex (atomic)
     m_state.store(State::STOPPED);
 
-    // Clear pending flags
+    // Clear pending flags (a seek queued while paused must not hit the next track)
+    m_seekRequested.store(false, std::memory_order_release);
     m_pendingNextTrack.store(false, std::memory_order_release);
     {
         std::lock_guard<std::mutex> pendingLock(m_pendingMutex);
@@ -2098,9 +2100,15 @@ double AudioEngine::getPosition() const {
 bool AudioEngine::process(size_t samplesNeeded) {
     // CRITICAL: Process async seek request (lock-free check)
     // This runs in the audio thread, so we can safely take the mutex
-    if (m_seekRequested.load(std::memory_order_acquire)) {
+    // Consume the flag BEFORE reading the target: the old load-target-then-
+    // clear-flag order lost a seek that arrived in between (its target was
+    // stored, then its flag was cleared by us) — scrubbing control points
+    // send several per second.
+    // (A request landing between the exchange and the target load is applied
+    // now and once more on the next call — one extra prefill, never a loss.)
+    if (m_seekRequested.load(std::memory_order_relaxed) &&
+        m_seekRequested.exchange(false, std::memory_order_acq_rel)) {
         double targetSeconds = m_seekTarget.load(std::memory_order_acquire);
-        m_seekRequested.store(false, std::memory_order_release);
 
         std::cout << "[AudioEngine] Processing async seek to " << targetSeconds << "s" << std::endl;
 
@@ -2131,6 +2139,11 @@ bool AudioEngine::process(size_t samplesNeeded) {
                     // Reset drainage counters
                     m_silenceCount = 0;
                     m_isDraining = false;
+
+                    // Drop what the output already buffered from the old position
+                    if (m_seekCallback) {
+                        m_seekCallback(targetSeconds);
+                    }
 
                     std::cout << "[AudioEngine] Seek completed to " << targetSeconds << "s" << std::endl;
                     DEBUG_LOG("[AudioEngine] Position updated to "
@@ -2694,9 +2707,11 @@ bool AudioEngine::seek(double seconds) {
 
     std::cout << "[AudioEngine] Seek requested to " << seconds << " seconds (async)" << std::endl;
 
-    // Quick validation without mutex
-    if (m_state.load(std::memory_order_acquire) != State::PLAYING) {
-        std::cerr << "[AudioEngine] Cannot seek when not playing" << std::endl;
+    // Quick validation without mutex. A seek while PAUSED is queued and
+    // applied by the first process() after resume (control points commonly
+    // scrub while paused); STOPPED has no track to seek in.
+    if (m_state.load(std::memory_order_acquire) == State::STOPPED) {
+        std::cerr << "[AudioEngine] Cannot seek when stopped" << std::endl;
         return false;
     }
 
