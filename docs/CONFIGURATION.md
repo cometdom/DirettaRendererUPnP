@@ -137,7 +137,7 @@ sudo ./DirettaRendererUPnP --target 1 --thread-mode 17
 
 #### `--cycle-time <microseconds>`
 **Default**: Auto-calculated — one MTU of audio per cycle: `(MTU − 3) / (rate × channels × bytes)`, e.g. ≈ 5660 µs for 44.1 kHz stereo once the sink negotiates 24-bit at MTU 1500 (≈ 14 440 µs at MTU 3824), ≈ 2600 µs for 96 kHz/24-bit at MTU 1500
-**Range**: 333-10000
+**Range**: 100-50000 (the renderer warns outside this range)
 **Description**: Maximum packet transmission cycle time. When specified, disables automatic cycle time calculation. Lower values = more frequent transmissions = lower latency but higher CPU.
 **Example**:
 ```bash
@@ -171,11 +171,20 @@ sudo ./DirettaRendererUPnP --target 1 --transfer-mode random --cycle-min-time 33
 | `varauto` | Flex cycle, auto-tuned |
 | `fixauto` | Fixed cycle, auto-tuned |
 | `random` | Random cycle (uses `--cycle-min-time` as minimum) |
+| `auto-sdk` | `Sync::configTransferAuto()` — the mode the SDK's own sample host uses; lets the SDK pick between fixed and variable cycles itself (`--cycle-min-time` as the floor) |
 
 **Example**:
 ```bash
 sudo ./DirettaRendererUPnP --target 1 --transfer-mode fixauto
 ```
+
+#### `--sink-buffer-ms <ms>`
+**Default**: unset = the cycle time (what v2.5.15 always passed); `0` = the sink's own default
+**Description**: Buffer time requested from the target at `Sync::setSink()`. The SDK documentation names this parameter "sink buffer time"; the SDK sample host passes 100 ms. Leave unset unless you are comparing values with the negotiated profile logged at each `OPEN` (`cycle`, `latency`, `SinkInfo`).
+
+#### `--rapid-start`
+**Default**: off
+**Description**: SDK 150 `Sync::connect(cpu, rapidStart=true)`. Undocumented beyond its name; provided for A/B testing only.
 
 #### `--target-profile-limit <microseconds>`
 **Default**: 0

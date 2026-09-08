@@ -306,7 +306,28 @@
                         {"value": "varmax", "label": "VarMax (packets filled to maximum)"},
                         {"value": "varauto", "label": "VarAuto (adaptive packet timing)"},
                         {"value": "fixauto", "label": "FixAuto (fixed packet timing)"},
-                        {"value": "random", "label": "Random (use with Cycle Min Time)"}
+                        {"value": "random", "label": "Random (use with Cycle Min Time)"},
+                        {"value": "auto-sdk", "label": "Auto (SDK): configTransferAuto, the SDK sample host's mode"}
+                    ]
+                },
+                {
+                    "key": "SINK_BUFFER_MS",
+                    "type": "number",
+                    "label": "Sink Buffer Time (ms)",
+                    "description": "Buffer time requested from the target at Sync::setSink(). Empty = the cycle time (what v2.5.15 always passed); 0 = the sink's own default; the SDK sample host passes 100. A/B only.",
+                    "default": "",
+                    "min": 0,
+                    "max": 1000
+                },
+                {
+                    "key": "RAPID_START",
+                    "type": "select",
+                    "label": "Rapid Start (SDK 150)",
+                    "description": "Sync::connect(cpu, rapidStart=true) on SDK 150. Undocumented beyond its name; A/B only.",
+                    "default": "",
+                    "options": [
+                        {"value": "", "label": "Off (default)"},
+                        {"value": "1", "label": "On"}
                     ]
                 },
                 {
@@ -315,14 +336,14 @@
                     "label": "Cycle Time (us)",
                     "description": "Max packet transmission cycle time in microseconds. Empty = auto-calculated.",
                     "default": "",
-                    "min": 333,
-                    "max": 10000
+                    "min": 100,
+                    "max": 50000
                 },
                 {
                     "key": "CYCLE_MIN_TIME",
                     "type": "number",
                     "label": "Cycle Min Time (us)",
-                    "description": "Min cycle time in microseconds (random mode only)",
+                    "description": "Min cycle time in microseconds (random and auto-sdk modes)",
                     "default": "",
                     "min": 333,
                     "max": 10000

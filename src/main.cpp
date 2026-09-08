@@ -280,8 +280,9 @@ DirettaRenderer::Config parseArguments(int argc, char* argv[]) {
         }
         else if (arg == "--cycle-time" && i + 1 < argc) {
             config.cycleTime = std::atoi(argv[++i]);
-            if (config.cycleTime < 333 || config.cycleTime > 10000) {
-                std::cerr << "Warning: cycle-time should be between 333-10000 us" << std::endl;
+            if (config.cycleTime < 100 || config.cycleTime > 50000) {
+                std::cerr << "Warning: cycle-time should be between 100-50000 us "
+                          << "(auto = one MTU of audio: 14441 us at 44.1k/24 with MTU 3824)" << std::endl;
             }
         }
         else if (arg == "--info-cycle" && i + 1 < argc) {
@@ -294,13 +295,24 @@ DirettaRenderer::Config parseArguments(int argc, char* argv[]) {
             config.transferMode = argv[++i];
             if (config.transferMode != "auto" && config.transferMode != "varmax" &&
                 config.transferMode != "varauto" && config.transferMode != "fixauto" &&
-                config.transferMode != "random") {
-                std::cerr << "Invalid transfer-mode. Use: auto, varmax, varauto, fixauto, random" << std::endl;
+                config.transferMode != "random" && config.transferMode != "auto-sdk") {
+                std::cerr << "Invalid transfer-mode. Use: auto, varmax, varauto, fixauto, random, "
+                          << "auto-sdk" << std::endl;
                 exit(1);
             }
         }
         else if (arg == "--target-profile-limit" && i + 1 < argc) {
             config.targetProfileLimitTime = std::atoi(argv[++i]);
+        }
+        else if (arg == "--sink-buffer-ms" && i + 1 < argc) {
+            config.sinkBufferMs = std::atoi(argv[++i]);
+            if (config.sinkBufferMs < 0 || config.sinkBufferMs > 1000) {
+                std::cerr << "Warning: sink-buffer-ms should be between 0 (sink default) and 1000; "
+                             "leave unset to keep the 2.5.15 behaviour (cycle time)" << std::endl;
+            }
+        }
+        else if (arg == "--rapid-start") {
+            config.rapidStart = true;
         }
         else if (arg == "--mtu" && i + 1 < argc) {
             config.mtu = std::atoi(argv[++i]);
@@ -398,15 +410,24 @@ DirettaRenderer::Config parseArguments(int argc, char* argv[]) {
                       << "  --help, -h            Show this help\n"
                       << "\n"
                       << "Advanced Diretta SDK settings:\n"
-                      << "  --thread-mode <mode>       SDK thread mode bitmask (default: 1=CRITICAL)\n"
-                      << "                             Flags: 1=CRITICAL, 2=NOSHORTSLEEP, 4=NOSLEEP4CORE,\n"
-                      << "                             8=SOCKETNOBLOCK, 16=OCCUPIED, 2048=NOSLEEPFORCE,\n"
+                      << "  --thread-mode <mode>       SDK thread mode bitmask (default: 1=CRITICAL;\n"
+                      << "                             16=OCCUPIED is added when --cpu-audio is set)\n"
+                      << "                             Flags: 1=CRITICAL, 2=NOSHORTSLEEP (busy-wait short waits),\n"
+                      << "                             4=NOSLEEP4CORE, 16=OCCUPIED,\n"
+                      << "                             32..224=FEEDBACKOFFSET (3-bit moving-average window),\n"
+                      << "                             256=NOFASTFEEDBACK, 512=IDLEONE, 1024=IDLEALL,\n"
+                      << "                             2048=NOSLEEPFORCE (busy loop), 4096=LIMITRESEND,\n"
                       << "                             8192=NOJUMBOFRAME, 16384=NOFIREWALL, 32768=NORAWSOCKET\n"
-                      << "  --cycle-time <us>          Max cycle time in microseconds (333-10000, default: auto)\n"
-                      << "  --cycle-min-time <us>      Min cycle time in microseconds (random mode only)\n"
+                      << "  --cycle-time <us>          Max cycle time in microseconds (100-50000)\n"
+                      << "                             default: auto = one MTU of audio per cycle\n"
+                      << "  --cycle-min-time <us>      Min cycle time in microseconds (random and auto-sdk modes)\n"
                       << "  --info-cycle <us>          Info packet cycle in microseconds (default: 100000)\n"
-                      << "  --transfer-mode <mode>     Transfer mode: auto, varmax, varauto, fixauto, random\n"
+                      << "  --transfer-mode <mode>     Transfer mode: auto, varmax, varauto, fixauto, random,\n"
+                      << "                             auto-sdk (= Sync::configTransferAuto, SDK sample host mode)\n"
                       << "  --target-profile-limit <us> Target profile limit time (0=SelfProfile (stable), default: 0, >0=experimental)\n"
+                      << "  --sink-buffer-ms <ms>      Sink (target) buffer time at setSink (default: the cycle time,\n"
+                      << "                             as in 2.5.15; 0 = sink default; the SDK sample host uses 100)\n"
+                      << "  --rapid-start              SDK 150 connect with Rapid Start (undocumented; A/B only)\n"
                       << "  --mtu <bytes>              MTU override (default: auto-detect)\n"
                       << "  --rt-priority <1-99>       SCHED_FIFO real-time priority for worker thread (default: 50)\n"
                       << "\n"
