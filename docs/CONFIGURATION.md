@@ -78,6 +78,10 @@ sudo ./DirettaRendererUPnP --interface eth0
 sudo ./DirettaRendererUPnP --no-gapless
 ```
 
+#### `--port-strict`
+**Default**: off (libupnp's behaviour: if the configured port is still held by `TIME_WAIT` connections of the previous instance, take port+1 and announce it over SSDP)
+**Description**: Wait (up to 75 s) for the configured port instead. Only useful with control points that cache the renderer's address and ignore the SSDP announcement (JPLAY); it costs up to a minute without a renderer after a hot restart. `PORT_STRICT=1` in the conf file.
+
 #### `--verbose, -v`
 **Default**: Disabled
 **Description**: Enable detailed debug logging (log level: DEBUG). Only use for troubleshooting.
