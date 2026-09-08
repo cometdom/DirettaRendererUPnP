@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.5.17] - 2026-09-08
+
+### Fixed
+- **`install.sh`'s FFmpeg self-test missed a real-world DSD failure mode**: `test_ffmpeg_installation()` only checked for `dsd_lsbf`/`dsd_msbf` in `ffmpeg -decoders`, not the `_planar` variants that FFmpeg's `dsf` demuxer actually requests for a real `.dsf` file (DSF is always planar). A build with only the base decoders — e.g. Fedora's `ffmpeg-free-devel` — passed this check while still failing every real DSD file with "Codec not found". Root-caused after a user report of DSD playback going silent on Fedora: the renderer's own custom-built FFmpeg (via this same `install.sh`, full DSD support) had been silently overwritten by the distro package after an unrelated FFmpeg install run — a genuine environment issue, not a code regression, but one this test should have caught. Now checks all four decoders.
+
 ## [2.5.16] - 2026-09-08
 
 ### Fixed
