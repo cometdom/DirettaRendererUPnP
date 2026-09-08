@@ -110,9 +110,9 @@ These options allow fine-tuning the Diretta SDK transmission behavior. **Leave a
 | CRITICAL | 1 | Set sending thread to critical priority |
 | NOSHORTSLEEP | 2 | Busy-loop for short waits (reduces jitter, uses more CPU) |
 | NOSLEEP4CORE | 4 | Only busy-loop if >= 4 CPU cores available |
-| SOCKETNOBLOCK | 8 | Non-blocking socket |
-| OCCUPIED | 16 | Pin SDK thread to CPU core |
-| FEEDBACK | 32/64/128 | Moving average feedback (3 bits) |
+| (8) | 8 | Reserved — `SOCKETNOBLOCK` is commented out in the SDK header; no documented effect |
+| OCCUPIED | 16 | Pin SDK thread to CPU core (added automatically with `--cpu-audio`) |
+| FEEDBACKOFFSET | 32/64/128 | Moving-average window for the feedback (3-bit field, 0..7) |
 | NOFASTFEEDBACK | 256 | Disable fast feedback mechanism |
 | IDLEONE | 512 | Run idle handler once per cycle |
 | IDLEALL | 1024 | Always run idle handler (busy-loop variant) |
@@ -132,7 +132,7 @@ sudo ./DirettaRendererUPnP --target 1 --thread-mode 17
 ```
 
 #### `--cycle-time <microseconds>`
-**Default**: Auto-calculated (2620 µs base, adapts to format)
+**Default**: Auto-calculated — one MTU of audio per cycle: `(MTU − 3) / (rate × channels × bytes)`, e.g. ≈ 5660 µs for 44.1 kHz stereo once the sink negotiates 24-bit at MTU 1500 (≈ 14 440 µs at MTU 3824), ≈ 2600 µs for 96 kHz/24-bit at MTU 1500
 **Range**: 333-10000
 **Description**: Maximum packet transmission cycle time. When specified, disables automatic cycle time calculation. Lower values = more frequent transmissions = lower latency but higher CPU.
 **Example**:
@@ -310,7 +310,7 @@ The renderer detects the audio source type and adjusts the buffer accordingly:
 | Source | Ring Buffer | Prefill | Detection |
 |--------|-----------|---------|-----------|
 | **Local** (LAN server: Asset, JRiver, Audirvana) | 0.5s | 80ms | IP address (192.168.x, 10.x, 172.x) |
-| **Remote** (Qobuz, Tidal, internet streams) | 1.0s | 150ms | Non-local IP or streaming service in URL |
+| **Remote** (Qobuz, Tidal, internet streams) | 3.0s | 500ms | Non-local IP or streaming service in URL |
 | **DSD** (all sources) | 0.8s | 200ms | DSD format detected |
 
 - **Local sources** get a smaller buffer for lower latency
