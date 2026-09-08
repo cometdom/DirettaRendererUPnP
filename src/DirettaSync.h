@@ -316,7 +316,9 @@ private:
 // Transfer Mode
 //=============================================================================
 
-enum class DirettaTransferMode { FIX_AUTO, VAR_AUTO, VAR_MAX, RANDOM, AUTO };
+// AUTO_SDK = Sync::configTransferAuto(minSync, target, max), the mode the SDK
+// author's own sample host (SinHost) uses; DRUP never exposed it before.
+enum class DirettaTransferMode { FIX_AUTO, VAR_AUTO, VAR_MAX, RANDOM, AUTO, AUTO_SDK };
 
 //=============================================================================
 // Configuration
@@ -330,8 +332,17 @@ struct DirettaConfig {
     unsigned int mtu = 0;  // 0 = auto-detect
     unsigned int mtuFallback = 1500;
     unsigned int infoCycle = 100000;  // Info packet cycle in µs (SDK default: 100ms)
-    unsigned int cycleMinTime = 0;   // 0 = unused (only for random transfer mode)
+    unsigned int cycleMinTime = 0;   // 0 = unused (random and auto-sdk transfer modes)
     unsigned int targetProfileLimitTime = 0;  // 0=SelfProfile (stable), >0=TargetProfile (experimental, LimitCycleTime µs)
+    // Sink (target) buffer time requested in setSink()'s 2nd argument — the SDK
+    // documents it as "Sink buffer time (if zero use default sink buffer time)",
+    // NOT the host cycle time that earlier versions passed there (which made the
+    // target margin shrink with the sample rate: 14 ms at 44.1k, 1.35 ms at DSD256).
+    // 0 = let the sink use its default; SinHost requests 100 ms.
+    int sinkBufferMs = -1;   // <0 = as before (cycle time), 0 = sink default, >0 = ms
+    // SDK 150: Sync::connect(cpu, rapidStart). Semantics of Rapid Start are not
+    // documented beyond "Rapid Start (default play mode)" — off unless asked.
+    bool rapidStart = false;
     unsigned int dacStabilizationMs = DirettaBuffer::DAC_STABILIZATION_MS;
     unsigned int onlineWaitMs = DirettaBuffer::ONLINE_WAIT_MS;
     unsigned int formatSwitchDelayMs = DirettaBuffer::FORMAT_SWITCH_DELAY_MS;
@@ -573,6 +584,8 @@ private:
 
     void applyTransferMode(DirettaTransferMode mode, ACQUA::Clock cycleTime);
     unsigned int calculateCycleTime(uint32_t sampleRate, int channels, int bitsPerSample);
+    void logNegotiatedProfile(const char* when);
+    void alignBufferToNegotiatedCycle();
     void requestShutdownSilence(int buffers);
     bool waitForOnline(unsigned int timeoutMs);
     void logSinkCapabilities();

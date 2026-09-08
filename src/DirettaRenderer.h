@@ -42,10 +42,12 @@ public:
         int threadMode = -1;       // SDK THRED_MODE bitmask (default: 1 = CRITICAL)
         int cycleTime = -1;        // Cycle time in µs (default: 2620, auto-calculated)
         int infoCycle = -1;        // Info packet cycle in µs (default: 100000 = 100ms)
-        int cycleMinTime = -1;     // Min cycle time in µs (default: unused, random mode only)
-        std::string transferMode;  // Transfer mode: auto|varmax|varauto|fixauto|random
+        int cycleMinTime = -1;     // Min cycle time in µs (default: unused; random and auto-sdk modes)
+        std::string transferMode;  // Transfer mode: auto|varmax|varauto|fixauto|random|auto-sdk
         int mtu = -1;             // MTU override in bytes (default: auto-detect)
         int targetProfileLimitTime = -1;  // 0=SelfProfile (stable, default), >0=TargetProfile limit in µs (experimental)
+        int sinkBufferMs = -1;     // setSink() buffer time: unset/-1 = the cycle time (2.5.15), 0 = sink default, >0 ms
+        bool rapidStart = false;   // SDK 150 Sync::connect(cpu, rapidStart)
 
         // CPU affinity (empty = no pinning, default)
         // Accept one or more cores (comma-separated), e.g. "6" or "6,7,8"
