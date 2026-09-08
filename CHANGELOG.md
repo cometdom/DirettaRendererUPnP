@@ -26,6 +26,7 @@
 - `dumpStats()` (SIGUSR1) reports the measured `getNewStream()` cadence (mean/min/max/late vs expected cycle).
 - `make test-decode`: decode any URL through `AudioDecoder` without the SDK and print frame count + hash; `--seeks a,b,c` replays rapid successive seeks like a scrubbing control point.
 - `tools/range_server.py` (Range-capable static server — python's `http.server` ignores Range requests, which makes every FLAC seek fail), `tools/make_test_audio.py` (WAV generator + minimal verbatim FLAC writer, no encoder needed), `tools/dsf2dff.py` (lossless DSF → DFF, to compare the FFmpeg and built-in DSD parsers).
+- `tests/decode_suite.sh` (real files served over HTTP: full decode with and without the prefetch thread, 5-seek and 30-random-seek sequences, output hashes compared) and `tests/bitexact_suite.sh` (synthetic WAV/FLAC hashed against the source samples).
 
 ## [2.5.15] - 2026-09-06
 
