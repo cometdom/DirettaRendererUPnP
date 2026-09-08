@@ -151,7 +151,11 @@ public:
         mask_ = size_ - 1;
         buffer_.resize(size_);
         silenceByte_.store(silenceByte, std::memory_order_release);
-        clear();  // Resets all S24 state - hint will be set by caller via setS24PackModeHint()
+        // A resize is a new format: forget the S24 hint (the caller re-sets it
+        // via setS24PackModeHint() right after). clear() alone must NOT forget
+        // it — see clear().
+        m_s24Hint = S24PackMode::Unknown;
+        clear();
         fillWithSilence();
     }
 
@@ -179,10 +183,13 @@ public:
     void clear() {
         writePos_.store(0, std::memory_order_release);
         readPos_.store(0, std::memory_order_release);
-        // Reset all S24 state to allow fresh detection for new tracks
-        // New track will set hint via setS24PackModeHint() if available
-        m_s24PackMode = S24PackMode::Unknown;
-        m_s24Hint = S24PackMode::Unknown;
+        // Restart S24 detection but KEEP the hint: clear() is also called by
+        // resumePlayback() (pause → play), which does not re-open the track
+        // and therefore never re-sets the hint. Forgetting it there made a
+        // resume on a quiet passage time out into the wrong alignment →
+        // full-scale white noise until the next open(). The hint is only
+        // forgotten by resize() (new format), where the caller re-sets it.
+        m_s24PackMode = m_s24Hint;
         m_s24DetectionConfirmed = false;
         m_deferredSampleCount = 0;
         m_dopMarkerState = false;  // Reset DoP marker to 0x05
@@ -305,11 +312,19 @@ public:
      *
      * Optimized path: uses direct write when contiguous space available,
      * avoiding the check-then-copy overhead of the wraparound case.
+     *
+     * @param frameBytes Partial pushes are rounded down to a multiple of this.
+     *        getFreeSpace() is (size - used - 1), never a frame multiple when
+     *        the ring is nearly full: a byte-granular clamp used to hand a
+     *        torn frame to the consumer and desynchronise the producer's
+     *        remaining-samples arithmetic (channel swap / noise until the
+     *        next open()).
      */
-    size_t push(const uint8_t* data, size_t len) {
+    size_t push(const uint8_t* data, size_t len, size_t frameBytes = 1) {
         if (size_ == 0) return 0;
         size_t free = getFreeSpace();
         if (len > free) len = free;
+        if (frameBytes > 1) len -= len % frameBytes;
         if (len == 0) return 0;
 
         // Fast path: try direct write (no wraparound)
@@ -339,15 +354,19 @@ public:
      * @return Input bytes consumed
      *
      * S24 mode selection:
-     * 1. FFmpeg hint (from codec detection) takes priority - FLAC, ALAC, PCM_S24 are always LSB
+     * 1. FFmpeg hint (from codec detection) takes priority. FFmpeg has no S24
+     *    sample format: 24-bit content always arrives as S32 left-justified
+     *    (S24<<8, low byte zero) on every platform — i.e. MsbAligned.
      * 2. Sample-based detection only runs when hint is Unknown
-     * 3. Timeout defaults to LSB after ~1 second of silence
+     * 3. Timeout defaults to MsbAligned (the only alignment this project can
+     *    receive from FFmpeg). The former LSB default turned a quiet track
+     *    start into full-scale white noise.
      *
      * v2.0.0 fix: Trust FFmpeg hint completely - don't let sample detection override it.
      * Sample detection can incorrectly detect MsbAligned when byte 0 happens to be zero
      * (quiet passages) and byte 3 has garbage/sign-extension bits.
      */
-    size_t push24BitPacked(const uint8_t* data, size_t inputSize) {
+    size_t push24BitPacked(const uint8_t* data, size_t inputSize, size_t channels = 1) {
         if (size_ == 0) return 0;
         size_t numSamples = inputSize / 4;
         if (numSamples == 0) return 0;
@@ -358,6 +377,7 @@ public:
 
         if (numSamples > maxSamples) numSamples = maxSamples;
         if (numSamples > maxSamplesByFree) numSamples = maxSamplesByFree;
+        if (channels > 1) numSamples -= numSamples % channels;  // whole frames only
         if (numSamples == 0) return 0;
 
         prefetch_audio_buffer(data, numSamples * 4);
@@ -375,26 +395,23 @@ public:
             } else {
                 // Still silence - accumulate count for timeout
                 m_deferredSampleCount += numSamples;
-                // Timeout: if still silent after threshold, default to LSB (most common)
+                // Timeout: if still silent after threshold, default to MSB — the
+                // alignment FFmpeg produces for 24-bit content on every platform.
                 if (m_deferredSampleCount > DEFERRED_TIMEOUT_SAMPLES) {
-                    m_s24PackMode = S24PackMode::LsbAligned;
+                    m_s24PackMode = S24PackMode::MsbAligned;
                     m_s24DetectionConfirmed = true;
                 }
             }
         }
         // When hint is set (LsbAligned/MsbAligned from FFmpeg), trust it completely
 
-        // Use effective mode for conversion (Deferred/Unknown use LSB as fallback)
+        // Use effective mode for conversion (Deferred/Unknown fall back to MSB).
+        // Same code on x86 and ARM: the previous #if __aarch64__ forcing MSB
+        // only masked the wrong LSB default on ARM while leaving x86 exposed.
         S24PackMode effectiveMode = m_s24PackMode;
         if (effectiveMode == S24PackMode::Deferred || effectiveMode == S24PackMode::Unknown) {
-            effectiveMode = S24PackMode::LsbAligned;  // Safe default for standard formats
+            effectiveMode = S24PackMode::MsbAligned;
         }
-
-        // ARM64 fix: FFmpeg on ARM produces MSB-aligned S24 data (byte 0 = padding)
-        // while x86 FFmpeg produces LSB-aligned (byte 3 = padding)
-        #if defined(__aarch64__) || defined(_M_ARM64)
-        effectiveMode = S24PackMode::MsbAligned;  // Force MSB for ARM
-        #endif
 
         size_t stagedBytes = (effectiveMode == S24PackMode::MsbAligned)
             ? convert24BitPackedShifted_AVX2(m_staging24BitPack, data, numSamples)
@@ -409,7 +426,7 @@ public:
      * @brief Push with 16-to-32 bit upsampling
      * @return Input bytes consumed
      */
-    size_t push16To32(const uint8_t* data, size_t inputSize) {
+    size_t push16To32(const uint8_t* data, size_t inputSize, size_t channels = 1) {
         if (size_ == 0) return 0;
         size_t numSamples = inputSize / 2;
         if (numSamples == 0) return 0;
@@ -420,6 +437,7 @@ public:
 
         if (numSamples > maxSamples) numSamples = maxSamples;
         if (numSamples > maxSamplesByFree) numSamples = maxSamplesByFree;
+        if (channels > 1) numSamples -= numSamples % channels;  // whole frames only
         if (numSamples == 0) return 0;
 
         prefetch_audio_buffer(data, numSamples * 2);
@@ -438,7 +456,7 @@ public:
      * Converts 16-bit samples to packed 24-bit format.
      * Used when sink only supports 24-bit (not 32-bit).
      */
-    size_t push16To24(const uint8_t* data, size_t inputSize) {
+    size_t push16To24(const uint8_t* data, size_t inputSize, size_t channels = 1) {
         if (size_ == 0) return 0;
         size_t numSamples = inputSize / 2;
         if (numSamples == 0) return 0;
@@ -449,6 +467,7 @@ public:
 
         if (numSamples > maxSamples) numSamples = maxSamples;
         if (numSamples > maxSamplesByFree) numSamples = maxSamplesByFree;
+        if (channels > 1) numSamples -= numSamples % channels;  // whole frames only
         if (numSamples == 0) return 0;
 
         prefetch_audio_buffer(data, numSamples * 2);
@@ -458,6 +477,38 @@ public:
         size_t samplesWritten = written / 3;
 
         return samplesWritten * 2;
+    }
+
+    /**
+     * @brief Push with 32-to-16 bit truncation (S32/S24-in-S32 container → S16)
+     * @return Input bytes consumed
+     *
+     * Used when the sink only accepts 16-bit for a 24/32-bit source. Keeps the
+     * two most significant bytes (no dither: an explicit, documented
+     * truncation — the previous behaviour was to memcpy the 4-byte samples as
+     * if they were 2-byte ones, i.e. garbage).
+     */
+    size_t push32To16(const uint8_t* data, size_t inputSize, size_t channels = 1) {
+        if (size_ == 0) return 0;
+        size_t numSamples = inputSize / 4;
+        if (numSamples == 0) return 0;
+
+        size_t maxSamples = STAGING_SIZE / 2;
+        size_t free = getFreeSpace();
+        size_t maxSamplesByFree = free / 2;
+
+        if (numSamples > maxSamples) numSamples = maxSamples;
+        if (numSamples > maxSamplesByFree) numSamples = maxSamplesByFree;
+        if (channels > 1) numSamples -= numSamples % channels;  // whole frames only
+        if (numSamples == 0) return 0;
+
+        prefetch_audio_buffer(data, numSamples * 4);
+
+        size_t stagedBytes = convert32To16(m_staging16To32, data, numSamples);
+        size_t written = writeToRing(m_staging16To32, stagedBytes);
+        size_t samplesWritten = written / 2;
+
+        return samplesWritten * 4;
     }
 
     /**
@@ -1370,6 +1421,18 @@ private:
      * Write staged data to ring buffer with efficient wraparound handling
      * Uses memcpy_audio_fixed for consistent timing
      */
+    /**
+     * Convert S32 (or S24-in-S32) samples to S16 by keeping the two most
+     * significant bytes. Scalar: this is the 16-bit-only-sink fallback path.
+     */
+    size_t convert32To16(uint8_t* dst, const uint8_t* src, size_t numSamples) {
+        for (size_t i = 0; i < numSamples; i++) {
+            dst[i * 2 + 0] = src[i * 4 + 2];
+            dst[i * 2 + 1] = src[i * 4 + 3];
+        }
+        return numSamples * 2;
+    }
+
     size_t writeToRing(const uint8_t* staged, size_t len) {
         size_t size = buffer_.size();
         if (size == 0 || len == 0) return 0;
