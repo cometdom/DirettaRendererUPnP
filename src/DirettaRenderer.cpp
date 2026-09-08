@@ -14,6 +14,7 @@
 #include "UPnPDevice.hpp"
 #include "AudioEngine.h"
 #include <chrono>
+#include <algorithm>
 #include <ctime>
 #include <iomanip>
 #include <sstream>
@@ -809,7 +810,7 @@ bool DirettaRenderer::start(std::atomic<bool>* stopSignal) {
                 auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
                     now - lastLogTime).count();
                 if (firstAttempt || elapsed >= 5000) {
-                    std::cout << "[DirettaRenderer] Network not ready, retrying UPnP init..." << std::endl;
+                    LOG_WARN("[DirettaRenderer] Network not ready, retrying UPnP init...");
                     lastLogTime = now;
                 }
                 firstAttempt = false;
@@ -828,7 +829,7 @@ bool DirettaRenderer::start(std::atomic<bool>* stopSignal) {
 
         // Start threads
         m_running = true;
-        m_upnpThread = std::thread(&DirettaRenderer::upnpThreadFunc, this);
+        AudioEngine::setHelperThreadCores(parseCoreList(m_config.cpuOther));
         m_audioThread = std::thread(&DirettaRenderer::audioThreadFunc, this);
         if (!g_minimalUPnP) {
             m_positionThread = std::thread(&DirettaRenderer::positionThreadFunc, this);
@@ -875,7 +876,6 @@ void DirettaRenderer::stop() {
         m_upnp->stop();
     }
 
-    if (m_upnpThread.joinable()) m_upnpThread.join();
     if (m_audioThread.joinable()) m_audioThread.join();
     if (m_positionThread.joinable()) m_positionThread.join();
 
@@ -885,19 +885,6 @@ void DirettaRenderer::stop() {
 //=============================================================================
 // Thread Functions
 //=============================================================================
-
-void DirettaRenderer::upnpThreadFunc() {
-    blockShutdownSignalsOnThisThread();
-    auto cores = parseCoreList(m_config.cpuOther);
-    if (!cores.empty()) pinThreadToCores(cores, "UPnP Thread");
-    DEBUG_LOG("[UPnP Thread] Started");
-
-    while (m_running) {
-        std::this_thread::sleep_for(std::chrono::seconds(1));
-    }
-
-    DEBUG_LOG("[UPnP Thread] Stopped");
-}
 
 // What the SDK worker thread could not log itself (no iostream on the RT path).
 // Called from both branches of the audio thread loop: events are raised at any
@@ -933,9 +920,21 @@ void DirettaRenderer::audioThreadFunc() {
     }
     DEBUG_LOG("[Audio Thread] Started");
 
-    // Buffer-level flow control thresholds (like MPD's Delay() approach)
-    constexpr float BUFFER_HIGH_THRESHOLD = 0.5f;  // Throttle when >50% full
-    constexpr float BUFFER_LOW_THRESHOLD = 0.25f;  // Warn when <25% full
+    // Buffer-level flow control with hysteresis. The decoder works in bursts:
+    // fill the ring up to HIGH, then sleep until it has drained to LOW, then
+    // fill again. Before this the thread woke every 10 ms to test the level
+    // and decoded a 46 ms chunk as soon as it dipped under 50 %: ~100 wake-ups
+    // and ~20 decode bursts per second. With a 30–70 % band, a 0.5 s ring and
+    // sleeps sized from the drain rate (capped at 100 ms so a seek or stop is
+    // never delayed more than that), the drain phase takes 3-4 wake-ups per
+    // 200 ms cycle: ~20 wake-ups and ~5 bursts of ~4 chunks per second.
+    constexpr float BUFFER_HIGH_THRESHOLD = 0.70f;
+    constexpr float BUFFER_LOW_THRESHOLD = 0.30f;
+    constexpr float SLEEP_MARGIN = 0.05f;   // wake a little before LOW
+    constexpr int   SLEEP_MIN_MS = 5;
+    constexpr int   SLEEP_MAX_MS = 100;
+    bool filling = true;
+    float ringSeconds = 0.0f;               // refreshed on format change, not per iteration
 
     uint32_t lastSampleRate = 0;
     size_t currentSamplesPerCall = 8192;
@@ -971,6 +970,7 @@ void DirettaRenderer::audioThreadFunc() {
             if (sampleRate != lastSampleRate || samplesPerCall != currentSamplesPerCall) {
                 currentSamplesPerCall = samplesPerCall;
                 lastSampleRate = sampleRate;
+                ringSeconds = m_direttaSync ? m_direttaSync->getBufferSeconds() : 0.0f;
                 DEBUG_LOG("[Audio Thread] Format: " << sampleRate << "Hz "
                           << (isDSD ? "DSD" : "PCM") << ", samples/call="
                           << currentSamplesPerCall);
@@ -987,9 +987,16 @@ void DirettaRenderer::audioThreadFunc() {
 
             logRtEvents();
 
-            if (bufferLevel > BUFFER_HIGH_THRESHOLD) {
-                // Buffer is healthy - throttle to avoid wasting CPU
-                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            if (bufferLevel >= BUFFER_HIGH_THRESHOLD) filling = false;
+            else if (bufferLevel <= BUFFER_LOW_THRESHOLD) filling = true;
+
+            if (!filling) {
+                // Sleep until the ring is expected to reach LOW (+margin), bounded.
+                if (ringSeconds <= 0.0f) ringSeconds = m_direttaSync->getBufferSeconds();
+                int sleepMs = static_cast<int>((bufferLevel - BUFFER_LOW_THRESHOLD - SLEEP_MARGIN)
+                                               * ringSeconds * 1000.0f);
+                sleepMs = std::max(SLEEP_MIN_MS, std::min(SLEEP_MAX_MS, sleepMs));
+                std::this_thread::sleep_for(std::chrono::milliseconds(sleepMs));
             } else {
                 // Buffer needs filling - process immediately
                 bool success = m_audioEngine->process(currentSamplesPerCall);
@@ -1001,11 +1008,6 @@ void DirettaRenderer::audioThreadFunc() {
                 if (!success) {
                     // No data available from decoder, brief pause
                     std::this_thread::sleep_for(std::chrono::milliseconds(5));
-                } else if (bufferLevel < BUFFER_LOW_THRESHOLD && bufferLevel > 0.0f) {
-                    // Buffer is getting low - process again immediately (catch up)
-                    if (m_audioEngine->process(currentSamplesPerCall) && m_audioEngine->consumeReconnectFlag()) {
-                        m_direttaSync->requestPostReconnectRebuffering();
-                    }
                 }
             }
         } else {

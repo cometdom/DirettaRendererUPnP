@@ -21,6 +21,9 @@
 #include <pthread.h>
 #include <sched.h>
 #include <sys/mman.h>
+#include <malloc.h>
+#include <unistd.h>
+#include <fcntl.h>
 #include <vector>
 #include <sstream>
 #include <string>
@@ -54,14 +57,24 @@ void shutdownAsyncLogging() {
     }
 }
 
+// Shutdown wake-up: the handler only flips the flag and writes one byte to a
+// self-pipe (both async-signal-safe); the main thread, blocked in read() on
+// the other end, does the actual stop and returns from main() normally.
+// The previous handler called stop() and exit() from inside the handler;
+// exit() ran the destructors of the objects the interrupted main thread was
+// still using (a condition variable it was waiting on → pthread_cond_destroy
+// waits forever for the waiter → systemd stop timeout → SIGABRT).
+static int g_wakePipe[2] = {-1, -1};
+static std::atomic<int> g_lastSignal{0};
+
 void signalHandler(int signal) {
-    std::cout << "\nSignal " << signal << " received, shutting down..." << std::endl;
+    g_lastSignal.store(signal, std::memory_order_relaxed);
     g_running.store(false, std::memory_order_release);
-    if (g_renderer) {
-        g_renderer->stop();
+    if (g_wakePipe[1] >= 0) {
+        char c = 1;
+        ssize_t r = write(g_wakePipe[1], &c, 1);
+        (void)r;
     }
-    shutdownAsyncLogging();
-    exit(0);
 }
 
 void statsSignalHandler(int /*signal*/) {
@@ -72,6 +85,7 @@ void statsSignalHandler(int /*signal*/) {
 
 bool g_verbose = false;
 bool g_minimalUPnP = false;
+bool g_prefetchEnabled = true;
 bool g_dopEnabled = false;
 bool g_dopMsb = false;  // --dop-msb: bit-reverse DSD bytes in DoP frames (for DACs expecting MSB-first)
 int g_rtPriority = 50;
@@ -262,6 +276,10 @@ DirettaRenderer::Config parseArguments(int argc, char* argv[]) {
             g_minimalUPnP = true;
             std::cout << "Minimal UPnP mode enabled (no position polling, no events)" << std::endl;
         }
+        else if (arg == "--no-prefetch") {
+            g_prefetchEnabled = false;
+            std::cout << "HTTP prefetch thread disabled (FFmpeg reads on the decode thread)" << std::endl;
+        }
         else if (arg == "--port-strict") {
             config.portStrict = true;
         }
@@ -399,6 +417,8 @@ DirettaRenderer::Config parseArguments(int argc, char* argv[]) {
                       << "  --verbose, -v         Enable verbose debug output (log level: DEBUG)\n"
                       << "  --quiet, -q           Quiet mode - only errors and warnings (log level: WARN)\n"
                       << "  --minimal-upnp        Minimal UPnP mode (no position polling, no events)\n"
+                      << "  --no-prefetch         Read HTTP sources on the decode thread (default: dedicated\n"
+                      << "                        prefetch thread on --cpu-other, 4 MB ahead)\n"
                       << "  --port-strict         After a hot restart, wait (up to 75 s) for the configured UPnP port\n"
                       << "                        instead of accepting port+1 — for control points that cache the\n"
                       << "                        renderer's address (JPLAY)\n"
@@ -462,6 +482,10 @@ int main(int argc, char* argv[]) {
     TimestampedStreambuf* cerrBuf = nullptr;
     installTimestampedLogging(coutBuf, cerrBuf);
 
+    if (pipe2(g_wakePipe, O_CLOEXEC) != 0) {
+        std::cerr << "pipe2 failed: " << std::strerror(errno) << std::endl;
+        return 1;
+    }
     signal(SIGINT, signalHandler);
     signal(SIGTERM, signalHandler);
     signal(SIGUSR1, statsSignalHandler);
@@ -577,6 +601,29 @@ int main(int argc, char* argv[]) {
         skip_warn3:;
     }
 
+    // mlockall(MCL_FUTURE) only helps if the allocator stops handing memory
+    // back to the kernel: by default glibc serves large blocks (ring buffer,
+    // FFmpeg contexts, 256 KB resampler buffer…) with mmap() and trims the
+    // heap top on free(), so each track open/close is a fresh set of
+    // mmap/munmap/madvise calls and freshly-faulted pages — on the decode
+    // core, mid-playback. Keep everything in one heap that never shrinks
+    // (same recipe as JACK/PipeWire/Ardour).
+#ifdef __GLIBC__
+    // glibc refuses an mmap threshold above HEAP_MAX_SIZE/2 (32 MB on 64-bit)
+    // and returns 0 — and setting the other two parameters freezes the
+    // dynamic threshold at its 128 KB default, so a rejected value here would
+    // make things worse, not better. 32 MB keeps every buffer this process
+    // uses (4 MB prefetch rings, resampler and ring buffers) in the heap.
+    // M_TOP_PAD is per arena and, under MCL_FUTURE, locked and populated at
+    // once: 64 MB here multiplied the locked RSS by six (one arena per
+    // allocating thread); 1 MB is enough to batch the growth.
+    if (mallopt(M_MMAP_THRESHOLD, 32 << 20) == 0) {
+        LOG_WARN("mallopt(M_MMAP_THRESHOLD) rejected — large buffers will be mmap'd per track");
+    }
+    mallopt(M_TRIM_THRESHOLD, -1);        // never give heap top back
+    mallopt(M_TOP_PAD, 1 << 20);          // grow arenas in 1 MB steps
+#endif
+
     // Lock all process memory in RAM (current + future allocations) so no
     // page fault can ever interrupt the audio thread. Standard for RT audio
     // (JACK, PipeWire). Requires CAP_IPC_LOCK (running as root suffices) and
@@ -596,6 +643,11 @@ int main(int argc, char* argv[]) {
 
     // Store cpuOther for log drain thread (launched below)
     g_cpuOther = config.cpuOther;
+
+    // --quiet: errors and warnings only, for real (see installQuietStdout)
+    if (g_logLevel <= LogLevel::WARN) {
+        installQuietStdout();
+    }
 
     // Initialize async logging ring buffer (A3 optimization)
     // Only active in verbose mode to avoid overhead in production
@@ -643,9 +695,15 @@ int main(int argc, char* argv[]) {
         // Main thread has never had SIGINT/SIGTERM blocked (see the comment
         // near the top of main()) — nothing to unblock here.
 
-        while (g_renderer->isRunning()) {
-            std::this_thread::sleep_for(std::chrono::seconds(1));
-        }
+        // Block until a shutdown signal — no periodic wake-up. The byte is
+        // written by signalHandler(); a signal that arrived before this
+        // point has already left it in the pipe.
+        char wake;
+        while (read(g_wakePipe[0], &wake, 1) < 0 && errno == EINTR) {}
+
+        std::cout << "\nSignal " << g_lastSignal.load(std::memory_order_relaxed)
+                  << " received, shutting down..." << std::endl;
+        g_renderer->stop();
 
     } catch (const std::exception& e) {
         std::cerr << "Exception: " << e.what() << std::endl;

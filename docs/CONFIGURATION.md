@@ -178,6 +178,10 @@ sudo ./DirettaRendererUPnP --target 1 --transfer-mode random --cycle-min-time 33
 sudo ./DirettaRendererUPnP --target 1 --transfer-mode fixauto
 ```
 
+#### `--no-prefetch`
+**Default**: prefetch enabled
+**Description**: By default every HTTP source is read by a dedicated `SCHED_OTHER` thread pinned to the `--cpu-other` cores, 4 MB ahead of the demuxer, so the decode thread never performs network I/O. `--no-prefetch` restores FFmpeg's synchronous reads on the decode thread.
+
 #### `--sink-buffer-ms <ms>`
 **Default**: unset = the cycle time (what v2.5.15 always passed); `0` = the sink's own default
 **Description**: Buffer time requested from the target at `Sync::setSink()`. The SDK documentation names this parameter "sink buffer time"; the SDK sample host passes 100 ms. Leave unset unless you are comparing values with the negotiated profile logged at each `OPEN` (`cycle`, `latency`, `SinkInfo`).
