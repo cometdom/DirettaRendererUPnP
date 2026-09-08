@@ -248,11 +248,15 @@ bool DirettaRenderer::start(std::atomic<bool>* stopSignal) {
                 syncConfig.transferMode = DirettaTransferMode::FIX_AUTO;
             else if (m_config.transferMode == "random")
                 syncConfig.transferMode = DirettaTransferMode::RANDOM;
+            else if (m_config.transferMode == "auto-sdk")
+                syncConfig.transferMode = DirettaTransferMode::AUTO_SDK;
             else
                 syncConfig.transferMode = DirettaTransferMode::AUTO;
         }
         if (m_config.targetProfileLimitTime >= 0)
             syncConfig.targetProfileLimitTime = static_cast<unsigned int>(m_config.targetProfileLimitTime);
+        syncConfig.sinkBufferMs = m_config.sinkBufferMs;   // <0 keeps the v2.5.15 behaviour
+        syncConfig.rapidStart = m_config.rapidStart;
 
         // CPU affinity (pass full core list to DirettaSync for worker thread pinning)
         syncConfig.cpuAudio = m_config.cpuAudio;
@@ -346,6 +350,7 @@ bool DirettaRenderer::start(std::atomic<bool>* stopSignal) {
         upnpConfig.modelName = "Diretta UPnP Renderer";
         upnpConfig.uuid = m_config.uuid;
         upnpConfig.port = m_config.port;
+        upnpConfig.portStrict = m_config.portStrict;
         upnpConfig.networkInterface = m_config.networkInterface;
         upnpConfig.gaplessEnabled = m_config.gaplessEnabled;
 
@@ -562,6 +567,12 @@ bool DirettaRenderer::start(std::atomic<bool>* stopSignal) {
             }
         );
 
+        m_audioEngine->setSeekCallback([this](double /*seconds*/) {
+            if (m_direttaSync) {
+                m_direttaSync->flushForSeek();
+            }
+        });
+
         m_audioEngine->setTrackEndCallback([this]() {
             std::cout << "[DirettaRenderer] Track ended naturally" << std::endl;
 
@@ -768,6 +779,7 @@ bool DirettaRenderer::start(std::atomic<bool>* stopSignal) {
         };
 
         m_upnp->setCallbacks(callbacks);
+        m_upnp->setStopSignal(stopSignal);
 
         // Start UPnP server (retry until network is ready or cancelled)
         {

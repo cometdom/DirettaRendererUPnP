@@ -15,6 +15,7 @@ VERBOSE="${VERBOSE:-}"
 MINIMAL_UPNP="${MINIMAL_UPNP:-}"
 NO_PREFETCH="${NO_PREFETCH:-}"
 DOP="${DOP:-}"
+PORT_STRICT="${PORT_STRICT:-}"
 INTERFACE="${INTERFACE:-${NETWORK_INTERFACE:-}}"
 THREAD_MODE="${THREAD_MODE:-}"
 CYCLE_TIME="${CYCLE_TIME:-}"
@@ -178,6 +179,13 @@ if [ -n "$NO_PREFETCH" ] && [ "$NO_PREFETCH" = "1" ]; then
     CMD+=("--no-prefetch")
 fi
 
+# PORT_STRICT=1 → after a hot restart, wait for the configured UPnP port (up
+# to 75 s) instead of accepting port+1 — for control points that cache the
+# renderer's address (JPLAY)
+if [ -n "$PORT_STRICT" ] && [ "$PORT_STRICT" = "1" ]; then
+    CMD+=("--port-strict")
+fi
+
 # DoP: transmit DSD as 24-bit PCM with DoP markers
 # DOP=1   → --dop   (LSB-first, standard DoP v1.1)
 # DOP=msb → --dop-msb (bit-reversed bytes, for DACs expecting MSB-first DSD in DoP)
@@ -210,6 +218,18 @@ fi
 
 if [ -n "$TARGET_PROFILE_LIMIT" ]; then
     CMD+=("--target-profile-limit" "$TARGET_PROFILE_LIMIT")
+fi
+
+# Sink (target) buffer time requested at setSink(), ms (0 = sink default).
+SINK_BUFFER_MS="${SINK_BUFFER_MS:-}"
+if [ -n "$SINK_BUFFER_MS" ]; then
+    CMD+=("--sink-buffer-ms" "$SINK_BUFFER_MS")
+fi
+
+# SDK 150 Rapid Start (A/B only; semantics undocumented).
+RAPID_START="${RAPID_START:-}"
+if [ "$RAPID_START" = "1" ]; then
+    CMD+=("--rapid-start")
 fi
 
 if [ -n "$MTU" ]; then

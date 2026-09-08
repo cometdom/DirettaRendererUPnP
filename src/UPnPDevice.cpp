@@ -12,6 +12,11 @@
 #include <cstdlib>
 #include <thread>
 #include <chrono>
+#include <cerrno>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <unistd.h>
 
 // ============================================================================
 // Logging: uses centralized LogLevel system from LogLevel.h
@@ -67,7 +72,57 @@ UPnPDevice::~UPnPDevice() {
     DEBUG_LOG("[UPnPDevice] Destroyed");
 }
 
+// --port-strict: block until a plain bind() on the configured port succeeds,
+// i.e. until the TIME_WAIT sockets of the previous instance have expired
+// (60 s on Linux, not tunable). The probe is a bare TCP socket without
+// SO_REUSEADDR on INADDR_ANY: it fails with EADDRINUSE under exactly the
+// condition libupnp's miniserver hits (a superset of its gIF_IPV4:port bind),
+// and it never connects, so it leaves no TIME_WAIT of its own. IPv4 only —
+// libupnp's IPv6 listener drifts independently and is not checked. Runs
+// before m_stateMutex is taken (the signal handler's exit() destroys this
+// object on the same thread, and ~UPnPDevice() → stop() needs the mutex) and
+// before libupnp is initialised, so no init/teardown cycles. The stop signal
+// is checked every 100 ms; returns false only when cancelled.
+bool UPnPDevice::waitForPortFree() {
+    constexpr int MAX_WAIT_MS = 75000;
+    auto portBusy = [this]() {
+        int fd = ::socket(AF_INET, SOCK_STREAM, 0);
+        if (fd < 0) return false;
+        sockaddr_in addr{};
+        addr.sin_family = AF_INET;
+        addr.sin_addr.s_addr = htonl(INADDR_ANY);
+        addr.sin_port = htons(static_cast<uint16_t>(m_config.port));
+        bool busy = ::bind(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) < 0 && errno == EADDRINUSE;
+        ::close(fd);
+        return busy;
+    };
+    int waitedMs = 0;
+    while (portBusy()) {
+        if (waitedMs == 0) {
+            LOG_WARN("[UPnPDevice] Port " << m_config.port << " busy (TIME_WAIT from the previous "
+                     << "instance?) — waiting for it, up to " << MAX_WAIT_MS / 1000 << " s");
+        }
+        if (waitedMs >= MAX_WAIT_MS) {
+            LOG_WARN("[UPnPDevice] Port " << m_config.port << " still busy after " << waitedMs / 1000
+                     << " s — giving up on the fixed port");
+            return true;
+        }
+        if (m_stopSignal && !m_stopSignal->load(std::memory_order_acquire)) {
+            LOG_WARN("[UPnPDevice] Startup cancelled while waiting for port " << m_config.port);
+            return false;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        waitedMs += 100;
+    }
+    if (waitedMs > 0) {
+        LOG_WARN("[UPnPDevice] Port " << m_config.port << " free after " << waitedMs / 1000 << " s");
+    }
+    return true;
+}
+
 bool UPnPDevice::start() {
+    if (m_config.portStrict && m_config.port != 0 && !waitForPortFree()) return false;
+
     std::lock_guard<std::mutex> lock(m_stateMutex);
     
     if (m_running) {
@@ -87,11 +142,24 @@ bool UPnPDevice::start() {
         std::cout << "🌐 Using default interface for UPnP (auto-detect)" << std::endl;
     }
     
+    // libupnp is built without SO_REUSEADDR by the distro packages (Fedora,
+    // Debian/Ubuntu; Arch and CMake builds enable it): after a hot restart the
+    // control point's connections to the old instance are still in TIME_WAIT
+    // on our port, bind() fails, and libupnp silently takes port+1 and
+    // announces the new LOCATION over SSDP. Most control points follow that;
+    // some (JPLAY) keep the cached address and never reach the new instance.
+    // --port-strict waited for the port above (waitForPortFree()); this is
+    // the verdict, from libupnp itself.
     int ret = UpnpInit2(interfaceName, m_config.port);
     if (ret != UPNP_E_SUCCESS) {
         std::cerr << "[UPnPDevice] UpnpInit2 failed: " << ret << std::endl;
         UpnpFinish();  // Clean up for potential retry
         return false;
+    }
+    if (m_config.port != 0 && UpnpGetServerPort() != m_config.port) {
+        LOG_WARN("[UPnPDevice] Port " << m_config.port << " busy (TIME_WAIT from the previous instance?), "
+                 << "using " << UpnpGetServerPort() << " — control points that cache the address may "
+                 << "need a rescan" << (m_config.portStrict ? "" : "; see --port-strict"));
     }
 
     // Afficher l'IP et port utilisés
@@ -638,10 +706,19 @@ int UPnPDevice::actionSeek(UpnpActionRequest* request) {
     std::string target = getArgumentValue(actionDoc, "Target");
     
     std::cout << "[UPnPDevice] Seek: " << unit << " = " << target << std::endl;
-    
-    // Callback
+
+    // Callback — time units go through as they are. TRACK_NR / TRACK_INDEX
+    // targets are track numbers: on a single-track renderer "1" is the current
+    // track, i.e. "restart it" (some control points use it that way); it used
+    // to be applied as one second. Anything else is ignored.
     if (m_callbacks.onSeek) {
-        m_callbacks.onSeek(target);
+        if (unit == "REL_TIME" || unit == "ABS_TIME" || unit.empty()) {
+            m_callbacks.onSeek(target);
+        } else if ((unit == "TRACK_NR" || unit == "TRACK_INDEX") && target == "1") {
+            m_callbacks.onSeek("0");
+        } else {
+            std::cout << "[UPnPDevice] Seek unit " << unit << " ignored (single-track renderer)" << std::endl;
+        }
     }
     
     // Response
