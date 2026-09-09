@@ -99,6 +99,25 @@ static bool sdkConnect(S& sync, int cpu, bool rapidStart) {
     }
 }
 
+// SDK 150 also added Sync::is_MSmode(); SDK 149 has no such accessor.
+// Same compile-time resolution: log the negotiated MS mode when the SDK
+// exposes it, "n/a" otherwise, instead of failing the build on SDK 149.
+template <typename S, typename = void>
+struct SdkHasIsMSmode : std::false_type {};
+template <typename S>
+struct SdkHasIsMSmode<S, std::void_t<decltype(std::declval<S&>().is_MSmode())>>
+    : std::true_type {};
+
+template <typename S>
+static std::string sdkMSmodeString(S& sync) {
+    if constexpr (SdkHasIsMSmode<S>::value) {
+        return std::to_string(static_cast<int>(sync.is_MSmode()));
+    } else {
+        (void)sync;
+        return "n/a";
+    }
+}
+
 class RingAccessGuard {
 public:
     RingAccessGuard(std::atomic<int>& users, const std::atomic<bool>& reconfiguring)
@@ -2402,7 +2421,7 @@ void DirettaSync::logNegotiatedProfile(const char* when) {
              << " cycleSize=" << getCycleSize() << "B"
              << " packets/cycle=" << getCyclePackets()
              << " mode=" << modeName
-             << " msMode=" << static_cast<int>(is_MSmode())
+             << " msMode=" << sdkMSmodeString(static_cast<DIRETTA::Sync&>(*this))
              << " latency=" << getLatency().getMicroSeconds() << "us"
              << " sink{latencyBuffer=" << info.latencyBuffer
              << " latencyMax=" << info.latencyMax
