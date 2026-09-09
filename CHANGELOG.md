@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.5.18] - 2026-09-09
+
+### Fixed
+- **Build broke against some SDK 149 installs: "use of undeclared identifier 'is_MSmode'"** (reported by Didier/ds21 on Fedora, building v2.5.17 fresh via `setup.sh`). `logNegotiatedProfile()` (new in v2.5.16/PR #94) calls `Sync::is_MSmode()` unconditionally to log the negotiated MS mode at each `OPEN`; that getter exists in the SDK 149 tree this project's own install/test machine happens to have, but not in the specific SDK 149 sub-revision `setup.sh` fetched for Didier — "SDK 149" isn't one fixed snapshot. Same class of problem `connect()` already had between SDK 149/150 (fixed in v2.5.16), just not covered by the same guard back then. Fixed identically: `SdkHasMSmode<S>`/`sdkMsMode()` resolve the call at compile time via SFINAE (`if constexpr`), logging `msMode=-1` instead of failing the build when the SDK doesn't expose it. Verified by compiling against both SDK 149 and 150 locally, plus an isolated test reproducing the exact "SDK without `is_MSmode()`" case to confirm the fallback branch compiles and returns the sentinel correctly.
+
 ## [2.5.17] - 2026-09-08
 
 ### Fixed

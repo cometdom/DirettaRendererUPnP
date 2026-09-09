@@ -1,4 +1,4 @@
-# Diretta UPnP Renderer v2.5.17
+# Diretta UPnP Renderer v2.5.18
 
 **The world's first native UPnP/DLNA renderer with Diretta protocol support - Low-Latency Edition**
 
@@ -8,18 +8,18 @@
 
 ---
 
-![Version](https://img.shields.io/badge/version-2.5.17-blue.svg)
+![Version](https://img.shields.io/badge/version-2.5.18-blue.svg)
 ![Low Latency](https://img.shields.io/badge/Latency-Low-green.svg)
 ![SDK](https://img.shields.io/badge/SDK-DIRETTA::Sync-orange.svg)
 ![Audirvana](https://img.shields.io/badge/Audirvana-Compatible-green.svg)
 
 ---
 
-## What's New in v2.5.17
+## What's New in v2.5.18
 
-**`install.sh`'s FFmpeg self-test now catches a real DSD failure mode it used to miss.**
+**Build fix: compiling against some SDK 149 installs failed with "use of undeclared identifier 'is_MSmode'".**
 
-- `test_ffmpeg_installation()` checked for `dsd_lsbf`/`dsd_msbf` but not the `_planar` variants FFmpeg's `dsf` demuxer actually needs for a real `.dsf` file — a build with only the base decoders (e.g. Fedora's `ffmpeg-free-devel`) passed the check while still failing every DSD file with "Codec not found". Now checks all four.
+- `logNegotiatedProfile()` (new in v2.5.16) called `Sync::is_MSmode()` unconditionally — present in some SDK 149 sub-revisions, not others ("SDK 149" isn't one fixed snapshot). Same class of issue `connect()` already had between SDK 149/150, fixed the same way: resolved at compile time via SFINAE, so an SDK missing this getter now logs `msMode=-1` instead of failing the build.
 
 See [CHANGELOG.md](CHANGELOG.md) for details.
 
@@ -27,6 +27,7 @@ See [CHANGELOG.md](CHANGELOG.md) for details.
 
 | Version | Highlights |
 |---------|-----------|
+| **v2.5.17** | `install.sh`'s FFmpeg self-test now catches a real DSD failure mode it used to miss (`_planar` decoder variants) |
 | **v2.5.16** | Six contributions from herisson-88: seek reliability (PR #91), HTTP prefetch thread (PR #96), EOF-drain memory-safety fix (PR #95), SDK 150 knobs (PR #94), `--port-strict` (PR #93), tuner/doc fixes (PR #92) |
 | **v2.5.15** | SDK 150.x ~50s connection stall fixed (PR #89) — an empty `statusUpdate()` override silently swallowed the wake-up notification `connectWait()` needs |
 | **v2.5.14** | Opt-in support for SDK v149's GCC16-built libraries, with a toolchain compatibility warning (slim2diretta issue #10, sheviks) |
@@ -1166,4 +1167,4 @@ This software is provided "as is" without warranty. While designed for high-qual
 
 **Enjoy bit-perfect, low-latency audio streaming!**
 
-*Last updated: 2026-09-08 (v2.5.17)*
+*Last updated: 2026-09-09 (v2.5.18)*

@@ -99,6 +99,28 @@ static bool sdkConnect(S& sync, int cpu, bool rapidStart) {
     }
 }
 
+// Some SDK 149 sub-revisions (the exact download setup.sh fetches varies
+// over time, not one fixed snapshot) predate Sync::is_MSmode() — reported by
+// ds21 building v2.5.17 on Fedora: "use of undeclared identifier 'is_MSmode'"
+// against an SDK 149 that otherwise builds and runs fine. Same compile-time
+// resolution as sdkConnect() above, so logNegotiatedProfile() degrades to an
+// unknown marker instead of failing the whole build on an SDK that simply
+// doesn't expose this one diagnostic getter yet.
+template <typename S, typename = void>
+struct SdkHasMSmode : std::false_type {};
+template <typename S>
+struct SdkHasMSmode<S, std::void_t<decltype(std::declval<S&>().is_MSmode())>>
+    : std::true_type {};
+
+template <typename S>
+static int sdkMsMode(S& sync) {
+    if constexpr (SdkHasMSmode<S>::value) {
+        return static_cast<int>(sync.is_MSmode());
+    } else {
+        return -1;  // unknown: this SDK doesn't expose is_MSmode()
+    }
+}
+
 class RingAccessGuard {
 public:
     RingAccessGuard(std::atomic<int>& users, const std::atomic<bool>& reconfiguring)
@@ -2402,7 +2424,7 @@ void DirettaSync::logNegotiatedProfile(const char* when) {
              << " cycleSize=" << getCycleSize() << "B"
              << " packets/cycle=" << getCyclePackets()
              << " mode=" << modeName
-             << " msMode=" << static_cast<int>(is_MSmode())
+             << " msMode=" << sdkMsMode(*this)
              << " latency=" << getLatency().getMicroSeconds() << "us"
              << " sink{latencyBuffer=" << info.latencyBuffer
              << " latencyMax=" << info.latencyMax
