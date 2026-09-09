@@ -241,9 +241,17 @@ get_ffmpeg_configure_opts() {
 OPTS
 }
 
-# Detect library directory (lib vs lib64)
+# Detect library directory (lib vs lib64). Fedora/RHEL use /usr/lib64 on
+# every 64-bit arch they ship (x86_64, aarch64, ppc64le), not just x86_64 —
+# gating this on uname -m = x86_64 sent aarch64 Fedora hosts (Raspberry Pi)
+# down the /usr/lib path while pkg-config still only searches /usr/lib64,
+# breaking FFMPEG_LIB_VERSION detection in the Makefile and tripping a false
+# "FFmpeg version mismatch" abort even though the build just installed the
+# right FFmpeg (reported by simonhiggs on Fedora 44 aarch64, 2026-09-09).
+# Debian/Ubuntu (any arch) don't have a real /usr/lib64, so this still falls
+# through to /usr/lib there exactly as before.
 get_libdir() {
-    if [ -d "/usr/lib64" ] && [ "$(uname -m)" = "x86_64" ]; then
+    if [ -d "/usr/lib64" ]; then
         echo "/usr/lib64"
     else
         echo "/usr/lib"

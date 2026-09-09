@@ -1,5 +1,11 @@
 # Changelog
 
+## [2.5.19] - 2026-09-09
+
+### Fixed
+- **`install.sh`'s `get_libdir()` sent Fedora aarch64 hosts to the wrong FFmpeg library directory, causing a false "FFmpeg version mismatch" build abort** (reported by simonhiggs on Fedora 44 aarch64/Raspberry Pi). Fedora/RHEL use `/usr/lib64` on every 64-bit architecture they ship — x86_64, aarch64, ppc64le — not just x86_64, but `get_libdir()` only routed to `/usr/lib64` when `uname -m = x86_64`, so on aarch64 the freshly-built FFmpeg installed to `/usr/lib` instead. `pkg-config` still only searches `/usr/lib64/pkgconfig` there, so it silently failed to find `libavformat.pc` — and the Makefile's `FFMPEG_LIB_VERSION` detection, which relied on a `||` between piped shell commands (an exit-status check on `cut`, not on whether `pkg-config` actually produced output), returned an empty string instead of falling back to `unknown`. The mismatch guard only special-cased the literal string `"unknown"`, not empty, so it treated "couldn't detect the library version at all" as a real version disagreement and aborted the build — even though the FFmpeg that had just been built and installed (confirmed working, all four DSD decoders present) was in fact correct. Fixed at both layers: `get_libdir()` now checks only for `/usr/lib64`'s existence (Debian/Ubuntu, which don't have a real `/usr/lib64` on any arch, are unaffected); the Makefile's detection explicitly tests for empty output instead of relying on pipe exit-status propagation, and the mismatch guard now also treats an empty version the same as `unknown` on both sides. `make FFMPEG_IGNORE_MISMATCH=1` remains available as an immediate workaround on affected installs pending this release.
+- `sdkMsMode()` (v2.5.18) now logs `"n/a"` instead of `-1` when the SDK doesn't expose `is_MSmode()` — adopted from herisson-88's independent fix in PR #97 (closed as a duplicate of v2.5.18's fix); more readable in the log than a bare `-1` that could be misread as an actual mode value.
+
 ## [2.5.18] - 2026-09-09
 
 ### Fixed

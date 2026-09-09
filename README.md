@@ -1,4 +1,4 @@
-# Diretta UPnP Renderer v2.5.18
+# Diretta UPnP Renderer v2.5.19
 
 **The world's first native UPnP/DLNA renderer with Diretta protocol support - Low-Latency Edition**
 
@@ -8,18 +8,18 @@
 
 ---
 
-![Version](https://img.shields.io/badge/version-2.5.18-blue.svg)
+![Version](https://img.shields.io/badge/version-2.5.19-blue.svg)
 ![Low Latency](https://img.shields.io/badge/Latency-Low-green.svg)
 ![SDK](https://img.shields.io/badge/SDK-DIRETTA::Sync-orange.svg)
 ![Audirvana](https://img.shields.io/badge/Audirvana-Compatible-green.svg)
 
 ---
 
-## What's New in v2.5.18
+## What's New in v2.5.19
 
-**Build fix: compiling against some SDK 149 installs failed with "use of undeclared identifier 'is_MSmode'".**
+**Build fix: a false "FFmpeg version mismatch" abort on Fedora aarch64 (Raspberry Pi).**
 
-- `logNegotiatedProfile()` (new in v2.5.16) called `Sync::is_MSmode()` unconditionally — present in some SDK 149 sub-revisions, not others ("SDK 149" isn't one fixed snapshot). Same class of issue `connect()` already had between SDK 149/150, fixed the same way: resolved at compile time via SFINAE, so an SDK missing this getter now logs `msMode=-1` instead of failing the build.
+- `install.sh`'s `get_libdir()` only routed to `/usr/lib64` on `x86_64`, but Fedora/RHEL use `/usr/lib64` on every 64-bit arch they ship (aarch64 included) — so on a Pi, FFmpeg installed to `/usr/lib`, `pkg-config` couldn't find it (it only searches `/usr/lib64/pkgconfig` there), and a shell-scripting bug in the Makefile's fallback detection turned that failure into an empty string instead of `"unknown"`, tripping a false version-mismatch abort even though the just-built FFmpeg was correct. Fixed at both layers — see CHANGELOG for the full explanation.
 
 See [CHANGELOG.md](CHANGELOG.md) for details.
 
@@ -27,6 +27,7 @@ See [CHANGELOG.md](CHANGELOG.md) for details.
 
 | Version | Highlights |
 |---------|-----------|
+| **v2.5.18** | Build fix: compiling against some SDK 149 installs failed with "use of undeclared identifier 'is_MSmode'" |
 | **v2.5.17** | `install.sh`'s FFmpeg self-test now catches a real DSD failure mode it used to miss (`_planar` decoder variants) |
 | **v2.5.16** | Six contributions from herisson-88: seek reliability (PR #91), HTTP prefetch thread (PR #96), EOF-drain memory-safety fix (PR #95), SDK 150 knobs (PR #94), `--port-strict` (PR #93), tuner/doc fixes (PR #92) |
 | **v2.5.15** | SDK 150.x ~50s connection stall fixed (PR #89) — an empty `statusUpdate()` override silently swallowed the wake-up notification `connectWait()` needs |
@@ -1167,4 +1168,4 @@ This software is provided "as is" without warranty. While designed for high-qual
 
 **Enjoy bit-perfect, low-latency audio streaming!**
 
-*Last updated: 2026-09-09 (v2.5.18)*
+*Last updated: 2026-09-09 (v2.5.19)*

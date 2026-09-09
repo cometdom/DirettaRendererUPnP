@@ -365,11 +365,18 @@ FFMPEG_HEADER_FFVERSION := $(shell \
     elif [ "$$v" = "58" ]; then echo "4.x"; \
     else echo "unknown"; fi)
 
-# Detect runtime library version
+# Detect runtime library version. The `||` between piped commands below only
+# ever tested cut's own exit status (0 even on empty input via a failed
+# pkg-config), never actually falling back to ldconfig — so a pkg-config
+# lookup failure (e.g. .pc file installed under the wrong libdir, see
+# get_libdir() in install.sh) silently produced an EMPTY version instead of
+# "unknown", which the mismatch guard below didn't treat the same way,
+# tripping a false FFmpeg version-mismatch abort. Test for empty output
+# explicitly instead of relying on pipe exit-status propagation.
 FFMPEG_LIB_VERSION := $(shell \
-    pkg-config --modversion libavformat 2>/dev/null | cut -d. -f1 || \
-    (ldconfig -p 2>/dev/null | grep libavformat | head -1 | grep -oE '[0-9]+\.[0-9]+' | cut -d. -f1) || \
-    echo "unknown")
+    v=$$(pkg-config --modversion libavformat 2>/dev/null | cut -d. -f1); \
+    if [ -z "$$v" ]; then v=$$(ldconfig -p 2>/dev/null | grep libavformat | head -1 | grep -oE '[0-9]+\.[0-9]+' | cut -d. -f1); fi; \
+    if [ -z "$$v" ]; then echo "unknown"; else echo "$$v"; fi)
 
 # Map runtime library to FFmpeg version
 FFMPEG_LIB_FFVERSION := $(shell \
@@ -394,10 +401,15 @@ $(info Library path:     $(FFMPEG_LIB_PATH))
 endif
 $(info ═══════════════════════════════════════════════════════)
 
-# Version mismatch detection
+# Version mismatch detection. Both sides also guarded against empty (not
+# just the literal "unknown"): a detection failure must never look like a
+# real mismatch, or it's a false positive that aborts a build FFmpeg-headers
+# and FFmpeg-library actually agree on.
 ifneq ($(FFMPEG_HEADER_VERSION),$(FFMPEG_LIB_VERSION))
     ifneq ($(FFMPEG_HEADER_VERSION),unknown)
+        ifneq ($(FFMPEG_HEADER_VERSION),)
         ifneq ($(FFMPEG_LIB_VERSION),unknown)
+        ifneq ($(FFMPEG_LIB_VERSION),)
 $(info )
 $(info ╔══════════════════════════════════════════════════════════════════╗)
 $(info ║  ⚠️  WARNING: FFmpeg VERSION MISMATCH DETECTED!                   ║)
@@ -422,6 +434,8 @@ $(info )
 ifndef FFMPEG_IGNORE_MISMATCH
 $(error FFmpeg version mismatch! Set FFMPEG_IGNORE_MISMATCH=1 to override)
 endif
+        endif
+        endif
         endif
     endif
 endif
