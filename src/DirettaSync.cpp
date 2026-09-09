@@ -104,7 +104,7 @@ static bool sdkConnect(S& sync, int cpu, bool rapidStart) {
 // ds21 building v2.5.17 on Fedora: "use of undeclared identifier 'is_MSmode'"
 // against an SDK 149 that otherwise builds and runs fine. Same compile-time
 // resolution as sdkConnect() above, so logNegotiatedProfile() degrades to an
-// unknown marker instead of failing the whole build on an SDK that simply
+// "n/a" marker instead of failing the whole build on an SDK that simply
 // doesn't expose this one diagnostic getter yet.
 template <typename S, typename = void>
 struct SdkHasMSmode : std::false_type {};
@@ -113,11 +113,11 @@ struct SdkHasMSmode<S, std::void_t<decltype(std::declval<S&>().is_MSmode())>>
     : std::true_type {};
 
 template <typename S>
-static int sdkMsMode(S& sync) {
+static std::string sdkMsMode(S& sync) {
     if constexpr (SdkHasMSmode<S>::value) {
-        return static_cast<int>(sync.is_MSmode());
+        return std::to_string(static_cast<int>(sync.is_MSmode()));
     } else {
-        return -1;  // unknown: this SDK doesn't expose is_MSmode()
+        return "n/a";  // this SDK doesn't expose is_MSmode()
     }
 }
 
