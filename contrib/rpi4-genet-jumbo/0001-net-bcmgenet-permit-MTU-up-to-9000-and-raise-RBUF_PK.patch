@@ -1,0 +1,175 @@
+From deaf93389883302d915a742c94f81b35a38e092f Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 10 Sep 2026 12:12:32 +0000
+Subject: [PATCH 1/2] net: bcmgenet: permit MTU up to 9000 and raise
+ RBUF_PKT_RDY_THLD
+
+Port of the two commits Dave Stevenson prepared in raspberrypi/linux
+PR #5534 (following the discussion in PR #5419), with the Rx buffer
+size left at 2048 bytes instead of 10240:
+
+ - all the defines derived from ENET_MAX_MTU_SIZE (UMAC_MAX_FRAME_LEN,
+   the TDMA flow period, the Tx ring buffer size) now allow a 9000 byte
+   body, and dev->max_mtu is set accordingly so that
+   "ip link set dev eth0 mtu 9000" is accepted;
+ - the RBUF packet ready threshold is raised from its hardware default
+   of 0x80 (2048 bytes) to 0xf0 (3840 bytes), the largest value that
+   stays aligned to the 256 byte DMA burst. Below this threshold the
+   whole frame sits in the RBUF before the RDMA starts, so the 64 byte
+   receive status block written at the start of the buffer describes
+   the complete frame. Above it the RDMA starts early and the status
+   block is written with a partial length and no DMA_EOP: this is the
+   3824 byte MTU ceiling seen on the Pi 4 so far, and is handled by the
+   next commit.
+
+Both the Rx buffer size (rx_buf_len, 2048-16384) and the threshold
+(pkt_rdy_thld, in 16 byte units) are exposed as module parameters so
+the two receive strategies can be compared on real hardware:
+rx_buf_len=10240 reproduces the single-buffer layout of PR #5534,
+pkt_rdy_thld=0x80 makes every frame above 2004 bytes take the early
+handover path and exercises the reassembly code with peers that only
+support the current 3824 byte MTU.
+
+The Tx ring buffer size field is set to ENET_MAX_MTU_SIZE rather than
+the Rx buffer size, matching the large value used in PR #5534 (which
+had 10240 for both); Tx descriptors carry their own length so this is
+not expected to matter, but frames longer than 2048 bytes have never
+been transmitted with a smaller value there.
+---
+ .../net/ethernet/broadcom/genet/bcmgenet.c    | 39 ++++++++++++++++---
+ .../net/ethernet/broadcom/genet/bcmgenet.h    | 16 ++++++--
+ 2 files changed, 46 insertions(+), 9 deletions(-)
+
+diff --git a/drivers/net/ethernet/broadcom/genet/bcmgenet.c b/drivers/net/ethernet/broadcom/genet/bcmgenet.c
+index 8d54ca19a..f9928125b 100644
+--- a/drivers/net/ethernet/broadcom/genet/bcmgenet.c
++++ b/drivers/net/ethernet/broadcom/genet/bcmgenet.c
+@@ -50,8 +50,22 @@
+ 	(TOTAL_DESC - priv->hw_params->tx_queues * priv->hw_params->tx_bds_per_q)
+ 
+ #define RX_BUF_LENGTH		2048
++#define RX_BUF_LENGTH_MAX	16384
+ #define SKB_ALIGNMENT		32
+ 
++static unsigned int rx_buf_len = RX_BUF_LENGTH;
++module_param(rx_buf_len, uint, 0444);
++MODULE_PARM_DESC(rx_buf_len,
++		 "Rx DMA buffer size in bytes (2048-16384, default 2048). Frames larger than this span several descriptors");
++
++/* 0xf0 is the largest value that keeps the threshold aligned to the 256 byte
++ * DMA burst size (0xf0 * 16 = 3840 bytes)
++ */
++static unsigned int pkt_rdy_thld = 0xf0;
++module_param(pkt_rdy_thld, uint, 0444);
++MODULE_PARM_DESC(pkt_rdy_thld,
++		 "RBUF packet ready threshold in 16 byte units (0x80 = hardware default, 0xf0 = max, default 0xf0)");
++
+ /* Tx/Rx DMA register offset, skip 256 descriptors */
+ #define WORDS_PER_BD(p)		(p->hw_params->words_per_bd)
+ #define DMA_DESC_SIZE		(WORDS_PER_BD(priv) * sizeof(u32))
+@@ -2359,7 +2373,7 @@ static unsigned int bcmgenet_desc_rx(struct bcmgenet_rx_ring *ring,
+ 			  __func__, p_index, ring->c_index,
+ 			  ring->read_ptr, dma_length_status);
+ 
+-		if (unlikely(len > RX_BUF_LENGTH)) {
++		if (unlikely(len > priv->rx_buf_len)) {
+ 			netif_err(priv, rx_status, dev, "oversized packet\n");
+ 			BCMGENET_STATS64_INC(stats, length_errors);
+ 			dev_kfree_skb_any(skb);
+@@ -2616,6 +2630,14 @@ static void init_umac(struct bcmgenet_priv *priv)
+ 	reg |= RBUF_ALIGN_2B | RBUF_64B_EN;
+ 	bcmgenet_rbuf_writel(priv, reg, RBUF_CTRL);
+ 
++	/* Frames longer than the packet ready threshold are handed to the RDMA
++	 * before they have been fully received; see bcmgenet_desc_rx() for how
++	 * that is dealt with. Raise the threshold as far as it goes so that
++	 * this only happens for frames above 3840 bytes.
++	 */
++	bcmgenet_rbuf_writel(priv, pkt_rdy_thld & RBUF_PKT_RDY_THLD_MASK,
++			     RBUF_PKT_RDY_THLD);
++
+ 	/* enable rx checksumming */
+ 	reg = bcmgenet_rbuf_readl(priv, RBUF_CHK_CTRL);
+ 	reg |= RBUF_RXCHK_EN | RBUF_L3_PARSE_DIS;
+@@ -2720,7 +2742,7 @@ static void bcmgenet_init_tx_ring(struct bcmgenet_priv *priv,
+ 				  TDMA_FLOW_PERIOD);
+ 	bcmgenet_tdma_ring_writel(priv, index,
+ 				  ((size << DMA_RING_SIZE_SHIFT) |
+-				   RX_BUF_LENGTH), DMA_RING_BUF_SIZE);
++				   ENET_MAX_MTU_SIZE), DMA_RING_BUF_SIZE);
+ 
+ 	/* Set start and end address, read and write pointers */
+ 	bcmgenet_tdma_ring_writel(priv, index, start_ptr * words_per_bd,
+@@ -2768,7 +2790,7 @@ static int bcmgenet_init_rx_ring(struct bcmgenet_priv *priv,
+ 	bcmgenet_rdma_ring_writel(priv, index, 0, RDMA_CONS_INDEX);
+ 	bcmgenet_rdma_ring_writel(priv, index,
+ 				  ((size << DMA_RING_SIZE_SHIFT) |
+-				   RX_BUF_LENGTH), DMA_RING_BUF_SIZE);
++				   priv->rx_buf_len), DMA_RING_BUF_SIZE);
+ 	bcmgenet_rdma_ring_writel(priv, index,
+ 				  (DMA_FC_THRESH_LO <<
+ 				   DMA_XOFF_THRESHOLD_SHIFT) |
+@@ -3955,6 +3977,10 @@ static int bcmgenet_probe(struct platform_device *pdev)
+ 	priv->tx_pause = 1;
+ 	priv->rx_pause = 1;
+ 
++	dev->mtu = ETH_DATA_LEN;
++	dev->min_mtu = ETH_MIN_MTU;
++	dev->max_mtu = ENET_JUMBO_MTU;
++
+ 	SET_NETDEV_DEV(dev, &pdev->dev);
+ 	dev_set_drvdata(&pdev->dev, dev);
+ 	dev->watchdog_timeo = 2 * HZ;
+@@ -4021,8 +4047,11 @@ static int bcmgenet_probe(struct platform_device *pdev)
+ 
+ 	/* Mii wait queue */
+ 	init_waitqueue_head(&priv->wq);
+-	/* Always use RX_BUF_LENGTH (2KB) buffer for all chips */
+-	priv->rx_buf_len = RX_BUF_LENGTH;
++	/* 2KB Rx buffers by default; larger frames span several descriptors */
++	priv->rx_buf_len = clamp(rx_buf_len, RX_BUF_LENGTH, RX_BUF_LENGTH_MAX);
++	if (priv->rx_buf_len != rx_buf_len)
++		dev_warn(&pdev->dev, "rx_buf_len=%u out of range, using %u\n",
++			 rx_buf_len, priv->rx_buf_len);
+ 	INIT_WORK(&priv->bcmgenet_irq_work, bcmgenet_irq_task);
+ 
+ 	priv->clk_wol = devm_clk_get_optional(&priv->pdev->dev, "enet-wol");
+diff --git a/drivers/net/ethernet/broadcom/genet/bcmgenet.h b/drivers/net/ethernet/broadcom/genet/bcmgenet.h
+index 9e4110c7f..b4604b4f2 100644
+--- a/drivers/net/ethernet/broadcom/genet/bcmgenet.h
++++ b/drivers/net/ethernet/broadcom/genet/bcmgenet.h
+@@ -27,12 +27,13 @@
+ /* which ring is descriptor based */
+ #define DESC_INDEX				16
+ 
+-/* Body(1500) + EH_SIZE(14) + VLANTAG(4) + BRCMTAG(6) + FCS(4) = 1528.
+- * 1536 is multiple of 256 bytes
++/* Body(9000) + EH_SIZE(14) + VLANTAG(4) + BRCMTAG(6) + FCS(4) = 9028.
++ * 9216 is multiple of 256 bytes
+  */
+ #define ENET_BRCM_TAG_LEN	6
+-#define ENET_PAD		8
+-#define ENET_MAX_MTU_SIZE	(ETH_DATA_LEN + ETH_HLEN + VLAN_HLEN + \
++#define ENET_JUMBO_MTU		9000
++#define ENET_PAD		188
++#define ENET_MAX_MTU_SIZE	(ENET_JUMBO_MTU + ETH_HLEN + VLAN_HLEN + \
+ 				 ENET_BRCM_TAG_LEN + ETH_FCS_LEN + ENET_PAD)
+ #define DMA_MAX_BURST_LENGTH    0x10
+ 
+@@ -219,6 +220,13 @@ struct bcmgenet_rx_stats64 {
+ #define  RBUF_ALIGN_2B			(1 << 1)
+ #define  RBUF_BAD_DIS			(1 << 2)
+ 
++/* Rx buffer packet ready threshold, 8 bits, in units of 16 bytes. The RDMA
++ * starts moving a frame to memory once this many bytes of it are in the RBUF
++ * (or the frame has ended). Hardware default 0x80 (2048 bytes).
++ */
++#define RBUF_PKT_RDY_THLD		0x08
++#define  RBUF_PKT_RDY_THLD_MASK		0xff
++
+ #define RBUF_STATUS			0x0C
+ #define  RBUF_STATUS_WOL		(1 << 0)
+ #define  RBUF_STATUS_MPD_INTR_ACTIVE	(1 << 1)
+-- 
+2.43.0
+

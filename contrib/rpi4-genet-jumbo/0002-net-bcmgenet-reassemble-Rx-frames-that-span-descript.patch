@@ -1,0 +1,662 @@
+From f22602e529dbb5635eaa3780b18f8d07db04427e Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 10 Sep 2026 12:18:16 +0000
+Subject: [PATCH 2/2] net: bcmgenet: reassemble Rx frames that span descriptors
+ or arrive early
+
+With the packet ready threshold at its maximum (previous commit), the
+Pi 4 receives frames up to 3840 bytes, which is where the 3824 byte MTU
+ceiling comes from. Above that the RDMA starts on a frame before the
+UniMAC has finished receiving it, and two things follow:
+
+ - the 64 byte receive status block (RSB) at the head of the buffer,
+   which is written when the DMA starts, carries a truncated length and
+   no DMA_EOP (observed by Dave Stevenson in raspberrypi/linux #5419:
+   RSB 0x08403f80, i.e. 2112 bytes = threshold + RSB, SOP without EOP,
+   while re-reading the descriptor's own length/status word once the
+   DMA was done returned 0x0fe87f80: full length, SOP and EOP);
+ - the producer index can be bumped while the buffer is still being
+   written, so bcmgenet_desc_rx() unmaps and replaces a buffer the DMA
+   is still using, then drops the frame as "fragmented".
+
+Frames longer than the Rx buffer (2048 bytes) are, in addition, spread
+over consecutive descriptors, SOP on the first and EOP on the last,
+which the driver has never supported.
+
+Rework the receive path around the descriptor length/status words
+rather than the RSB alone:
+
+ - bcmgenet_rx_refill() now clears the descriptor word when it puts a
+   buffer on the ring, so a zero unambiguously means "the DMA has not
+   finished with this buffer";
+ - before touching any buffer, bcmgenet_rx_frame_bds() walks the
+   descriptor words from the read pointer to find the SOP..EOP run
+   that makes up the next frame (up to 8 descriptors). If the run is
+   not complete yet the ring is left alone and NAPI is asked to poll
+   again straight away (no interrupt will announce the end of a frame
+   whose descriptor was already handed over); a frame that never
+   completes within 20ms is dropped and counted as fragmented;
+ - the buffers of a complete frame are then taken off the ring, the
+   first one loses the RSB and alignment pad as before, the others are
+   chained on its frag_list, and the frame goes up as one skb;
+ - the RSB is still used for the hardware checksum, but only when it
+   carries DMA_EOP, i.e. when it saw the whole frame. Frames it did not
+   are handed up with CHECKSUM_NONE;
+ - if the descriptor word of a frame is still zero, the RSB is peeked
+   in place (dma_sync of the first 64 bytes, no unmap). When it shows
+   SOP and EOP the frame was entirely in the RBUF before the DMA began
+   and the RSB describes it completely, so it is used to size the
+   descriptor run. This keeps everything up to the threshold working
+   should the hardware turn out not to write descriptor words back
+   while the 64B RSB is enabled (in which case only frames above the
+   threshold are lost, as today);
+ - a buffer that stays on the ring because it could not be replaced
+   has its descriptor word and RSB cleared so it cannot be mistaken
+   for a finished frame later.
+
+Two ethtool counters are added per ring to see what happens on real
+hardware: rxqN_multi_bd (frames reassembled from more than one
+descriptor) and rxqN_early_rdy (frames whose RSB did not carry EOP,
+i.e. handed over before their end). rxqN_fragmented_errors now counts
+frames given up on.
+
+Compile-tested only (arm64, bcm2711_defconfig, W=1, checkpatch clean);
+the behaviour of the RDMA beyond 3840 bytes with 2048 byte buffers has
+not been observed on hardware, which is the point of this patch.
+---
+ .../net/ethernet/broadcom/genet/bcmgenet.c    | 430 +++++++++++++++---
+ .../net/ethernet/broadcom/genet/bcmgenet.h    |   4 +
+ 2 files changed, 360 insertions(+), 74 deletions(-)
+
+diff --git a/drivers/net/ethernet/broadcom/genet/bcmgenet.c b/drivers/net/ethernet/broadcom/genet/bcmgenet.c
+index f9928125b..e4d6529a5 100644
+--- a/drivers/net/ethernet/broadcom/genet/bcmgenet.c
++++ b/drivers/net/ethernet/broadcom/genet/bcmgenet.c
+@@ -104,6 +104,12 @@ static inline void dmadesc_set_length_status(struct bcmgenet_priv *priv,
+ 	bcmgenet_writel(value, d + DMA_DESC_LENGTH_STATUS);
+ }
+ 
++static inline u32 dmadesc_get_length_status(struct bcmgenet_priv *priv,
++					    void __iomem *d)
++{
++	return bcmgenet_readl(d + DMA_DESC_LENGTH_STATUS);
++}
++
+ static inline void dmadesc_set_addr(struct bcmgenet_priv *priv,
+ 				    void __iomem *d,
+ 				    dma_addr_t addr)
+@@ -1068,6 +1074,10 @@ struct bcmgenet_stats {
+ 			rx_rings[num].stats64, frame_errors), \
+ 	STAT_GENET_SOFT_MIB64("rxq" __stringify(num) "_fragmented_errors", \
+ 			rx_rings[num].stats64, fragmented_errors), \
++	STAT_GENET_SOFT_MIB64("rxq" __stringify(num) "_multi_bd", \
++			rx_rings[num].stats64, multi_bd), \
++	STAT_GENET_SOFT_MIB64("rxq" __stringify(num) "_early_rdy", \
++			rx_rings[num].stats64, early_rdy), \
+ 	STAT_GENET_SOFT_MIB64("rxq" __stringify(num) "_broadcast", \
+ 			rx_rings[num].stats64, broadcast)
+ 
+@@ -2251,6 +2261,27 @@ static netdev_tx_t bcmgenet_xmit(struct sk_buff *skb, struct net_device *dev)
+ 	goto out;
+ }
+ 
++/* A buffer that stays on the ring because it could not be replaced must not
++ * look like it holds a finished frame the next time we come across it: clear
++ * the descriptor status word and the receive status block in the buffer.
++ */
++static void bcmgenet_rx_reset_cb(struct bcmgenet_priv *priv,
++				 struct enet_cb *cb)
++{
++	struct device *kdev = &priv->pdev->dev;
++	dma_addr_t mapping = dma_unmap_addr(cb, dma_addr);
++
++	dmadesc_set_length_status(priv, cb->bd_addr, 0);
++	if (cb->skb && mapping) {
++		dma_sync_single_for_cpu(kdev, mapping, sizeof(struct status_64),
++					DMA_FROM_DEVICE);
++		memset(cb->skb->data, 0, sizeof(struct status_64));
++		dma_sync_single_for_device(kdev, mapping,
++					   sizeof(struct status_64),
++					   DMA_FROM_DEVICE);
++	}
++}
++
+ static struct sk_buff *bcmgenet_rx_refill(struct bcmgenet_priv *priv,
+ 					  struct enet_cb *cb)
+ {
+@@ -2266,6 +2297,7 @@ static struct sk_buff *bcmgenet_rx_refill(struct bcmgenet_priv *priv,
+ 		priv->mib.alloc_rx_buff_failed++;
+ 		netif_err(priv, rx_err, priv->dev,
+ 			  "%s: Rx skb allocation failed\n", __func__);
++		bcmgenet_rx_reset_cb(priv, cb);
+ 		return NULL;
+ 	}
+ 
+@@ -2277,40 +2309,233 @@ static struct sk_buff *bcmgenet_rx_refill(struct bcmgenet_priv *priv,
+ 		dev_kfree_skb_any(skb);
+ 		netif_err(priv, rx_err, priv->dev,
+ 			  "%s: Rx skb DMA mapping failed\n", __func__);
++		bcmgenet_rx_reset_cb(priv, cb);
+ 		return NULL;
+ 	}
+ 
+ 	/* Grab the current Rx skb from the ring and DMA-unmap it */
+ 	rx_skb = bcmgenet_free_rx_cb(kdev, cb);
+ 
+-	/* Put the new Rx skb on the ring */
++	/* Put the new Rx skb on the ring. Clear the length/status word so
++	 * that bcmgenet_desc_rx() can tell a descriptor the DMA has finished
++	 * with from one it has only been handed early (see there).
++	 */
+ 	cb->skb = skb;
+ 	dma_unmap_addr_set(cb, dma_addr, mapping);
+ 	dma_unmap_len_set(cb, dma_len, priv->rx_buf_len);
+ 	dmadesc_set_addr(priv, cb->bd_addr, mapping);
++	dmadesc_set_length_status(priv, cb->bd_addr, 0);
+ 
+ 	/* Return the current Rx skb to caller */
+ 	return rx_skb;
+ }
+ 
++/* Maximum number of Rx descriptors a single frame may span: a 9216 byte
++ * frame in 2048 byte buffers, with headroom for the RSB and alignment pad
++ * that share the first buffer with the start of the frame.
++ */
++#define MAX_RX_BDS_PER_FRAME	8
++
++/* How long to keep polling for the DMA to finish a frame it has already
++ * announced. A 9000 byte frame takes ~72us on the wire at 1Gbps and ~7.2ms
++ * at 10Mbps; anything much longer than that means the frame never ends
++ * (or that the hardware never writes the descriptor word back, in which case
++ * only frames above RBUF_PKT_RDY_THLD get here, and are lost as before).
++ */
++#define RX_FRAME_WAIT_TIMEOUT	msecs_to_jiffies(20)
++
++#define DMA_RX_ERRORS		(DMA_RX_CRC_ERROR | DMA_RX_OV | DMA_RX_NO | \
++				 DMA_RX_LG | DMA_RX_RXER)
++
++static inline unsigned int bcmgenet_rx_next_ptr(struct bcmgenet_rx_ring *ring,
++						unsigned int ptr)
++{
++	return likely(ptr < ring->end_ptr) ? ptr + 1 : ring->cb_ptr;
++}
++
++/* Hand n descriptors back to the hardware */
++static void bcmgenet_rx_advance(struct bcmgenet_rx_ring *ring, unsigned int n)
++{
++	struct bcmgenet_priv *priv = ring->priv;
++
++	ring->c_index = (ring->c_index + n) & DMA_C_INDEX_MASK;
++	while (n--)
++		ring->read_ptr = bcmgenet_rx_next_ptr(ring, ring->read_ptr);
++	bcmgenet_rdma_ring_writel(priv, ring->index, ring->c_index,
++				  RDMA_CONS_INDEX);
++}
++
++/* Discard the buffers of the n descriptors at the read pointer, refilling
++ * them, and hand the descriptors back to the hardware.
++ */
++static void bcmgenet_rx_drop(struct bcmgenet_rx_ring *ring, unsigned int n)
++{
++	struct bcmgenet_priv *priv = ring->priv;
++	unsigned int ptr = ring->read_ptr;
++	struct sk_buff *skb;
++	unsigned int i;
++
++	for (i = 0; i < n; i++) {
++		skb = bcmgenet_rx_refill(priv, &priv->rx_cbs[ptr]);
++		if (skb)
++			dev_kfree_skb_any(skb);
++		ptr = bcmgenet_rx_next_ptr(ring, ptr);
++	}
++	bcmgenet_rx_advance(ring, n);
++}
++
++/* Outcome of looking at the descriptors of the frame at the read pointer */
++enum bcmgenet_rx_frame_state {
++	RX_FRAME_COMPLETE,	/* SOP..EOP all there: nbds descriptors */
++	RX_FRAME_PENDING,	/* the DMA is still writing it */
++	RX_FRAME_BROKEN,	/* drop nbds descriptors */
++};
++
++/* The descriptor status word of the buffer at the read pointer is still
++ * zero. Peek at the receive status block in that buffer without taking it
++ * off the ring: when the whole frame was in the RBUF before the DMA started
++ * on it, the RSB describes it completely (length and flags), and the
++ * descriptor words are not needed at all. This keeps frames up to
++ * RBUF_PKT_RDY_THLD flowing even if it turns out the hardware does not write
++ * the descriptor words back when the 64B RSB is enabled.
++ */
++static enum bcmgenet_rx_frame_state
++bcmgenet_rx_frame_from_rsb(struct bcmgenet_rx_ring *ring, unsigned int avail,
++			   u32 *bd_ls, unsigned int *nbds)
++{
++	struct bcmgenet_priv *priv = ring->priv;
++	struct device *kdev = &priv->pdev->dev;
++	struct enet_cb *cb = &priv->rx_cbs[ring->read_ptr];
++	dma_addr_t mapping = dma_unmap_addr(cb, dma_addr);
++	unsigned int total, len, n, i;
++	u32 ls;
++
++	*nbds = 0;
++	if (!cb->skb || !mapping)
++		return RX_FRAME_PENDING;
++
++	dma_sync_single_for_cpu(kdev, mapping, sizeof(struct status_64),
++				DMA_FROM_DEVICE);
++	ls = ((struct status_64 *)cb->skb->data)->length_status;
++	dma_sync_single_for_device(kdev, mapping, sizeof(struct status_64),
++				   DMA_FROM_DEVICE);
++
++	/* Nothing there yet, or the DMA started before the end of the frame
++	 * (no DMA_EOP): only the descriptor words can tell the real length.
++	 */
++	if ((ls & (DMA_SOP | DMA_EOP)) != (DMA_SOP | DMA_EOP))
++		return RX_FRAME_PENDING;
++
++	total = ls >> DMA_BUFLENGTH_SHIFT;
++	n = DIV_ROUND_UP(total, priv->rx_buf_len);
++	if (n > avail)
++		return RX_FRAME_PENDING;
++	*nbds = n;
++	if (n > MAX_RX_BDS_PER_FRAME)
++		return RX_FRAME_BROKEN;
++
++	for (i = 0; i < n; i++) {
++		len = min(total, priv->rx_buf_len);
++		total -= len;
++		bd_ls[i] = (len << DMA_BUFLENGTH_SHIFT) |
++			   (ls & 0xffff & ~(DMA_SOP | DMA_EOP));
++	}
++	bd_ls[0] |= DMA_SOP;
++	bd_ls[n - 1] |= DMA_EOP;
++	return RX_FRAME_COMPLETE;
++}
++
++/* Work out how many descriptors, starting at the read pointer, make up the
++ * next frame, and collect their length/status words.
++ *
++ * The 64 byte receive status block (RSB) at the start of the first buffer is
++ * written when the RDMA *starts* on a frame. For frames longer than
++ * RBUF_PKT_RDY_THLD that happens before the frame has been fully received,
++ * so the RSB carries a truncated length and no DMA_EOP, and the producer
++ * index may be bumped while the DMA is still writing. The descriptor's own
++ * length/status word is written when the DMA has finished with that buffer,
++ * so it is the one to trust. bcmgenet_rx_refill() clears it, so a zero
++ * means the DMA has not finished with the buffer yet.
++ *
++ * Frames longer than the Rx buffer are spread over consecutive descriptors:
++ * DMA_SOP on the first, DMA_EOP on the last, nothing on the ones in between.
++ * Only the first buffer has the RSB and the 2 byte alignment pad.
++ */
++static enum bcmgenet_rx_frame_state
++bcmgenet_rx_frame_bds(struct bcmgenet_rx_ring *ring, unsigned int avail,
++		      u32 *bd_ls, unsigned int *nbds)
++{
++	struct bcmgenet_priv *priv = ring->priv;
++	unsigned int ptr = ring->read_ptr;
++	unsigned int n = 0;
++	u32 ls;
++
++	while (n < avail && n < MAX_RX_BDS_PER_FRAME) {
++		ls = dmadesc_get_length_status(priv, priv->rx_cbs[ptr].bd_addr);
++		if (!ls) {
++			if (n == 0)
++				return bcmgenet_rx_frame_from_rsb(ring, avail,
++								  bd_ls, nbds);
++			break;
++		}
++
++		if (n == 0) {
++			/* A continuation without a start: the frame it
++			 * belonged to was dropped, drop this too.
++			 */
++			if (!(ls & DMA_SOP)) {
++				*nbds = 1;
++				return RX_FRAME_BROKEN;
++			}
++		} else if (ls & DMA_SOP) {
++			/* A new frame starts before the current one ended:
++			 * the current one was cut short, drop what we have.
++			 */
++			*nbds = n;
++			return RX_FRAME_BROKEN;
++		}
++
++		bd_ls[n++] = ls;
++		if (ls & DMA_EOP) {
++			*nbds = n;
++			return RX_FRAME_COMPLETE;
++		}
++		ptr = bcmgenet_rx_next_ptr(ring, ptr);
++	}
++
++	if (n == MAX_RX_BDS_PER_FRAME) {
++		/* Longer than anything we allowed, drop the head; the tail
++		 * will be dropped as headless continuations.
++		 */
++		*nbds = n;
++		return RX_FRAME_BROKEN;
++	}
++
++	*nbds = n;
++	return RX_FRAME_PENDING;
++}
++
+ /* bcmgenet_desc_rx - descriptor based rx process.
+  * this could be called from bottom half, or from NAPI polling method.
++ *
++ * *pending is set when a frame the hardware has already announced is still
++ * being written and we gave up the CPU rather than the frame: the caller
++ * must poll again soon.
+  */
+ static unsigned int bcmgenet_desc_rx(struct bcmgenet_rx_ring *ring,
+-				     unsigned int budget)
++				     unsigned int budget, bool *pending)
+ {
+ 	struct bcmgenet_rx_stats64 *stats = &ring->stats64;
+ 	struct bcmgenet_priv *priv = ring->priv;
+ 	struct net_device *dev = priv->dev;
+-	struct enet_cb *cb;
+-	struct sk_buff *skb;
+-	u32 dma_length_status;
+-	unsigned long dma_flag;
+-	int len;
+-	unsigned int rxpktprocessed = 0, rxpkttoprocess;
++	struct sk_buff *skbs[MAX_RX_BDS_PER_FRAME];
++	u32 bd_ls[MAX_RX_BDS_PER_FRAME];
++	unsigned int rxbdsprocessed = 0, rxbdstoprocess;
++	unsigned int rxpktprocessed = 0;
+ 	unsigned int bytes_processed = 0;
+ 	unsigned int p_index, mask;
+ 	unsigned int discards;
++	unsigned int nbds, ptr, i;
+ 
+ 	/* Clear status before servicing to reduce spurious interrupts */
+ 	mask = 1 << (UMAC_IRQ1_RX_INTR_SHIFT + ring->index);
+@@ -2334,66 +2559,87 @@ static unsigned int bcmgenet_desc_rx(struct bcmgenet_rx_ring *ring,
+ 	}
+ 
+ 	p_index &= DMA_P_INDEX_MASK;
+-	rxpkttoprocess = (p_index - ring->c_index) & DMA_C_INDEX_MASK;
++	rxbdstoprocess = (p_index - ring->c_index) & DMA_C_INDEX_MASK;
+ 
+ 	netif_dbg(priv, rx_status, dev,
+-		  "RDMA: rxpkttoprocess=%d\n", rxpkttoprocess);
++		  "RDMA: rxbdstoprocess=%d\n", rxbdstoprocess);
+ 
+-	while ((rxpktprocessed < rxpkttoprocess) &&
++	while ((rxbdsprocessed < rxbdstoprocess) &&
+ 	       (rxpktprocessed < budget)) {
++		enum bcmgenet_rx_frame_state state;
++		struct sk_buff *skb, *head;
+ 		struct status_64 *status;
++		unsigned long dma_flag;
++		bool rsb_complete;
+ 		__be16 rx_csum;
+-
+-		cb = &priv->rx_cbs[ring->read_ptr];
+-		skb = bcmgenet_rx_refill(priv, cb);
+-
+-		if (unlikely(!skb)) {
+-			BCMGENET_STATS64_INC(stats, dropped);
+-			goto next;
+-		}
+-
+-		status = (struct status_64 *)skb->data;
+-		dma_length_status = status->length_status;
+-		if (dev->features & NETIF_F_RXCSUM) {
+-			rx_csum = (__force __be16)(status->rx_csum & 0xffff);
+-			if (rx_csum) {
+-				skb->csum = (__force __wsum)ntohs(rx_csum);
+-				skb->ip_summed = CHECKSUM_COMPLETE;
++		int len;
++
++		state = bcmgenet_rx_frame_bds(ring, rxbdstoprocess - rxbdsprocessed,
++					      bd_ls, &nbds);
++
++		if (unlikely(state == RX_FRAME_PENDING)) {
++			if (!ring->waiting) {
++				ring->waiting = true;
++				ring->wait_start = jiffies;
++			} else if (time_after(jiffies, ring->wait_start +
++					      RX_FRAME_WAIT_TIMEOUT)) {
++				/* Never finished: drop what was announced */
++				netif_err(priv, rx_status, dev,
++					  "frame never completed, dropping %u descriptor(s)\n",
++					  max(nbds, 1U));
++				ring->waiting = false;
++				bcmgenet_rx_drop(ring, max(nbds, 1U));
++				BCMGENET_STATS64_INC(stats, fragmented_errors);
++				rxbdsprocessed += max(nbds, 1U);
++				continue;
+ 			}
++			*pending = true;
++			break;
+ 		}
++		ring->waiting = false;
+ 
+-		/* DMA flags and length are still valid no matter how
+-		 * we got the Receive Status Vector (64B RSB or register)
+-		 */
+-		dma_flag = dma_length_status & 0xffff;
+-		len = dma_length_status >> DMA_BUFLENGTH_SHIFT;
++		if (unlikely(state == RX_FRAME_BROKEN)) {
++			netif_err(priv, rx_status, dev,
++				  "dropping fragmented packet (%u descriptor(s))\n",
++				  nbds);
++			bcmgenet_rx_drop(ring, nbds);
++			BCMGENET_STATS64_INC(stats, fragmented_errors);
++			rxbdsprocessed += nbds;
++			continue;
++		}
+ 
+ 		netif_dbg(priv, rx_status, dev,
+-			  "%s:p_ind=%d c_ind=%d read_ptr=%d len_stat=0x%08x\n",
++			  "%s:p_ind=%d c_ind=%d read_ptr=%d nbds=%u len_stat=0x%08x\n",
+ 			  __func__, p_index, ring->c_index,
+-			  ring->read_ptr, dma_length_status);
++			  ring->read_ptr, nbds, bd_ls[0]);
+ 
+-		if (unlikely(len > priv->rx_buf_len)) {
+-			netif_err(priv, rx_status, dev, "oversized packet\n");
+-			BCMGENET_STATS64_INC(stats, length_errors);
+-			dev_kfree_skb_any(skb);
+-			goto next;
++		/* Take the buffers off the ring, refilling as we go */
++		ptr = ring->read_ptr;
++		for (i = 0; i < nbds; i++) {
++			skbs[i] = bcmgenet_rx_refill(priv, &priv->rx_cbs[ptr]);
++			ptr = bcmgenet_rx_next_ptr(ring, ptr);
+ 		}
+-
+-		if (unlikely(!(dma_flag & DMA_EOP) || !(dma_flag & DMA_SOP))) {
+-			netif_err(priv, rx_status, dev,
+-				  "dropping fragmented packet!\n");
+-			BCMGENET_STATS64_INC(stats, fragmented_errors);
+-			dev_kfree_skb_any(skb);
+-			goto next;
++		bcmgenet_rx_advance(ring, nbds);
++		rxbdsprocessed += nbds;
++
++		dma_flag = 0;
++		for (i = 0; i < nbds; i++) {
++			dma_flag |= bd_ls[i] & 0xffff;
++			len = bd_ls[i] >> DMA_BUFLENGTH_SHIFT;
++			if (unlikely(!skbs[i])) {
++				BCMGENET_STATS64_INC(stats, dropped);
++				goto drop;
++			}
++			if (unlikely(len > priv->rx_buf_len)) {
++				netif_err(priv, rx_status, dev, "oversized packet\n");
++				BCMGENET_STATS64_INC(stats, length_errors);
++				goto drop;
++			}
++			skb_put(skbs[i], len);
+ 		}
+ 
+ 		/* report errors */
+-		if (unlikely(dma_flag & (DMA_RX_CRC_ERROR |
+-						DMA_RX_OV |
+-						DMA_RX_NO |
+-						DMA_RX_LG |
+-						DMA_RX_RXER))) {
++		if (unlikely(dma_flag & DMA_RX_ERRORS)) {
+ 			netif_err(priv, rx_status, dev, "dma_flag=0x%x\n",
+ 				  (unsigned int)dma_flag);
+ 			u64_stats_update_begin(&stats->syncp);
+@@ -2405,32 +2651,58 @@ static unsigned int bcmgenet_desc_rx(struct bcmgenet_rx_ring *ring,
+ 				u64_stats_inc(&stats->frame_errors);
+ 			if (dma_flag & DMA_RX_LG)
+ 				u64_stats_inc(&stats->length_errors);
+-			if ((dma_flag & (DMA_RX_CRC_ERROR |
+-						DMA_RX_OV |
+-						DMA_RX_NO |
+-						DMA_RX_LG |
+-						DMA_RX_RXER)) == DMA_RX_RXER)
++			if ((dma_flag & DMA_RX_ERRORS) == DMA_RX_RXER)
+ 				u64_stats_inc(&stats->errors);
+ 			u64_stats_update_end(&stats->syncp);
+-			dev_kfree_skb_any(skb);
+-			goto next;
++			goto drop;
+ 		} /* error packet */
+ 
+-		skb_put(skb, len);
++		head = skbs[0];
+ 
+-		/* remove RSB and hardware 2bytes added for IP alignment */
+-		skb_pull(skb, 66);
+-		len -= 66;
++		/* RSB and hardware 2 bytes added for IP alignment */
++		if (unlikely(head->len < 66)) {
++			BCMGENET_STATS64_INC(stats, frame_errors);
++			goto drop;
++		}
++
++		status = (struct status_64 *)head->data;
++		/* The RSB only describes the whole frame, checksum included,
++		 * when the frame was entirely in the RBUF before the DMA
++		 * started on it.
++		 */
++		rsb_complete = !!(status->length_status & DMA_EOP);
++		rx_csum = (__force __be16)(status->rx_csum & 0xffff);
++		skb_pull(head, 66);
++
++		for (i = 1; i < nbds; i++) {
++			skb = skbs[i];
++			if (i == 1)
++				skb_shinfo(head)->frag_list = skb;
++			else
++				skbs[i - 1]->next = skb;
++			head->len += skb->len;
++			head->data_len += skb->len;
++			head->truesize += skb->truesize;
++		}
+ 
+ 		if (priv->crc_fwd_en) {
+-			skb_trim(skb, len - ETH_FCS_LEN);
+-			len -= ETH_FCS_LEN;
++			if (unlikely(pskb_trim(head, head->len - ETH_FCS_LEN))) {
++				BCMGENET_STATS64_INC(stats, dropped);
++				dev_kfree_skb_any(head);
++				goto next;
++			}
+ 		}
+ 
++		if ((dev->features & NETIF_F_RXCSUM) && rsb_complete && rx_csum) {
++			head->csum = (__force __wsum)ntohs(rx_csum);
++			head->ip_summed = CHECKSUM_COMPLETE;
++		}
++
++		len = head->len;
+ 		bytes_processed += len;
+ 
+ 		/*Finish setting up the received SKB and send it to the kernel*/
+-		skb->protocol = eth_type_trans(skb, priv->dev);
++		head->protocol = eth_type_trans(head, priv->dev);
+ 
+ 		u64_stats_update_begin(&stats->syncp);
+ 		u64_stats_inc(&stats->packets);
+@@ -2439,21 +2711,23 @@ static unsigned int bcmgenet_desc_rx(struct bcmgenet_rx_ring *ring,
+ 			u64_stats_inc(&stats->multicast);
+ 		else if (dma_flag & DMA_RX_BRDCAST)
+ 			u64_stats_inc(&stats->broadcast);
++		if (nbds > 1)
++			u64_stats_inc(&stats->multi_bd);
++		if (!rsb_complete)
++			u64_stats_inc(&stats->early_rdy);
+ 		u64_stats_update_end(&stats->syncp);
+ 
+ 		/* Notify kernel */
+-		napi_gro_receive(&ring->napi, skb);
++		napi_gro_receive(&ring->napi, head);
+ 		netif_dbg(priv, rx_status, dev, "pushed up to kernel\n");
++		goto next;
+ 
++drop:
++		for (i = 0; i < nbds; i++)
++			if (skbs[i])
++				dev_kfree_skb_any(skbs[i]);
+ next:
+ 		rxpktprocessed++;
+-		if (likely(ring->read_ptr < ring->end_ptr))
+-			ring->read_ptr++;
+-		else
+-			ring->read_ptr = ring->cb_ptr;
+-
+-		ring->c_index = (ring->c_index + 1) & DMA_C_INDEX_MASK;
+-		bcmgenet_rdma_ring_writel(priv, ring->index, ring->c_index, RDMA_CONS_INDEX);
+ 	}
+ 
+ 	ring->dim.bytes = bytes_processed;
+@@ -2469,8 +2743,15 @@ static int bcmgenet_rx_poll(struct napi_struct *napi, int budget)
+ 			struct bcmgenet_rx_ring, napi);
+ 	struct dim_sample dim_sample = {};
+ 	unsigned int work_done;
++	bool pending = false;
++
++	work_done = bcmgenet_desc_rx(ring, budget, &pending);
+ 
+-	work_done = bcmgenet_desc_rx(ring, budget);
++	/* A frame the hardware announced is still landing: no interrupt will
++	 * tell us when it has, so ask to be polled again right away.
++	 */
++	if (pending)
++		work_done = budget;
+ 
+ 	if (work_done < budget && napi_complete_done(napi, work_done))
+ 		bcmgenet_rx_ring_int_enable(ring);
+@@ -2775,6 +3056,7 @@ static int bcmgenet_init_rx_ring(struct bcmgenet_priv *priv,
+ 	ring->read_ptr = start_ptr;
+ 	ring->cb_ptr = start_ptr;
+ 	ring->end_ptr = end_ptr - 1;
++	ring->waiting = false;
+ 
+ 	ret = bcmgenet_alloc_rx_buffers(priv, ring);
+ 	if (ret)
+diff --git a/drivers/net/ethernet/broadcom/genet/bcmgenet.h b/drivers/net/ethernet/broadcom/genet/bcmgenet.h
+index b4604b4f2..609040061 100644
+--- a/drivers/net/ethernet/broadcom/genet/bcmgenet.h
++++ b/drivers/net/ethernet/broadcom/genet/bcmgenet.h
+@@ -178,6 +178,8 @@ struct bcmgenet_rx_stats64 {
+ 	u64_stats_t	crc_errors;
+ 	u64_stats_t	frame_errors;
+ 	u64_stats_t	fragmented_errors;
++	u64_stats_t	multi_bd;	/* frames reassembled from >1 descriptor */
++	u64_stats_t	early_rdy;	/* frames announced before their end */
+ };
+ 
+ #define UMAC_MIB_START			0x400
+@@ -580,6 +582,8 @@ struct bcmgenet_rx_ring {
+ 	unsigned int	cb_ptr;		/* Rx ring initial CB ptr */
+ 	unsigned int	end_ptr;	/* Rx ring end CB ptr */
+ 	unsigned int	old_discards;
++	unsigned long	wait_start;	/* jiffies when we started waiting */
++	bool		waiting;	/* for the DMA to finish a frame */
+ 	struct bcmgenet_net_dim dim;
+ 	u32		rx_max_coalesced_frames;
+ 	u32		rx_coalesce_usecs;
+-- 
+2.43.0
+
