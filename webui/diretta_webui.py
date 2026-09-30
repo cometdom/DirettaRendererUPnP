@@ -13,12 +13,13 @@ import argparse
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 from html import escape
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from string import Template
-from urllib.parse import parse_qs
+from urllib.parse import parse_qs, quote
 
 from config_parser import ShellVarConfig, CliOptsConfig
 
@@ -170,35 +171,65 @@ def save_settings(profile, settings):
 
 
 def restart_service(service_name):
-    """Restart a systemd service. Returns (success, message)."""
-    try:
-        result = subprocess.run(
-            ['systemctl', 'restart', service_name],
-            capture_output=True, text=True, timeout=15
-        )
-        if result.returncode == 0:
-            return True, f'Service {service_name} restarted.'
-        return False, f'Restart failed: {result.stderr.strip()}'
-    except subprocess.TimeoutExpired:
-        return False, 'Restart timed out (15s).'
-    except FileNotFoundError:
-        return False, 'systemctl not found.'
+    """Restart a service (systemd or OpenRC). Returns (success, message)."""
+    # Try systemd first
+    if shutil.which('systemctl'):
+        try:
+            result = subprocess.run(
+                ['systemctl', 'restart', service_name],
+                capture_output=True, text=True, timeout=15
+            )
+            if result.returncode == 0:
+                return True, f'Service {service_name} restarted (systemd).'
+            return False, f'Restart failed: {result.stderr.strip()}'
+        except subprocess.TimeoutExpired:
+            return False, 'Restart timed out (15s).'
+
+    # Try OpenRC (GentooPlayer, Gentoo, Alpine)
+    if shutil.which('rc-service'):
+        try:
+            result = subprocess.run(
+                ['rc-service', service_name, 'restart'],
+                capture_output=True, text=True, timeout=15
+            )
+            if result.returncode == 0:
+                return True, f'Service {service_name} restarted (OpenRC).'
+            return False, f'Restart failed: {result.stderr.strip()}'
+        except subprocess.TimeoutExpired:
+            return False, 'Restart timed out (15s).'
+
+    return False, 'No init system found (neither systemctl nor rc-service).'
 
 
 def stop_service(service_name):
-    """Stop a systemd service. Returns (success, message)."""
-    try:
-        result = subprocess.run(
-            ['systemctl', 'stop', service_name],
-            capture_output=True, text=True, timeout=15
-        )
-        if result.returncode == 0:
-            return True, f'Service {service_name} stopped.'
-        return False, f'Stop failed: {result.stderr.strip()}'
-    except subprocess.TimeoutExpired:
-        return False, 'Stop timed out (15s).'
-    except FileNotFoundError:
-        return False, 'systemctl not found.'
+    """Stop a service (systemd or OpenRC). Returns (success, message)."""
+    # Try systemd first
+    if shutil.which('systemctl'):
+        try:
+            result = subprocess.run(
+                ['systemctl', 'stop', service_name],
+                capture_output=True, text=True, timeout=15
+            )
+            if result.returncode == 0:
+                return True, f'Service {service_name} stopped (systemd).'
+            return False, f'Stop failed: {result.stderr.strip()}'
+        except subprocess.TimeoutExpired:
+            return False, 'Stop timed out (15s).'
+
+    # Try OpenRC (GentooPlayer, Gentoo, Alpine)
+    if shutil.which('rc-service'):
+        try:
+            result = subprocess.run(
+                ['rc-service', service_name, 'stop'],
+                capture_output=True, text=True, timeout=15
+            )
+            if result.returncode == 0:
+                return True, f'Service {service_name} stopped (OpenRC).'
+            return False, f'Stop failed: {result.stderr.strip()}'
+        except subprocess.TimeoutExpired:
+            return False, 'Stop timed out (15s).'
+
+    return False, 'No init system found (neither systemctl nor rc-service).'
 
 
 def render_setting_input(setting, current_value):
@@ -323,7 +354,12 @@ class ConfigHandler(BaseHTTPRequestHandler):
 
     def _send_redirect(self, location):
         self.send_response(303)
-        self.send_header('Location', location)
+        # http.server encodes headers as latin-1; a non-ASCII flash message
+        # (e.g. a localized error, or an accented systemctl/rc-service stderr
+        # line) would otherwise raise UnicodeEncodeError and turn a 303 into
+        # a 500 (issue #99, harmonyosnews). '/','?','&','=' stay unescaped so
+        # the query string this method is always called with keeps working.
+        self.send_header('Location', quote(location, safe='/?&=.%~'))
         self.end_headers()
 
     def do_GET(self):
