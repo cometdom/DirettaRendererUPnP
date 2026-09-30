@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.5.21] - 2026-09-30
+
+### Fixed
+- **WebUI: `_send_redirect()` could 500 on a non-ASCII flash message, and Restart/Stop never worked on OpenRC** (issue #99, harmonyosnews — found while packaging for GentooPlayer). Two independent bugs, both hit by any WebUI action that changes settings: (1) `http.server` encodes response headers as latin-1, so a localized message or an accented `systemctl`/`rc-service` stderr line raised `UnicodeEncodeError`, turning the 303 redirect into a 500 (the settings page appeared to do nothing) — `_send_redirect()` now percent-encodes the `Location` header via `urllib.parse.quote()`, keeping `/?&=` unescaped so the query string stays intact; (2) `restart_service()`/`stop_service()` were hardcoded to `systemctl`, so the Restart/Stop buttons silently did nothing on GentooPlayer/Gentoo/Alpine (OpenRC, PID 1 = `init`) — the resulting `FileNotFoundError` was even reported back as a misleading "systemctl not found". Ported slim2UPnP's already-proven `shutil.which()`-based systemd/OpenRC detection (slim2UPnP's copy of this shared file had already fixed bug 2 independently, but not bug 1). Same two fixes ported to slim2Diretta (v1.4.26) and the header fix to slim2UPnP (v0.1.35-beta), since all three share this file.
+
 ## [2.5.20] - 2026-09-22
 
 ### Fixed
