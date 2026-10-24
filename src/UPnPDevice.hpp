@@ -75,7 +75,7 @@ public:
 
     /** @brief Optional shutdown flag (false = stop) checked by start()'s wait loops. */
     void setStopSignal(std::atomic<bool>* stopSignal) { m_stopSignal = stopSignal; }
-    bool isRunning() const { return m_running; }
+    bool isRunning() const { return m_running.load(std::memory_order_acquire); }
     
     // Callbacks
     void setCallbacks(const Callbacks& callbacks);
@@ -184,7 +184,11 @@ private:
     bool waitForPortFree();   // --port-strict: bind() probe, before libupnp and before the lock
     mutable std::mutex m_stateMutex;
     std::atomic<bool>* m_stopSignal = nullptr;
-    bool m_running;
+    // Atomic (not just mutex-guarded): handleActionRequest() reads this
+    // before ever taking m_stateMutex, specifically so it never blocks on a
+    // mutex that stop() can be holding across a slow libupnp call (see
+    // stop()'s own comment on the v2.5.24 deadlock fix).
+    std::atomic<bool> m_running;
     std::string m_ipAddress;
     int m_actualPort;
     

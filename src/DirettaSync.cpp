@@ -843,26 +843,38 @@ bool DirettaSync::open(const AudioFormat& format) {
     int bitsPerSample;
 
     if (newIsDoP) {
-        // DoP: DSD encoded as 24-bit PCM for the Diretta target
+        // DoP: DSD encoded as 24-bit PCM for the Diretta target — or, on a
+        // sink that refuses plain 24-bit, 32-bit (hoorna/Alfred, 2026-10):
+        // measured on a Target with PCM24bit disabled, behind a DAC whose
+        // own ALSA info reports S32_LE only — the Target was already
+        // container-converting DoP to 32-bit one layer further down in that
+        // setup regardless; this just lets open() accept that container
+        // instead of refusing DoP outright. See pushDSDToDoP()'s comment
+        // for the byte layout (same marker-on-top convention either way).
         // PCM rate = DSD bit rate / 16 (2 DSD bytes per PCM frame × 8 bits)
         uint32_t dsdBitRate = format.sampleRate;
         uint32_t pcmRate = dsdBitRate / 16;
         effectiveSampleRate = pcmRate;
-        bitsPerSample = 24;
 
         std::cout << "[DirettaSync] DoP mode: DSD" << (dsdBitRate / 2822400 * 64)
-                  << " -> " << pcmRate << "Hz 24-bit PCM" << std::endl;
+                  << " -> " << pcmRate << "Hz PCM" << std::endl;
         DIRETTA_LOG("DoP: dsdBitRate=" << dsdBitRate << " pcmRate=" << pcmRate);
 
         int acceptedBits = 0;
         if (!configureSinkPCM(static_cast<int>(pcmRate), format.channels, 24, acceptedBits)
-            || acceptedBits != 24) {
-            // DoP needs exactly 24-bit frames on the wire (markers in the top byte)
-            std::cerr << "[DirettaSync] DoP needs a 24-bit PCM sink at " << pcmRate << "Hz" << std::endl;
+            || (acceptedBits != 24 && acceptedBits != 32)) {
+            // DoP needs the marker byte at the exact top of a 24- or 32-bit
+            // word; a 16-bit sink can't carry it either way.
+            std::cerr << "[DirettaSync] DoP needs a 24-bit or 32-bit PCM sink at " << pcmRate << "Hz" << std::endl;
             return false;
         }
-        // isDoPMode=true: sets m_isDoPMode atomic before the gen bump
-        configureRingPCM(static_cast<int>(pcmRate), format.channels, 3, 3, true);
+        bitsPerSample = acceptedBits;
+        int direttaBps = (acceptedBits == 32) ? 4 : 3;
+        // isDoPMode=true: sets m_isDoPMode atomic before the gen bump.
+        // inputBps matches direttaBps (not the DSD source's own width)
+        // because pushDSDToDoP() builds the exact on-wire word itself; the
+        // ring's generic pack/upsample/truncate flags must all stay off.
+        configureRingPCM(static_cast<int>(pcmRate), format.channels, direttaBps, direttaBps, true);
     } else if (m_isDsdMode.load(std::memory_order_acquire)) {
         uint32_t dsdBitRate = format.sampleRate;
         uint32_t byteRate = dsdBitRate / 8;
@@ -1738,7 +1750,10 @@ size_t DirettaSync::sendAudio(const uint8_t* data, size_t numSamples) {
         totalBytes = (numSamples * static_cast<size_t>(numChannels)) / 8;
 
         bool dopBitReverse = g_dopMsb;
-        written = m_ringBuffer.pushDSDToDoP(data, totalBytes, numChannels, dopBitReverse);
+        // bytesPerSample is this track's negotiated DoP word size (3 or 4,
+        // see configureRingPCM()'s DoP branch) — already cached above, no
+        // extra atomic load needed.
+        written = m_ringBuffer.pushDSDToDoP(data, totalBytes, numChannels, dopBitReverse, bytesPerSample);
 
         // Debug: log first few DoP pushes for diagnosis (show raw input bytes before encoding)
         if (g_verbose && m_pushCount.load(std::memory_order_relaxed) < 3 && written > 0) {

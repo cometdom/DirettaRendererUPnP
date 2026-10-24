@@ -33,6 +33,9 @@ bool test_pushDSD_optimized_integration();
 bool test_pushDSD_dop_encoding();
 bool test_pushDSD_dop_msb_encoding();
 bool test_pushDSD_dop_marker_phase_invariant();
+bool test_pushDSD_dop_32bit_encoding();
+bool test_pushDSD_dop_32bit_msb_encoding();
+bool test_pushDSD_dop_rejects_bad_wordBytes();
 bool test_s24_hint_survives_clear();
 bool test_s24_timeout_defaults_to_msb();
 bool test_push_whole_frames_only();
@@ -89,6 +92,9 @@ int main() {
     RUN_TEST(test_pushDSD_dop_encoding);
     RUN_TEST(test_pushDSD_dop_msb_encoding);
     RUN_TEST(test_pushDSD_dop_marker_phase_invariant);
+    RUN_TEST(test_pushDSD_dop_32bit_encoding);
+    RUN_TEST(test_pushDSD_dop_32bit_msb_encoding);
+    RUN_TEST(test_pushDSD_dop_rejects_bad_wordBytes);
 
     std::cout << "\n--- Group 7: S24 hint lifecycle, frame alignment, 32->16 ---" << std::endl;
     RUN_TEST(test_s24_hint_survives_clear);
@@ -907,6 +913,116 @@ bool test_pushDSD_dop_marker_phase_invariant() {
     }
     TEST_ASSERT(phase_ok, "Consecutive identical DoP markers found — even-frame guard not working");
 
+    return true;
+}
+
+bool test_pushDSD_dop_32bit_encoding() {
+    // v2.5.24 (hoorna/Alfred): pushDSDToDoP(..., wordBytes=4) for a sink that
+    // only accepted 32-bit PCM for DoP. Same frame structure as the 24-bit
+    // test above, but each sample is 4 bytes: [0x00, DSD_N+1, DSD_N, marker]
+    // — the extra byte is a zero pad at the LOW end, so the marker stays the
+    // word's top byte either way (MSB-aligned S24-in-S32 convention).
+    DirettaRingBuffer ring;
+    ring.resize(1024 * 1024, 0x69);
+
+    constexpr size_t BYTES_PER_CHANNEL = 16;  // 8 PCM frames
+    constexpr size_t TOTAL_INPUT = BYTES_PER_CHANNEL * 2;
+
+    alignas(64) uint8_t input[TOTAL_INPUT];
+    for (size_t i = 0; i < BYTES_PER_CHANNEL; i++) {
+        input[i]                    = static_cast<uint8_t>(i);          // L: 0x00..0x0F
+        input[BYTES_PER_CHANNEL + i] = static_cast<uint8_t>(0x80 + i);  // R: 0x80..0x8F
+    }
+
+    size_t written = ring.pushDSDToDoP(input, TOTAL_INPUT, 2, /*bitReverse=*/false, /*wordBytes=*/4);
+    TEST_ASSERT(written > 0, "32-bit DoP push failed");
+
+    // 8 PCM frames × 2ch × 4 bytes = 64 bytes expected in ring
+    size_t available = ring.getAvailable();
+    TEST_ASSERT_EQ(available, static_cast<size_t>(64), "32-bit DoP output size unexpected");
+
+    std::vector<uint8_t> out(available);
+    ring.pop(out.data(), available);
+
+    uint8_t markers[8] = {0x05, 0xFA, 0x05, 0xFA, 0x05, 0xFA, 0x05, 0xFA};
+    bool ok = true;
+    for (size_t f = 0; f < 8; f++) {
+        size_t base = f * 8;
+        uint8_t lz = out[base + 0], l1 = out[base + 1], l0 = out[base + 2], lm = out[base + 3];
+        uint8_t rz = out[base + 4], r1 = out[base + 5], r0 = out[base + 6], rm = out[base + 7];
+        if (lz != 0 || rz != 0 ||
+            l0 != static_cast<uint8_t>(2*f)         || l1 != static_cast<uint8_t>(2*f+1)      || lm != markers[f] ||
+            r0 != static_cast<uint8_t>(0x80 + 2*f)  || r1 != static_cast<uint8_t>(0x80 + 2*f+1) || rm != markers[f]) {
+            std::cout << "  Frame " << f << ": got L=[" << (int)lz << "," << (int)l1 << "," << (int)l0
+                      << ",marker=" << (int)lm << "] R=[" << (int)rz << "," << (int)r1 << "," << (int)r0
+                      << ",marker=" << (int)rm << "]" << std::endl;
+            ok = false;
+        }
+    }
+    TEST_ASSERT(ok, "32-bit DoP frame encoding incorrect — check pushDSDToDoP's wordBytes=4 layout");
+    return true;
+}
+
+bool test_pushDSD_dop_32bit_msb_encoding() {
+    // wordBytes=4 combined with --dop-msb (bitReverse=true). Using the two
+    // bit-reversal values already established above
+    // (kBitReverseTable[0x01]=0x80, kBitReverseTable[0x80]=0x01) so the
+    // expected bytes are simple and independently checkable: every frame's
+    // DSD-pair reverses to the same [0x01, 0x80] regardless of channel or
+    // frame index, only the marker alternates.
+    DirettaRingBuffer ring;
+    ring.resize(1024 * 1024, 0x69);
+
+    constexpr size_t BYTES_PER_CHANNEL = 4;  // 2 PCM frames
+    constexpr size_t TOTAL_INPUT = BYTES_PER_CHANNEL * 2;
+
+    alignas(64) uint8_t input[TOTAL_INPUT] = {
+        0x01, 0x80, 0x01, 0x80,   // L: frame0 (0x01,0x80), frame1 (0x01,0x80)
+        0x01, 0x80, 0x01, 0x80,   // R: same
+    };
+
+    size_t written = ring.pushDSDToDoP(input, TOTAL_INPUT, 2, /*bitReverse=*/true, /*wordBytes=*/4);
+    TEST_ASSERT(written > 0, "32-bit DoP MSB push failed");
+
+    size_t available = ring.getAvailable();
+    TEST_ASSERT_EQ(available, static_cast<size_t>(16), "32-bit DoP MSB output size unexpected");
+
+    std::vector<uint8_t> out(available);
+    ring.pop(out.data(), available);
+
+    uint8_t markers[2] = {0x05, 0xFA};
+    bool ok = true;
+    for (size_t f = 0; f < 2; f++) {
+        size_t base = f * 8;
+        // Every reversed DSD pair is [rev(0x01), rev(0x80)] = [0x80, 0x01],
+        // written as [b1_rev, b0_rev] = [0x01, 0x80] per the push order.
+        uint8_t expect[8] = {0x00, 0x01, 0x80, markers[f], 0x00, 0x01, 0x80, markers[f]};
+        for (int i = 0; i < 8; i++) {
+            if (out[base + i] != expect[i]) {
+                std::cout << "  Frame " << f << " byte " << i << ": got 0x" << std::hex
+                          << (int)out[base + i] << " expected 0x" << (int)expect[i]
+                          << std::dec << std::endl;
+                ok = false;
+            }
+        }
+    }
+    TEST_ASSERT(ok, "32-bit DoP MSB encoding incorrect");
+    return true;
+}
+
+bool test_pushDSD_dop_rejects_bad_wordBytes() {
+    // Defensive check: only 3 or 4 are valid on-wire DoP word sizes.
+    DirettaRingBuffer ring;
+    ring.resize(1024 * 1024, 0x69);
+
+    alignas(64) uint8_t input[8] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
+
+    TEST_ASSERT_EQ(ring.pushDSDToDoP(input, 8, 2, false, 2), static_cast<size_t>(0),
+                   "wordBytes=2 must be rejected");
+    TEST_ASSERT_EQ(ring.pushDSDToDoP(input, 8, 2, false, 5), static_cast<size_t>(0),
+                   "wordBytes=5 must be rejected");
+    TEST_ASSERT_EQ(ring.getAvailable(), static_cast<size_t>(0),
+                   "Rejected pushes must not write anything to the ring");
     return true;
 }
 

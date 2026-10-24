@@ -1,4 +1,4 @@
-# Diretta UPnP Renderer v2.5.23
+# Diretta UPnP Renderer v2.5.24
 
 **The world's first native UPnP/DLNA renderer with Diretta protocol support - Low-Latency Edition**
 
@@ -8,18 +8,19 @@
 
 ---
 
-![Version](https://img.shields.io/badge/version-2.5.23-blue.svg)
+![Version](https://img.shields.io/badge/version-2.5.24-blue.svg)
 ![Low Latency](https://img.shields.io/badge/Latency-Low-green.svg)
 ![SDK](https://img.shields.io/badge/SDK-DIRETTA::Sync-orange.svg)
 ![Audirvana](https://img.shields.io/badge/Audirvana-Compatible-green.svg)
 
 ---
 
-## What's New in v2.5.23
+## What's New in v2.5.24
 
-**Fix: source compatibility with Diretta Host SDK 155.**
+**Two fixes: a shutdown deadlock, and `--dop` now works on sinks that only accept 32-bit PCM.**
 
-- SDK 155 broke source compatibility in four places (`Sync::open()`'s new required parameter, an SDK getter that changed from a field to three methods, a removed settings field). All four are now resolved automatically at compile time — the same code builds against SDK 149, 150 or 155, whichever you have installed, with no manual changes needed.
+- **Shutdown deadlock**: if a control point polled the renderer (e.g. `GetTransportInfo`, which Roon/LMS/BubbleUPnP all do every few seconds) at the exact moment it was shutting down, the process could hang permanently instead of exiting — a lock-ordering deadlock in the UPnP layer. Fixed: shutdown no longer holds a lock across the slow cleanup call, and incoming requests are turned away immediately once shutdown starts instead of blocking on it.
+- **`--dop` over 32-bit PCM**: DoP used to require a sink that accepted exactly 24-bit PCM; on a sink that only offers 32-bit for a 24-bit source, `--dop` refused to play at all, forcing DSD to be converted to PCM upstream instead. It now accepts a 32-bit sink too.
 
 See [CHANGELOG.md](CHANGELOG.md) for details.
 
@@ -27,6 +28,7 @@ See [CHANGELOG.md](CHANGELOG.md) for details.
 
 | Version | Highlights |
 |---------|-----------|
+| **v2.5.23** | Fix: source compatibility with Diretta Host SDK 155 |
 | **v2.5.22** | Fix: a forced target link speed (`TARGET_SPEED`) was lost after reboot (Auke, Raspberry Pi 5) |
 | **v2.5.21** | Fix: WebUI settings page could 500 on a non-ASCII message, and Restart/Stop never worked on OpenRC (issue #99, harmonyosnews) |
 | **v2.5.20** | Fix: clicks when PCM playback is cut or restarted in the middle of the music (PR #98, herisson-88) |
@@ -1172,4 +1174,4 @@ This software is provided "as is" without warranty. While designed for high-qual
 
 **Enjoy bit-perfect, low-latency audio streaming!**
 
-*Last updated: 2026-10-07 (v2.5.23)*
+*Last updated: 2026-10-24 (v2.5.24)*

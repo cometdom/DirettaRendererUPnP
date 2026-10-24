@@ -124,8 +124,8 @@ bool UPnPDevice::start() {
     if (m_config.portStrict && m_config.port != 0 && !waitForPortFree()) return false;
 
     std::lock_guard<std::mutex> lock(m_stateMutex);
-    
-    if (m_running) {
+
+    if (m_running.load(std::memory_order_acquire)) {
         std::cerr << "[UPnPDevice] Already running" << std::endl;
         return false;
     }
@@ -253,28 +253,53 @@ bool UPnPDevice::start() {
 }
 
 void UPnPDevice::stop() {
-    std::lock_guard<std::mutex> lock(m_stateMutex);
-    
-    if (!m_running) {
-        return;
-    }
-    
-    DEBUG_LOG("[UPnPDevice] Stopping...");
-    
-    if (m_deviceHandle >= 0) {
-        // Send byebye
-        UpnpSendAdvertisement(m_deviceHandle, 0);
-        
-        // Unregister
-        UpnpUnRegisterRootDevice(m_deviceHandle);
+    // v2.5.24: lock-ordering deadlock fix (hoorna/Alfred). This used to hold
+    // m_stateMutex across UpnpSendAdvertisement/UpnpUnRegisterRootDevice/
+    // UpnpFinish() — but UpnpFinish() blocks until libupnp's own worker
+    // threads finish, and every action handler (actionGetTransportInfo etc.)
+    // takes the same m_stateMutex as its very first statement. A control
+    // point that polls during shutdown (GetTransportInfo every few seconds
+    // is common — Roon, LMS, BubbleUPnP) could land a SOAP action in a
+    // libupnp worker thread right as stop() took the lock: that worker then
+    // blocks on m_stateMutex, which never gets released because stop() is
+    // itself blocked inside UpnpFinish() waiting for that same worker to
+    // finish. Permanent AB-BA deadlock — not a race that resolves itself,
+    // and a second SIGINT/SIGTERM can't help (v2.5.13's per-thread signal
+    // blocking means only the thread already in here would receive one, and
+    // it's the one that's stuck). Only SIGKILL got out of it.
+    //
+    // Fix: the lock now protects only the m_running flip and picking up
+    // m_deviceHandle; the libupnp calls — including the slow UpnpFinish() —
+    // run with no lock held at all. handleActionRequest() checks the now-
+    // atomic m_running before it ever touches m_stateMutex (see its own
+    // comment), so once m_running goes false under the lock below, no
+    // worker thread dispatched after that point can reach the mutex in the
+    // first place. A worker thread already inside a handler when the flag
+    // flips still finishes normally (briefly holds the mutex, which is now
+    // free to give), since nothing on the stop() side needs that mutex back.
+    int deviceHandle = -1;
+    {
+        std::lock_guard<std::mutex> lock(m_stateMutex);
+        if (!m_running.load(std::memory_order_acquire)) {
+            return;
+        }
+        DEBUG_LOG("[UPnPDevice] Stopping...");
+        m_running.store(false, std::memory_order_release);
+        deviceHandle = m_deviceHandle;
         m_deviceHandle = -1;
     }
-    
+
+    if (deviceHandle >= 0) {
+        // Send byebye
+        UpnpSendAdvertisement(deviceHandle, 0);
+
+        // Unregister
+        UpnpUnRegisterRootDevice(deviceHandle);
+    }
+
     // Cleanup libupnp
     UpnpFinish();
-    
-    m_running = false;
-    
+
     DEBUG_LOG("[UPnPDevice] ✓ Stopped");
 }
 
@@ -314,15 +339,27 @@ int UPnPDevice::upnpCallback(Upnp_EventType eventType, const void* event) {
 }
 
 int UPnPDevice::handleActionRequest(UpnpActionRequest* request) {
+    // v2.5.24: single choke point for the stop() deadlock fix above. Every
+    // individual action handler takes m_stateMutex as its first statement;
+    // checking the atomic m_running here, before dispatching to any of
+    // them, means a request arriving after stop() has flipped the flag
+    // never reaches that mutex at all. UPNP_E_SUCCESS with no response set
+    // mirrors what libupnp already does if the device handle is gone by the
+    // time a late request is dispatched — not a new failure mode for a
+    // control point to handle, just the same one slightly earlier.
+    if (!m_running.load(std::memory_order_acquire)) {
+        return UPNP_E_SUCCESS;
+    }
+
     std::string actionName = UpnpString_get_String(
         UpnpActionRequest_get_ActionName(request)
     );
-    
+
     std::string serviceID = UpnpString_get_String(
         UpnpActionRequest_get_ServiceID(request)
     );
-    
-    DEBUG_LOG("[UPnPDevice] Action: " << actionName 
+
+    DEBUG_LOG("[UPnPDevice] Action: " << actionName
               << " (service: " << serviceID << ")");
     
     // Dispatch AVTransport actions

@@ -580,15 +580,29 @@ public:
      */
     // bitReverse=true: reverse bits within each DSD byte before packing (--dop-msb mode).
     // Use this when the DAC expects MSB-first DSD payload in DoP frames.
-    size_t pushDSDToDoP(const uint8_t* data, size_t inputSize, int numChannels, bool bitReverse = false) {
+    // wordBytes: 3 for a 24-bit sink (the original, still the default), 4 for
+    // a sink that only accepted 32-bit for DoP (hoorna/Alfred, 2026-10,
+    // measured on a Lyngdorf DAC behind a Diretta Target with PCM24bit
+    // disabled — the DAC's own ALSA info reports S32_LE only, so on that
+    // setup DoP was always being container-converted to 32-bit one layer
+    // further down anyway; this just lets open() accept that instead of
+    // refusing DoP outright when the sink won't do plain 24-bit). The extra
+    // byte is zero, placed at the LOW end, with the marker staying at the
+    // TOP of the word — the same MSB-aligned S24-in-S32 convention already
+    // used elsewhere in this ring for packed-24-in-32 PCM (see "S24
+    // Alignment" in CLAUDE.md), so a 32-bit DoP word is bit-for-bit what a
+    // 24-bit DoP word would be if copied unchanged into a wider container.
+    size_t pushDSDToDoP(const uint8_t* data, size_t inputSize, int numChannels, bool bitReverse = false,
+                         int wordBytes = 3) {
         if (size_ == 0 || numChannels <= 0 || inputSize < static_cast<size_t>(numChannels) * 2) return 0;
+        if (wordBytes != 3 && wordBytes != 4) return 0;
 
         size_t bytesPerChannel = inputSize / static_cast<size_t>(numChannels);
-        // Each pair of DSD bytes per channel becomes one 24-bit PCM sample (3 bytes)
+        // Each pair of DSD bytes per channel becomes one PCM sample (3 or 4 bytes)
         size_t pcmFrames = bytesPerChannel / 2;
         if (pcmFrames == 0) return 0;
 
-        size_t outputBytesPerFrame = static_cast<size_t>(numChannels) * 3;
+        size_t outputBytesPerFrame = static_cast<size_t>(numChannels) * static_cast<size_t>(wordBytes);
         size_t maxFramesByStaging = STAGING_SIZE / outputBytesPerFrame;
         size_t free = getFreeSpace();
         size_t maxFramesByFree = free / outputBytesPerFrame;
@@ -606,8 +620,10 @@ public:
         size_t out = 0;
 
         // DoP v1.1: bits[23:16]=marker, bits[15:8]=DSD_byte_N, bits[7:0]=DSD_byte_N+1
-        // Stored little-endian: [DSD_byte_N+1, DSD_byte_N, marker]
-        // (matches MinimServer/Asset UPnP reference implementations)
+        // 24-bit word, stored little-endian: [DSD_byte_N+1, DSD_byte_N, marker]
+        // (matches MinimServer/Asset UPnP reference implementations). The 32-bit
+        // word keeps that same byte layout shifted up by one zero byte, so the
+        // marker is still the word's top byte either way.
         for (size_t k = 0; k < pcmFrames; k++) {
             uint8_t marker = m_dopMarkerState ? 0xFA : 0x05;
             m_dopMarkerState = !m_dopMarkerState;
@@ -620,9 +636,12 @@ public:
                     b0 = kBitReverseTable[b0];
                     b1 = kBitReverseTable[b1];
                 }
+                if (wordBytes == 4) {
+                    dst[out++] = 0x00;    // zero pad (MSB-aligned S24-in-S32)
+                }
                 dst[out++] = b1;      // DSD byte N+1 (LSB of PCM word, bits 7:0)
                 dst[out++] = b0;      // DSD byte N   (mid byte, bits 15:8)
-                dst[out++] = marker;  // DoP marker   (MSB of PCM word, bits 23:16)
+                dst[out++] = marker;  // DoP marker   (top byte: bits 23:16, or 31:24 in a 32-bit word)
             }
         }
 
