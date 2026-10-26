@@ -2216,23 +2216,36 @@ bool DirettaSync::getNewStream(diretta_stream& baseStream) {
         fadeInBuffer(dest, currentBytesPerBuffer);
     }
 
-    // Diagnostic: log first 5 pops in DoP mode so we can verify marker bytes and DSD content
+    // Diagnostic: log first 5 pops in DoP mode so we can verify marker bytes and DSD content.
+    // v2.5.24 (hoorna/Alfred): this used to hardcode a 6-byte stereo frame
+    // (3 bytes/word), so the decoded lines were garbage for the new 32-bit
+    // DoP path — the raw hex above it was always correct, only the decode
+    // was wrong. Walks wordBytes/channels generically now; every channel's
+    // word shares the same marker (set once per PCM frame in
+    // pushDSDToDoP()), so it's only printed once per frame.
     if (g_verbose && currentIsDoP) {
         int popIdx = m_popCount.fetch_add(1, std::memory_order_relaxed) + 1;
         if (popIdx <= 5) {
-            int show = std::min(currentBytesPerBuffer, 12);  // 2 stereo DoP frames
+            int show = std::min(currentBytesPerBuffer, 12);
             std::cout << "[DoP POP #" << popIdx << "] bytes=" << currentBytesPerBuffer
                       << " first " << show << "B: ";
             for (int i = 0; i < show; i++) printf("%02X ", dest[i]);
             printf("\n");
-            // Decode: stereo DoP frame = [L_DSD0, L_DSD1, L_marker, R_DSD0, R_DSD1, R_marker]
-            if (currentBytesPerBuffer >= 6) {
-                printf("  Frame0: L=[%02X,%02X] R=[%02X,%02X] marker=%02X\n",
-                       dest[0], dest[1], dest[3], dest[4], dest[2]);
-            }
-            if (currentBytesPerBuffer >= 12) {
-                printf("  Frame1: L=[%02X,%02X] R=[%02X,%02X] marker=%02X\n",
-                       dest[6], dest[7], dest[9], dest[10], dest[8]);
+            int channels = m_cachedConsumerChannels;
+            int frameBytes = m_cachedBytesPerFrame;
+            int wordBytes = (channels > 0 && frameBytes > 0) ? frameBytes / channels : 0;
+            if (channels > 0 && wordBytes >= 3) {
+                for (int f = 0; f * frameBytes < currentBytesPerBuffer && f < 2; f++) {
+                    const uint8_t* fr = dest + f * frameBytes;
+                    printf("  Frame%d:", f);
+                    for (int ch = 0; ch < channels; ch++) {
+                        const uint8_t* w = fr + ch * wordBytes;
+                        // Marker is the top byte, the two DSD bytes sit just below it
+                        // (any padding, for a word wider than 3 bytes, is below those).
+                        printf(" ch%d=[%02X,%02X]", ch, w[wordBytes - 2], w[wordBytes - 3]);
+                    }
+                    printf(" marker=%02X\n", fr[wordBytes - 1]);
+                }
             }
         }
     }

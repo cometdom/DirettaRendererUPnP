@@ -726,7 +726,11 @@ bool test_push24bit_pop_integration() {
 
 bool test_pushDSD_dop_encoding() {
     // Verify DoP v1.1 frame structure: stereo planar DSD → interleaved 24-bit PCM with markers
-    // Expected per frame (6 bytes): [L_dsd0, L_dsd1, marker, R_dsd0, R_dsd1, marker]
+    // Expected per frame (6 bytes): [L_dsd1, L_dsd0, marker, R_dsd1, R_dsd0, marker] — DSD_N+1
+    // before DSD_N, matching pushDSDToDoP()'s own comment and confirmed byte-for-byte on real
+    // hardware (hoorna/Alfred, v2.5.24): this test had the two DSD bytes swapped since the
+    // byte order changed at v2.5.8 and was never updated to match (test_pushDSD_dop_32bit_encoding
+    // below got it right from the start).
     // Markers alternate: 0x05, 0xFA, 0x05, 0xFA, ...
     DirettaRingBuffer ring;
     ring.resize(1024 * 1024, 0x69);
@@ -758,19 +762,19 @@ bool test_pushDSD_dop_encoding() {
         size_t base = f * 6;
         uint8_t l0 = out[base + 0], l1 = out[base + 1], lm = out[base + 2];
         uint8_t r0 = out[base + 3], r1 = out[base + 4], rm = out[base + 5];
-        // L: DSD bytes 2f and 2f+1; R: DSD bytes 2f and 2f+1 (R channel)
-        if (l0 != static_cast<uint8_t>(2*f)   ||
-            l1 != static_cast<uint8_t>(2*f+1) ||
+        // L: DSD bytes 2f+1 then 2f (DSD_N+1 before DSD_N); R: same pattern
+        if (l0 != static_cast<uint8_t>(2*f+1) ||
+            l1 != static_cast<uint8_t>(2*f)   ||
             lm != markers[f]                   ||
-            r0 != static_cast<uint8_t>(0x80 + 2*f)   ||
-            r1 != static_cast<uint8_t>(0x80 + 2*f+1) ||
+            r0 != static_cast<uint8_t>(0x80 + 2*f+1) ||
+            r1 != static_cast<uint8_t>(0x80 + 2*f)   ||
             rm != markers[f]) {
             std::cout << "  Frame " << f << ": got L=[" << (int)l0 << "," << (int)l1
                       << ",marker=" << (int)lm << "] R=[" << (int)r0 << "," << (int)r1
                       << ",marker=" << (int)rm << "]" << std::endl;
-            std::cout << "  Expected L=[" << (int)(2*f) << "," << (int)(2*f+1)
+            std::cout << "  Expected L=[" << (int)(2*f+1) << "," << (int)(2*f)
                       << ",marker=" << (int)markers[f] << "] R=["
-                      << (int)(0x80+2*f) << "," << (int)(0x80+2*f+1)
+                      << (int)(0x80+2*f+1) << "," << (int)(0x80+2*f)
                       << ",marker=" << (int)markers[f] << "]" << std::endl;
             ok = false;
         }
@@ -803,11 +807,13 @@ bool test_pushDSD_dop_msb_encoding() {
     std::vector<uint8_t> out(available);
     ring.pop(out.data(), available);
 
-    // Frame 0: L=[rev(0x01)=0x80, rev(0xF0)=0x0F, 0x05], R=[rev(0x02)=0x40, rev(0xE0)=0x07, 0x05]
-    // Frame 1: L=[rev(0x03)=0xC0, rev(0x0F)=0xF0, 0xFA], R=[rev(0x05)=0xA0, rev(0xAA)=0x55, 0xFA]
+    // Output order is [rev(DSD_N+1), rev(DSD_N), marker] (same DSD_N+1-before-DSD_N order as
+    // the non-reversed test above, fixed for the same reason — see its comment).
+    // Frame 0: L=[rev(0xF0)=0x0F, rev(0x01)=0x80, 0x05], R=[rev(0xE0)=0x07, rev(0x02)=0x40, 0x05]
+    // Frame 1: L=[rev(0x0F)=0xF0, rev(0x03)=0xC0, 0xFA], R=[rev(0xAA)=0x55, rev(0x05)=0xA0, 0xFA]
     struct { uint8_t l0,l1,lm, r0,r1,rm; } expected[2] = {
-        {0x80, 0x0F, 0x05, 0x40, 0x07, 0x05},
-        {0xC0, 0xF0, 0xFA, 0xA0, 0x55, 0xFA},
+        {0x0F, 0x80, 0x05, 0x07, 0x40, 0x05},
+        {0xF0, 0xC0, 0xFA, 0x55, 0xA0, 0xFA},
     };
 
     bool ok = true;

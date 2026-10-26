@@ -343,11 +343,18 @@ int UPnPDevice::handleActionRequest(UpnpActionRequest* request) {
     // individual action handler takes m_stateMutex as its first statement;
     // checking the atomic m_running here, before dispatching to any of
     // them, means a request arriving after stop() has flipped the flag
-    // never reaches that mutex at all. UPNP_E_SUCCESS with no response set
-    // mirrors what libupnp already does if the device handle is gone by the
-    // time a late request is dispatched — not a new failure mode for a
-    // control point to handle, just the same one slightly earlier.
+    // never reaches that mutex at all.
+    //
+    // ErrCode 501 ("Action Failed") produces a proper SOAP fault, the same
+    // family as the "unsupported action"/401 and "invalid args"/402 paths
+    // below — measured by hoorna/Alfred: returning UPNP_E_SUCCESS alone,
+    // with neither ActionResult nor ErrCode set, is not equivalent to a
+    // normal failure response the way the comment here used to claim —
+    // libupnp turns that into a bare HTTP 500 with no SOAP fault body,
+    // which is harmless this close to process exit but gives the control
+    // point nothing to parse.
     if (!m_running.load(std::memory_order_acquire)) {
+        UpnpActionRequest_set_ErrCode(request, 501);  // Action Failed
         return UPNP_E_SUCCESS;
     }
 
@@ -461,9 +468,16 @@ int UPnPDevice::handleSubscriptionRequest(UpnpSubscriptionRequest* request) {
               << " SID: " << (sid ? sid : "null") << std::endl;
 
     // Build initial LastChange XML - different format per service
+    // v2.5.24 (hoorna/Alfred): deviceHandle captured under the lock, same
+    // reasoning as sendAVTransportEvent()'s fix — used below for both the
+    // early ConnectionManager return and the common UpnpAcceptSubscription
+    // call, neither of which re-reads the bare member afterward.
     std::string lastChange;
+    UpnpDevice_Handle deviceHandle;
     {
         std::lock_guard<std::mutex> lock(m_stateMutex);
+        deviceHandle = m_deviceHandle;
+        if (deviceHandle < 0) return UPNP_E_SUCCESS;
         std::stringstream ss;
 
         if (serviceID.find("AVTransport") != std::string::npos) {
@@ -506,7 +520,7 @@ int UPnPDevice::handleSubscriptionRequest(UpnpSubscriptionRequest* request) {
             const char* cmVarValues[] = { "", m_protocolInfo.c_str(), "0" };
 
             int ret = UpnpAcceptSubscription(
-                m_deviceHandle,
+                deviceHandle,
                 UpnpSubscriptionRequest_get_UDN_cstr(request),
                 UpnpSubscriptionRequest_get_ServiceId_cstr(request),
                 cmVarNames, cmVarValues, 3, sid
@@ -531,7 +545,7 @@ int UPnPDevice::handleSubscriptionRequest(UpnpSubscriptionRequest* request) {
     const char* varValues[] = { escapedLastChange.c_str() };
 
     int ret = UpnpAcceptSubscription(
-        m_deviceHandle,
+        deviceHandle,
         UpnpSubscriptionRequest_get_UDN_cstr(request),
         UpnpSubscriptionRequest_get_ServiceId_cstr(request),
         varNames, varValues, 1, sid
@@ -1115,14 +1129,22 @@ std::string UPnPDevice::getArgumentValue(IXML_Document* actionDoc,
 // Per UPnP AVTransport spec: RelativeTimePosition MUST NOT be evented via LastChange.
 // Position is obtained by control points via GetPositionInfo polling.
 void UPnPDevice::sendAVTransportEvent() {
-    if (m_deviceHandle < 0 || !m_running) return;
+    if (!m_running.load(std::memory_order_acquire)) return;
     if (g_minimalUPnP) return;  // Minimal mode: no event notifications
 
-    // Build LastChange XML with current state (no position - spec forbids it)
+    // v2.5.24 (hoorna/Alfred): m_deviceHandle is captured under the lock
+    // below, not read again afterward. stop() can now set it to -1
+    // concurrently (it no longer holds m_stateMutex across the libupnp
+    // teardown calls) — re-reading the bare member for the UpnpNotify()
+    // call further down, as this used to, could hand libupnp a handle
+    // that's already been unregistered by the time the call happens.
     std::string lastChange;
     std::string state;
+    UpnpDevice_Handle deviceHandle;
     {
         std::lock_guard<std::mutex> lock(m_stateMutex);
+        deviceHandle = m_deviceHandle;
+        if (deviceHandle < 0) return;
         state = m_transportState;
 
         // Determine available actions for current state
@@ -1163,7 +1185,7 @@ void UPnPDevice::sendAVTransportEvent() {
 
     std::string udn = "uuid:" + m_config.uuid;
     int ret = UpnpNotify(
-        m_deviceHandle,
+        deviceHandle,
         udn.c_str(),
         "urn:upnp-org:serviceId:AVTransport",
         varNames, varValues, 1
@@ -1178,12 +1200,16 @@ void UPnPDevice::sendAVTransportEvent() {
 
 // Helper: Send RenderingControl LastChange event to all subscribers
 void UPnPDevice::sendRenderingControlEvent() {
-    if (m_deviceHandle < 0 || !m_running) return;
+    if (!m_running.load(std::memory_order_acquire)) return;
     if (g_minimalUPnP) return;  // Minimal mode: no event notifications
 
+    // v2.5.24 (hoorna/Alfred): see sendAVTransportEvent()'s comment — same fix.
     std::string lastChange;
+    UpnpDevice_Handle deviceHandle;
     {
         std::lock_guard<std::mutex> lock(m_stateMutex);
+        deviceHandle = m_deviceHandle;
+        if (deviceHandle < 0) return;
         std::stringstream ss;
         ss << "<Event xmlns=\"urn:schemas-upnp-org:metadata-1-0/RCS/\">"
            << "<InstanceID val=\"0\">"
@@ -1203,7 +1229,7 @@ void UPnPDevice::sendRenderingControlEvent() {
 
     std::string udn = "uuid:" + m_config.uuid;
     int ret = UpnpNotify(
-        m_deviceHandle,
+        deviceHandle,
         udn.c_str(),
         "urn:upnp-org:serviceId:RenderingControl",
         varNames, varValues, 1
