@@ -160,11 +160,26 @@ struct SdkHasDiswork<S, std::void_t<decltype(std::declval<S&>().open(
     std::declval<int>(), std::declval<typename S::MSMODE>(), std::declval<bool>()))>>
     : std::true_type {};
 
+// SDK 157 dropped the ifno parameter (we always passed 0) and appended two
+// optional custom-socket pointers, left at their nullptr defaults.
+template <typename S, typename = void>
+struct SdkOpenWithoutIfno : std::false_type {};
+template <typename S>
+struct SdkOpenWithoutIfno<S, std::void_t<decltype(std::declval<S&>().open(
+    std::declval<typename S::THRED_MODE>(), std::declval<ACQUA::Clock>(),
+    std::declval<const std::string&>(), std::declval<std::uint64_t>(),
+    std::declval<int>(), std::declval<int>(), std::declval<int>(),
+    std::declval<typename S::MSMODE>(), std::declval<bool>()))>>
+    : std::true_type {};
+
 template <typename S>
 static bool sdkOpen(S& sync, typename S::THRED_MODE mode, ACQUA::Clock info, uint16_t ifno,
                      const std::string& name, std::uint64_t id, int cpuMain, int cpuOther,
                      int rngOther, typename S::MSMODE msMode) {
-    if constexpr (SdkHasDiswork<S>::value) {
+    if constexpr (SdkOpenWithoutIfno<S>::value) {
+        (void)ifno;
+        return sync.open(mode, info, name, id, cpuMain, cpuOther, rngOther, msMode, false);
+    } else if constexpr (SdkHasDiswork<S>::value) {
         return sync.open(mode, info, ifno, name, id, cpuMain, cpuOther, rngOther, msMode, false);
     } else {
         return sync.open(mode, info, ifno, name, id, cpuMain, cpuOther, rngOther, msMode);

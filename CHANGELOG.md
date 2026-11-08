@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.5.25] - 2026-11-08
+
+### Fixed
+- **Diretta Host SDK 157 source compatibility.** SDK 157 removed the `uint16_t ifno` (host interface number) parameter of `Sync::open()` — this renderer always passed 0 — and appended two optional custom-socket pointers (`ACQUA::EthernetSocket*`, default `nullptr`), so the build failed. New `SdkOpenWithoutIfno<S>` probe in `sdkOpen()` (same SFINAE/`if constexpr` pattern as the SDK 155 port), checked first, calls it without `ifno` and leaves the socket pointers at their defaults. The other header changes in 157 do not affect this codebase: the `Find` socket constructor now takes a pointer (only `Find(const Setting&)` is used here), and the new `Find::Setting::RequestMS` is initialised by the SDK's own `Setting()` constructor. Ported from slim2diretta v1.4.31 (same fix, reported there by Auke). Verified: clean build against SDK 157, 155, 150 and 149, no new warnings, Makefile auto-detects 157, `make test` 37 passed / 0 failed. The identical change was confirmed on hardware in slim2diretta v1.4.31 (Auke, SDK 157); not yet run on hardware with the renderer itself.
+
 ## [2.5.24] - 2026-10-24
 
 ### Fixed

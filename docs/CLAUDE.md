@@ -81,7 +81,21 @@ DirettaRendererUPnP-L is the **low-latency optimized** fork of DirettaRendererUP
 
 ## Diretta SDK Reference
 
-**SDK Location:** auto-detected by the Makefile from `$HOME / . / .. / /opt` (latest `DirettaHostSDK_<version>/` directory wins, via `sort -V | tail -1`). Override with `DIRETTA_SDK_PATH=...`. Current SDK at the time of writing: v1.55.x — v1.49.x and v1.50.x also still build and run fine (verified: `DIRETTA_SDK_PATH` override to either tree compiles and links cleanly), since the auto-detect simply picks whichever version is actually installed rather than requiring the latest. See "SDK 155 breaking API changes" below for what changed between 150 and 155.
+**SDK Location:** auto-detected by the Makefile from `$HOME / . / .. / /opt` (latest `DirettaHostSDK_<version>/` directory wins, via `sort -V | tail -1`). Override with `DIRETTA_SDK_PATH=...`. Current SDK at the time of writing: v1.57.x — v1.49.x, v1.50.x and v1.55.x also still build and run fine (verified: `DIRETTA_SDK_PATH` override to either tree compiles and links cleanly), since the auto-detect simply picks whichever version is actually installed rather than requiring the latest. See "SDK 155 breaking API changes" and "SDK 157 API change" below for what changed between 150 and 157.
+
+### SDK 157 API change — ported (v2.5.25)
+
+`Sync::open()` lost its `uint16_t ifno` parameter (we always passed 0) and
+gained two trailing optional `ACQUA::EthernetSocket*` (custom data/raw
+sockets, default `nullptr`). Handled by a third `sdkOpen()` branch,
+`SdkOpenWithoutIfno<S>`, probed first. Other 157 header changes don't
+affect us: `Find(const Setting&, EthernetSocket*, uint16_t=0)` (we only use
+`Find(const Setting&)`), the new `Find::Setting::RequestMS` is initialised
+by `Setting()`, and `ACQUA::Clock::AcquaClockNow` only exists under
+`CLOCK_MYSELF`. Verified: clean build against 157/155/150/149, `make test`
+37/0. **SDK licensing**: Yu Harada permits AI code assistance based on the
+SDK headers only; never load or inspect the SDK binaries (`lib/*.a`,
+`*.lib`) with an AI tool.
 
 ### SDK 155 breaking API changes — ported (2026-10-07)
 
