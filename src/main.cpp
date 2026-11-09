@@ -308,6 +308,7 @@ DirettaRenderer::Config parseArguments(int argc, char* argv[]) {
         }
         else if (arg == "--cycle-min-time" && i + 1 < argc) {
             config.cycleMinTime = std::atoi(argv[++i]);
+        }    
         else if (arg == "--prio-time" && i + 1 < argc) {
             config.varPrioTime = std::atoi(argv[++i]);
         }
