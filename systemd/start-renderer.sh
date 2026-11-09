@@ -19,6 +19,7 @@ PORT_STRICT="${PORT_STRICT:-}"
 INTERFACE="${INTERFACE:-${NETWORK_INTERFACE:-}}"
 THREAD_MODE="${THREAD_MODE:-}"
 CYCLE_TIME="${CYCLE_TIME:-}"
+PRIO_TIME="${PRIO_TIME:-}"
 CYCLE_MIN_TIME="${CYCLE_MIN_TIME:-}"
 INFO_CYCLE="${INFO_CYCLE:-}"
 TRANSFER_MODE="${TRANSFER_MODE:-}"
@@ -262,6 +263,10 @@ fi
 
 if [ -n "$CYCLE_TIME" ]; then
     CMD+=("--cycle-time" "$CYCLE_TIME")
+fi
+
+if [ -n "$PRIO_TIME" ]; then
+    CMD+=("--prio-time" "$PRIO_TIME")
 fi
 
 if [ -n "$CYCLE_MIN_TIME" ]; then

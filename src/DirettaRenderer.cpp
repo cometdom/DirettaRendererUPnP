@@ -235,6 +235,8 @@ bool DirettaRenderer::start(std::atomic<bool>* stopSignal) {
         }
         if (m_config.infoCycle >= 0)
             syncConfig.infoCycle = static_cast<unsigned int>(m_config.infoCycle);
+        if (m_config.varPrioTime >= 0)
+            syncConfig.varPrioTime = static_cast<std::uint32_t>(m_config.varPrioTime);
         if (m_config.cycleMinTime >= 0)
             syncConfig.cycleMinTime = static_cast<unsigned int>(m_config.cycleMinTime);
         if (m_config.mtu >= 0)
@@ -250,6 +252,8 @@ bool DirettaRenderer::start(std::atomic<bool>* stopSignal) {
                 syncConfig.transferMode = DirettaTransferMode::RANDOM;
             else if (m_config.transferMode == "auto-sdk")
                 syncConfig.transferMode = DirettaTransferMode::AUTO_SDK;
+            else if (m_config.transferMode == "varpriotime")
+                syncConfig.transferMode = DirettaTransferMode::VAR_PRIO_TIME;
             else
                 syncConfig.transferMode = DirettaTransferMode::AUTO;
         }
