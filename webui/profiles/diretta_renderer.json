@@ -305,6 +305,7 @@
                         {"value": "", "label": "Auto (default)"},
                         {"value": "varmax", "label": "VarMax (packets filled to maximum)"},
                         {"value": "varauto", "label": "VarAuto (adaptive packet timing)"},
+                        {"value": "varpriotime", "label": "VarPrioTime (variable-cycle configuration Hz)"},
                         {"value": "fixauto", "label": "FixAuto (fixed packet timing)"},
                         {"value": "random", "label": "Random (use with Cycle Min Time)"},
                         {"value": "auto-sdk", "label": "Auto (SDK): configTransferAuto, the SDK sample host's mode"}
@@ -339,6 +340,15 @@
                     "min": 100,
                     "max": 50000
                 },
+                {
+                    "key": "PRIO_TIME",
+                    "type": "number",
+                    "label": "Prio Time (Hz)",
+                    "description": "Packet transmission cycle time in Hz (only for VarPrioTime), (default: 300Hz)",
+                    "default": "",
+                    "min": 10,
+                    "max": 5000
+                },                
                 {
                     "key": "CYCLE_MIN_TIME",
                     "type": "number",

@@ -2547,6 +2547,10 @@ void DirettaSync::applyTransferMode(DirettaTransferMode mode, ACQUA::Clock cycle
                 DIRETTA_LOG("Using TargetProfile FixAuto (limit=" << m_config.targetProfileLimitTime << "us)");
                 pm.configTransferFixAuto(cycleTime);
                 break;
+            case DirettaTransferMode::VAR_PRIO_TIME:
+                DIRETTA_LOG("Using TargetProfile VarPrioTime (limit=" << m_config.targetProfileLimitTime << "Hz)");
+                pm.configTransferVarPrioTime(m_config.varPrioTime);
+                break;
             case DirettaTransferMode::RANDOM: {
                 ACQUA::Clock minCycle = (m_config.cycleMinTime > 0)
                     ? ACQUA::Clock::MicroSeconds(m_config.cycleMinTime)
@@ -2596,6 +2600,10 @@ void DirettaSync::applyTransferMode(DirettaTransferMode mode, ACQUA::Clock cycle
         case DirettaTransferMode::VAR_AUTO:
             DIRETTA_LOG("Using VarAuto");
             configTransferVarAuto(cycleTime);
+            break;
+        case DirettaTransferMode::VAR_PRIO_TIME:
+            DIRETTA_LOG("Using VarPrioTime");
+            configTransferVarPrioTime(m_config.varPrioTime);
             break;
         case DirettaTransferMode::RANDOM: {
             ACQUA::Clock minCycle = (m_config.cycleMinTime > 0)

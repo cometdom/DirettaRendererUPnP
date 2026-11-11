@@ -319,7 +319,7 @@ private:
 
 // AUTO_SDK = Sync::configTransferAuto(minSync, target, max), the mode the SDK
 // author's own sample host (SinHost) uses; DRUP never exposed it before.
-enum class DirettaTransferMode { FIX_AUTO, VAR_AUTO, VAR_MAX, RANDOM, AUTO, AUTO_SDK };
+enum class DirettaTransferMode { FIX_AUTO, VAR_AUTO, VAR_MAX, RANDOM, AUTO, AUTO_SDK, VAR_PRIO_TIME };
 
 //=============================================================================
 // Configuration
@@ -333,6 +333,7 @@ struct DirettaConfig {
     unsigned int mtu = 0;  // 0 = auto-detect
     unsigned int mtuFallback = 1500;
     unsigned int infoCycle = 100000;  // Info packet cycle in µs (SDK default: 100ms)
+    std::uint32_t varPrioTime = 300;  // VarPrioTime cycle time in Hz (default: 300)
     unsigned int cycleMinTime = 0;   // 0 = unused (random and auto-sdk transfer modes)
     unsigned int targetProfileLimitTime = 0;  // 0=SelfProfile (stable), >0=TargetProfile (experimental, LimitCycleTime µs)
     // Sink (target) buffer time requested in setSink()'s 2nd argument — the SDK
