@@ -32,7 +32,7 @@
 #include <cerrno>
 #include <cstring>
 
-#define RENDERER_VERSION "2.5.25"
+#define RENDERER_VERSION "2.5.26"
 #define RENDERER_BUILD_DATE __DATE__
 #define RENDERER_BUILD_TIME __TIME__
 
@@ -308,7 +308,7 @@ DirettaRenderer::Config parseArguments(int argc, char* argv[]) {
         }
         else if (arg == "--cycle-min-time" && i + 1 < argc) {
             config.cycleMinTime = std::atoi(argv[++i]);
-        }    
+        }
         else if (arg == "--prio-time" && i + 1 < argc) {
             config.varPrioTime = std::atoi(argv[++i]);
         }

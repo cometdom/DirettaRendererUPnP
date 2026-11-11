@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.5.26] - 2026-11-11
+
+### Added
+- **`varpriotime` transfer mode** (PR #100, Koala887/Daniel). A variable-cycle transfer mode specified by priority cycle frequency in Hz instead of target cycle time in µs: exposes `Sync::configTransferVarPrioTime(std::uint32_t)` / `ProfileMaker::configTransferVarPrioTime(std::uint32_t)`. New `--prio-time <Hz>` CLI flag and `PRIO_TIME` config key (default 300 Hz), wired through both the direct-`Sync` and `TargetProfile` code paths, both systemd launcher scripts, `install.sh`'s settings-migration list, and both WebUI profiles — the same plumbing as every other `--transfer-mode` option.
+
+### Changed
+- **Minimum supported Diretta Host SDK raised to 155.** `configTransferVarPrioTime()` only exists from SDK 155 onward (absent from 148/149/150), and the PR calls it without the SFINAE/`if constexpr` compatibility guard this project normally uses for version-conditional SDK calls — so a build against SDK 149/150 now fails outright, not just the new mode. Left unguarded deliberately: self-installers already track current SDK releases closely, and the AudioLinux/GentooPlayer package maintainers do too, so the maintenance cost of one more compatibility shim wasn't judged worth it for this one optional mode. Anyone still building against SDK 150 or earlier needs to download SDK 155+ first.
+
 ## [2.5.25] - 2026-11-08
 
 ### Fixed

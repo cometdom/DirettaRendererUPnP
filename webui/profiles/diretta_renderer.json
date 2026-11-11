@@ -348,7 +348,7 @@
                     "default": "",
                     "min": 10,
                     "max": 5000
-                },                
+                },
                 {
                     "key": "CYCLE_MIN_TIME",
                     "type": "number",

@@ -1,4 +1,4 @@
-# Diretta UPnP Renderer v2.5.25
+# Diretta UPnP Renderer v2.5.26
 
 **The world's first native UPnP/DLNA renderer with Diretta protocol support - Low-Latency Edition**
 
@@ -8,18 +8,19 @@
 
 ---
 
-![Version](https://img.shields.io/badge/version-2.5.25-blue.svg)
+![Version](https://img.shields.io/badge/version-2.5.26-blue.svg)
 ![Low Latency](https://img.shields.io/badge/Latency-Low-green.svg)
 ![SDK](https://img.shields.io/badge/SDK-DIRETTA::Sync-orange.svg)
 ![Audirvana](https://img.shields.io/badge/Audirvana-Compatible-green.svg)
 
 ---
 
-## What's New in v2.5.25
+## What's New in v2.5.26
 
-**Diretta Host SDK 157 support.**
+**New `varpriotime` transfer mode (PR #100, Koala887/Daniel) — minimum SDK raised to 155.**
 
-- SDK 157 changed one function the renderer uses to open the Diretta connection, so the build failed against it. The renderer now builds against SDK 157 as well as 155, 150 and 149, and the Makefile picks up the newest installed SDK automatically, as before.
+- A new variable-cycle transfer mode, specified by priority cycle frequency in Hz rather than target cycle time in µs: `--transfer-mode varpriotime` with `--prio-time <Hz>` (default 300 Hz). Same CLI/config/WebUI plumbing as the other transfer modes.
+- The SDK call this mode uses only exists from SDK 155 onward. **Building this renderer now requires Diretta Host SDK 155 or later** — SDK 149/150 no longer build, not just this one mode (see CHANGELOG.md for why).
 
 See [CHANGELOG.md](CHANGELOG.md) for details.
 
@@ -27,6 +28,7 @@ See [CHANGELOG.md](CHANGELOG.md) for details.
 
 | Version | Highlights |
 |---------|-----------|
+| **v2.5.25** | Diretta Host SDK 157 support |
 | **v2.5.24** | Fix: shutdown deadlock, and `--dop` on sinks that only accept 32-bit PCM (hoorna/Alfred) |
 | **v2.5.23** | Fix: source compatibility with Diretta Host SDK 155 |
 | **v2.5.22** | Fix: a forced target link speed (`TARGET_SPEED`) was lost after reboot (Auke, Raspberry Pi 5) |
@@ -989,9 +991,10 @@ These options allow fine-tuning the Diretta SDK transmission behavior. **Leave a
 ```bash
 --thread-mode <mode>        SDK thread mode bitmask (default: 1=CRITICAL)
 --cycle-time <us>           Max cycle time in microseconds (100-50000, default: auto = one MTU of audio)
+--prio-time <Hz>            Cycle time in Hz (varpriotime mode only, default: 300)
 --cycle-min-time <us>       Min cycle time in microseconds (random and auto-sdk modes)
 --info-cycle <us>           Info packet cycle in microseconds (default: 100000)
---transfer-mode <mode>      Transfer mode: auto, varmax, varauto, fixauto, random, auto-sdk
+--transfer-mode <mode>      Transfer mode: auto, varmax, varauto, varpriotime, fixauto, random, auto-sdk
 --no-prefetch               Read HTTP sources on the decode thread instead of the prefetch thread
 --sink-buffer-ms <ms>       Sink buffer time at setSink (default: the cycle time; 0 = sink default)
 --rapid-start               SDK 150 rapid start (A/B only)

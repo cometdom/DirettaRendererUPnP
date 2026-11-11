@@ -160,6 +160,14 @@ sudo ./DirettaRendererUPnP --target 1 --info-cycle 50000
 sudo ./DirettaRendererUPnP --target 1 --transfer-mode random --cycle-min-time 333
 ```
 
+#### `--prio-time <Hz>`
+**Default**: 300
+**Description**: Cycle time expressed as a frequency in Hz, only used in `varpriotime` transfer mode. **Requires Diretta Host SDK 155 or later** — see the `varpriotime` note below.
+**Example**:
+```bash
+sudo ./DirettaRendererUPnP --target 1 --transfer-mode varpriotime --prio-time 300
+```
+
 #### `--transfer-mode <mode>`
 **Default**: auto
 **Description**: Data transfer mode. Controls how packets are sized and scheduled.
@@ -169,6 +177,7 @@ sudo ./DirettaRendererUPnP --target 1 --transfer-mode random --cycle-min-time 33
 | `auto` | Automatic (VarMax for PCM Hi-Res, VarAuto for DSD/low-bitrate) |
 | `varmax` | Flex cycle, maximum packet size |
 | `varauto` | Flex cycle, auto-tuned |
+| `varpriotime` | Variable cycle, priority on cycle frequency in Hz (`--prio-time`) — **requires SDK 155+**, the only mode with that requirement; building against SDK 149/150 fails entirely once this mode is compiled in (PR #100) |
 | `fixauto` | Fixed cycle, auto-tuned |
 | `random` | Random cycle (uses `--cycle-min-time` as minimum) |
 | `auto-sdk` | `Sync::configTransferAuto()` — the mode the SDK's own sample host uses; lets the SDK pick between fixed and variable cycles itself (`--cycle-min-time` as the floor) |
