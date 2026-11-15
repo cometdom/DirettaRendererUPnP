@@ -81,9 +81,13 @@ DirettaRendererUPnP-L is the **low-latency optimized** fork of DirettaRendererUP
 
 ## Diretta SDK Reference
 
-**SDK Location:** auto-detected by the Makefile from `$HOME / . / .. / /opt` (latest `DirettaHostSDK_<version>/` directory wins, via `sort -V | tail -1`). Override with `DIRETTA_SDK_PATH=...`. Current SDK at the time of writing: v1.57.x.
+**SDK Location:** auto-detected by the Makefile from `$HOME / . / .. / /opt` (latest `DirettaHostSDK_<version>/` directory wins, via `sort -V | tail -1`). Override with `DIRETTA_SDK_PATH=...`. Current SDK at the time of writing: v1.58.x.
 
 **Minimum SDK version: 155** (v2.5.26, PR #100). `ProfileMaker::configTransferVarPrioTime()` / `Sync::configTransferVarPrioTime()`, used by the new `varpriotime` transfer mode, only exist from SDK 155 onward — absent from 148/149/150 — and the PR calls them unconditionally, with no SFINAE/`if constexpr` guard (unlike every other version-conditional SDK call in this file). Deliberately left unguarded: fixing 23 of those per-feature compatibility shims has been worth it so far because each covered an SDK path every build needs regardless of feature flags, but gating one optional transfer mode behind the project's oldest-supported SDK was judged not worth the added complexity here — self-installers track the newest SDK closely, and AudioLinux/GentooPlayer package current SDKs. Building against SDK 149/150 now fails outright (confirmed: `'class DIRETTA::ProfileMaker' has no member named 'configTransferVarPrioTime'`), not just the `varpriotime` mode. See "SDK 155 breaking API changes" and "SDK 157 API change" below for what else changed between 150 and 157.
+
+### SDK 158 — checked, no code changes needed (2026-11-15)
+
+Diffed every `Host/*.hpp` between 157 and 158 (`diff -rq`): only `Connection.hpp` and `Release.hpp` (version number) differ. `Connection::open()` gained a second trailing defaulted parameter (`bool =false`, labelled `nocustum` with no further doc comment beyond that) — source-compatible by construction, and irrelevant here regardless since this codebase never calls `Connection::open()` directly (`DirettaSync::open(const AudioFormat&)` hides it by name from a `DirettaSync`-typed expression, same as the `diswork` situation in the SDK 155 section above; `sdkOpen()` only ever resolves against `Sync::open()` overloads). Verified: clean build against SDK 158 (both explicit `DIRETTA_SDK_PATH` and bare auto-detect via `sort -V`, which already picks 158 over 157 with no Makefile change needed), `make test` 37/0.
 
 ### SDK 157 API change — ported (v2.5.25)
 
