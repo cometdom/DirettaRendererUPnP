@@ -1066,15 +1066,21 @@ void DirettaSync::close() {
     stop();
     disconnect(true);  // Wait for proper disconnection before returning
 
+    // CRITICAL: Stop worker thread BEFORE closing SDK to prevent use-after-free
+    // (same hazard reopenForFormatChange() already guards against below - this
+    // call used to run after DIRETTA::Sync::close(), leaving the worker thread
+    // free to still be inside DIRETTA::Sync::syncWorker() while the SDK object
+    // tore itself down on the calling thread. SDK <=158 apparently tolerated
+    // the race; SDK 160 crashed inside syncWorker() - reported by
+    // SwissMountainsBear/Pierre, 2026-11-21)
+    joinWorkerWithTimeout(1000);
+
     // SDK 148: Close SDK completely to allow clean reopen on next track
     DIRETTA::Sync::close();
     m_sdkOpen = false;
 
     // Brief delay for target to process disconnect (like reopenForFormatChange)
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
-
-    // Stop worker thread
-    joinWorkerWithTimeout(1000);
 
     m_open = false;
     m_playing = false;
