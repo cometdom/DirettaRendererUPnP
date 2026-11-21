@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.5.27] - 2026-11-21
+
+### Fixed
+- **Core dump on Diretta Host SDK 160, during shutdown/close** (reported by SwissMountainsBear/Pierre; SDK 158 unaffected). The crash trace showed the main thread asleep inside `DirettaSync::close()`'s post-disconnect delay — right after `DIRETTA::Sync::close()` — while the worker thread segfaulted concurrently inside the SDK's own `DIRETTA::Sync::syncWorker()`. Root cause: `close()` called `DIRETTA::Sync::close()` *before* `joinWorkerWithTimeout()`, leaving the worker thread's `while(m_running)` loop free to keep calling the base class's `syncWorker()` on another thread while the SDK object was torn down on the calling thread — the exact hazard `reopenForFormatChange()` already guards against a few lines below, with its own `// CRITICAL: Stop worker thread BEFORE closing SDK to prevent use-after-free` comment, just in the opposite (safe) order. SDK ≤158 apparently tolerated the race through its own internal timing; SDK 160 doesn't. Fixed by reordering `close()` to match `reopenForFormatChange()`'s already-correct pattern. **Confirmed fixed on real hardware by SwissMountainsBear/Pierre**, building against SDK 160.
+
 ## [2.5.26] - 2026-11-11
 
 ### Added

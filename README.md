@@ -1,4 +1,4 @@
-# Diretta UPnP Renderer v2.5.26
+# Diretta UPnP Renderer v2.5.27
 
 **The world's first native UPnP/DLNA renderer with Diretta protocol support - Low-Latency Edition**
 
@@ -8,19 +8,18 @@
 
 ---
 
-![Version](https://img.shields.io/badge/version-2.5.26-blue.svg)
+![Version](https://img.shields.io/badge/version-2.5.27-blue.svg)
 ![Low Latency](https://img.shields.io/badge/Latency-Low-green.svg)
 ![SDK](https://img.shields.io/badge/SDK-DIRETTA::Sync-orange.svg)
 ![Audirvana](https://img.shields.io/badge/Audirvana-Compatible-green.svg)
 
 ---
 
-## What's New in v2.5.26
+## What's New in v2.5.27
 
-**New `varpriotime` transfer mode (PR #100, Koala887/Daniel) — minimum SDK raised to 155.**
+**Fix: core dump on Diretta Host SDK 160 during close/shutdown.**
 
-- A new variable-cycle transfer mode, specified by priority cycle frequency in Hz rather than target cycle time in µs: `--transfer-mode varpriotime` with `--prio-time <Hz>` (default 300 Hz). Same CLI/config/WebUI plumbing as the other transfer modes.
-- The SDK call this mode uses only exists from SDK 155 onward. **Building this renderer now requires Diretta Host SDK 155 or later** — SDK 149/150 no longer build, not just this one mode (see CHANGELOG.md for why).
+- `DirettaSync::close()` closed the SDK connection before the worker thread was actually joined, letting it keep calling into the SDK on another thread while the connection object tore itself down. SDK ≤158 tolerated the timing; SDK 160 doesn't, and crashes. Fixed the ordering (reported by SwissMountainsBear/Pierre, confirmed fixed on real hardware).
 
 See [CHANGELOG.md](CHANGELOG.md) for details.
 
@@ -28,6 +27,7 @@ See [CHANGELOG.md](CHANGELOG.md) for details.
 
 | Version | Highlights |
 |---------|-----------|
+| **v2.5.26** | New `varpriotime` transfer mode (PR #100, Koala887/Daniel) — minimum SDK raised to 155 |
 | **v2.5.25** | Diretta Host SDK 157 support |
 | **v2.5.24** | Fix: shutdown deadlock, and `--dop` on sinks that only accept 32-bit PCM (hoorna/Alfred) |
 | **v2.5.23** | Fix: source compatibility with Diretta Host SDK 155 |
