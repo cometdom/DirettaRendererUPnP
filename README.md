@@ -1,4 +1,4 @@
-# Diretta UPnP Renderer v2.5.27
+# Diretta UPnP Renderer v2.5.28
 
 **The world's first native UPnP/DLNA renderer with Diretta protocol support - Low-Latency Edition**
 
@@ -8,18 +8,18 @@
 
 ---
 
-![Version](https://img.shields.io/badge/version-2.5.27-blue.svg)
+![Version](https://img.shields.io/badge/version-2.5.28-blue.svg)
 ![Low Latency](https://img.shields.io/badge/Latency-Low-green.svg)
 ![SDK](https://img.shields.io/badge/SDK-DIRETTA::Sync-orange.svg)
 ![Audirvana](https://img.shields.io/badge/Audirvana-Compatible-green.svg)
 
 ---
 
-## What's New in v2.5.27
+## What's New in v2.5.28
 
-**Fix: core dump on Diretta Host SDK 160 during close/shutdown.**
+**Fix: the end of a track was cut off when the next track had a different format** (e.g. 192 kHz followed by 44.1 kHz, or PCM followed by DSD).
 
-- `DirettaSync::close()` closed the SDK connection before the worker thread was actually joined, letting it keep calling into the SDK on another thread while the connection object tore itself down. SDK ≤158 tolerated the timing; SDK 160 doesn't, and crashes. Fixed the ordering (reported by SwissMountainsBear/Pierre, confirmed fixed on real hardware).
+- On a gapless format change, the renderer switched to the new format as soon as the previous track was decoded, discarding what it still had buffered — a fraction of a second for local files, up to about 2 s for streaming services. It now lets the previous track play to its end before switching.
 
 See [CHANGELOG.md](CHANGELOG.md) for details.
 
@@ -27,6 +27,7 @@ See [CHANGELOG.md](CHANGELOG.md) for details.
 
 | Version | Highlights |
 |---------|-----------|
+| **v2.5.27** | Fix: core dump on Diretta Host SDK 160 during close/shutdown (SwissMountainsBear/Pierre) |
 | **v2.5.26** | New `varpriotime` transfer mode (PR #100, Koala887/Daniel) — minimum SDK raised to 155 |
 | **v2.5.25** | Diretta Host SDK 157 support |
 | **v2.5.24** | Fix: shutdown deadlock, and `--dop` on sinks that only accept 32-bit PCM (hoorna/Alfred) |
@@ -1177,4 +1178,4 @@ This software is provided "as is" without warranty. While designed for high-qual
 
 **Enjoy bit-perfect, low-latency audio streaming!**
 
-*Last updated: 2026-11-08 (v2.5.25)*
+*Last updated: 2026-11-23 (v2.5.28)*
