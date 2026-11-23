@@ -443,6 +443,42 @@ bool DirettaRenderer::start(std::atomic<bool>* stopSignal) {
                                   << format.bitDepth << "bit "
                                   << (format.isDSD ? "DSD" : "PCM") << std::endl;
 
+                        // v2.5.28: let the previous track play out first. This
+                        // callback runs as soon as the old track is decoded,
+                        // while the ring still holds its tail (up to 70% of the
+                        // ring: ~0.35 s local, ~2 s remote, ~1.4 s >192 kHz,
+                        // more with --pcm-buffer-seconds); stopPlayback() below
+                        // empties the ring, so that tail was cut off. Wait until
+                        // ~10 ms are left (no underrun), bounded by the buffered
+                        // time + 1 s (re-armed while paused); a stop, a new URI or
+                        // a shutdown interrupts it. Same fix as slim2diretta
+                        // v1.4.34 (found there by masakik).
+                        {
+                            constexpr float PLAYOUT_LEFT_SEC = 0.010f;
+                            const float ringSec = m_direttaSync->getBufferSeconds();
+                            float left = m_direttaSync->getBufferLevel() * ringSec;
+                            auto now = std::chrono::steady_clock::now();
+                            auto deadline = now + std::chrono::milliseconds(
+                                static_cast<int>(left * 1000) + 1000);
+                            if (left > PLAYOUT_LEFT_SEC) {
+                                std::cout << "[Callback] Letting the previous track play out ("
+                                          << static_cast<int>(left * 1000)
+                                          << "ms buffered) before reopening" << std::endl;
+                            }
+                            while (m_running.load(std::memory_order_acquire) &&
+                                   !m_shutdownRequested.load(std::memory_order_acquire) &&
+                                   m_direttaSync->isPlaying()) {
+                                now = std::chrono::steady_clock::now();
+                                left = m_direttaSync->getBufferLevel() * ringSec;
+                                if (m_direttaSync->isPaused()) {
+                                    deadline = now + std::chrono::milliseconds(
+                                        static_cast<int>(left * 1000) + 1000);
+                                }
+                                if (left <= PLAYOUT_LEFT_SEC || now >= deadline) break;
+                                std::this_thread::sleep_for(std::chrono::milliseconds(2));
+                            }
+                        }
+
                         // v2.0.1 FIX: Use stopPlayback(false) to send silence before stopping
                         // This flushes the Diretta pipeline and prevents crackling on format transitions
                         // With immediate=true, no silence was sent, causing DAC sync issues

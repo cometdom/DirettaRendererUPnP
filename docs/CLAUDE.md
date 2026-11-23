@@ -608,6 +608,8 @@ sudo apt install build-essential libavformat-dev libavcodec-dev libavutil-dev li
 
 - [x] Core dump on Diretta Host SDK 160, during close/shutdown (v2.5.27, reported by SwissMountainsBear/Pierre). Crash trace: main thread asleep inside `DirettaSync::close()`'s post-disconnect delay, right after `DIRETTA::Sync::close()`, while the worker thread segfaulted concurrently inside `DIRETTA::Sync::syncWorker()`. Root cause: `close()` called `DIRETTA::Sync::close()` *before* `joinWorkerWithTimeout()` — unlike `reopenForFormatChange()`, a few lines below in the same file, which already guards against exactly this hazard (`// CRITICAL: Stop worker thread BEFORE closing SDK to prevent use-after-free`) in the correct order. The worker thread's `while(m_running)` loop only exits once `joinWorkerWithTimeout()` sets `m_running=false`, so it stayed free to keep calling the SDK's `syncWorker()` on its own thread while the main thread tore the same `Sync` object down — a genuine, pre-existing race whose outcome depends on the SDK's own internal timing; SDK ≤158 apparently tolerated it, SDK 160 didn't. Fixed by reordering `close()` to match `reopenForFormatChange()`'s already-correct pattern. Checked slim2Diretta for the same bug: **not affected** — its `close()` is architected differently (never calls `DIRETTA::Sync::close()` itself; only `release()` does, already in the correct join-before-close order). Verified: clean build against SDK 160, `make test` 37/0. **Confirmed fixed on real hardware by SwissMountainsBear/Pierre.**
 
+- [x] End of the previous track cut off on a gapless format change (v2.5.28, ported from slim2diretta v1.4.34, masakik). See "Format Transition Handling" below.
+
 ### Potential Future Work
 - [ ] AVX-512 format conversions (currently only memcpy uses AVX-512)
 - [ ] Multi-producer ring buffer for multiple audio sources
@@ -623,6 +625,8 @@ sudo apt install build-essential libavformat-dev libavcodec-dev libavutil-dev li
 | DSD | Same DSD (same rate) | Quick resume (buffer clear) | None |
 | DSD | DSD (rate change) | Full `close()` + fresh `open()` | 400ms |
 | **DSD** | **PCM** | **Full `close()` + fresh `open()`** | **800ms** |
+
+**Previous track plays out first (v2.5.28):** on a gapless format change the audio callback (`DirettaRenderer.cpp`, "FORMAT CHANGE DETECTED") runs as soon as the previous track is decoded, with its tail still in the ring (30–70% fill). It now waits until `getBufferLevel() × getBufferSeconds()` ≤ 10 ms (deadline buffered + 1 s, re-armed while paused; interrupted by `m_shutdownRequested`/`m_running`/`!isPlaying()`) before `stopPlayback(false)`, which would otherwise empty the ring. Same fix as slim2diretta v1.4.34 (masakik).
 
 **Pre-transition silence:** Before stopping DSD playback, `sendPreTransitionSilence()` sends rate-scaled silence buffers (100 × rate_multiplier) to flush the Diretta pipeline.
 

@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.5.28] - unreleased
+
+### Fixed
+- **End of the previous track cut off on a gapless format change** (sample rate, bit depth, channels or PCM↔DSD). The audio callback for the new track runs as soon as the previous one is fully decoded, while the ring still holds the previous track's tail; on a format change it called `stopPlayback(false)` straight away, which fades out and empties the ring. Up to 70% of the ring was lost (the decode thread keeps it between 30% and 70%): about 0.35 s for local playback, up to about 2 s for remote streams (3 s ring), about 1.4 s above 192 kHz, more with a larger `--pcm-buffer-seconds`. The callback now waits until about 10 ms are left before that stop (no underrun), bounded by the buffered time + 1 s and extended during a pause; a stop, a new URI or a shutdown interrupts the wait. Same root cause and fix as slim2diretta v1.4.34 (found there by masakik, confirmed on his hardware). Verified: clean build, `make test` unaffected (`test_memcpy_audio_fixed_timing_variance` occasionally fails on timing noise alone, with or without this change). Not yet verified on hardware with the renderer itself.
+
 ## [2.5.27] - 2026-11-21
 
 ### Fixed
