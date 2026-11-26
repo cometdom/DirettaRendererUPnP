@@ -12,6 +12,7 @@
 #include <condition_variable>
 #include <functional>
 #include <thread>
+#include <future>
 #include <vector>
 
 #include "PrefetchReader.h"
@@ -92,7 +93,8 @@ public:
      * @brief Open a URL. `preload` = this decoder is the gapless next track:
      *        its HTTP prefetch stays small until setPrefetchFull().
      */
-    bool open(const std::string& url, bool preload = false);
+    bool open(const std::string& url, bool preload = false,
+              std::shared_ptr<const std::atomic<bool>> cancel = {});
 
     /** @brief Let the prefetch reader fill its whole ring (track became current). */
     void setPrefetchFull();
@@ -204,6 +206,7 @@ private:
     // FFmpeg interrupt callback: abort av_read_frame() if it stalls > 5s
     // Prevents permanent hang when a live stream (e.g., Roon-proxied radio)
     // keeps the HTTP connection alive but sends no audio data.
+    std::shared_ptr<const std::atomic<bool>> m_preloadCancel;
     std::atomic<int64_t> m_readDeadlineNs{0};  // nanoseconds since epoch; 0 = no deadline
     static int ffmpegReadInterruptCb(void* opaque);
 
@@ -518,8 +521,12 @@ private:
     std::string m_pendingNextMetadata;
 
     // Preload thread management (replaces detached thread)
-    std::thread m_preloadThread;
-    std::atomic<bool> m_preloadRunning{false};
+    std::mutex m_preloadMutex;
+    std::weak_ptr<std::atomic<bool>> m_openingPreload;
+    std::shared_future<void> m_preloadFinished;
+    void startPreloadThread();
+    bool preloadRunning();
+    uint64_t m_trackRevision{0};  // protected by m_mutex
     void waitForPreloadThread();
 
     // Async seek mechanism to avoid deadlock
