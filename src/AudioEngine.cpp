@@ -147,6 +147,7 @@ AudioDecoder::~AudioDecoder() {
 
 int AudioDecoder::ffmpegReadInterruptCb(void* opaque) {
     auto* self = static_cast<AudioDecoder*>(opaque);
+    if (self->m_preloadCancel && self->m_preloadCancel->load()) return 1;
     int64_t deadline = self->m_readDeadlineNs.load(std::memory_order_relaxed);
     if (deadline == 0) return 0;
     int64_t now = std::chrono::duration_cast<std::chrono::nanoseconds>(
@@ -154,7 +155,9 @@ int AudioDecoder::ffmpegReadInterruptCb(void* opaque) {
     return (now >= deadline) ? 1 : 0;
 }
 
-bool AudioDecoder::open(const std::string& url, bool preload) {
+bool AudioDecoder::open(const std::string& url, bool preload,
+                        std::shared_ptr<const std::atomic<bool>> cancel) {
+    m_preloadCancel = std::move(cancel);
     std::cout << "[AudioDecoder] Opening: " << url.substr(0, 80) << "..." << std::endl;
     m_decodeError = false;
     m_readTimeout = false;
@@ -2018,10 +2021,32 @@ AudioEngine::~AudioEngine() {
     waitForPreloadThread();
 }
 
+bool AudioEngine::preloadRunning() {
+    std::lock_guard<std::mutex> guard(m_preloadMutex);
+    return m_preloadFinished.valid() &&
+           m_preloadFinished.wait_for(std::chrono::seconds(0)) != std::future_status::ready;
+}
+
+void AudioEngine::startPreloadThread() {
+    // Called with m_mutex held. Never wait here: the worker also needs m_mutex.
+    std::lock_guard<std::mutex> guard(m_preloadMutex);
+    if (m_state.load() == State::STOPPED) return;
+    if (m_preloadFinished.valid() &&
+        m_preloadFinished.wait_for(std::chrono::seconds(0)) != std::future_status::ready) return;
+    m_preloadFinished = std::async(std::launch::async, [this] {
+        demoteToHelperThread("Preload Thread");
+        preloadNextTrack();
+    }).share();
+}
+
 void AudioEngine::waitForPreloadThread() {
-    if (m_preloadThread.joinable()) {
-        m_preloadThread.join();
+    // Stop and EOF may wait concurrently. Each takes its own completion handle.
+    std::shared_future<void> finished;
+    {
+        std::lock_guard<std::mutex> guard(m_preloadMutex);
+        finished = m_preloadFinished;
     }
+    if (finished.valid()) finished.wait();
 }
 
 void AudioEngine::setAudioCallback(const AudioCallback& callback) {
@@ -2044,6 +2069,7 @@ void AudioEngine::setCurrentURI(const std::string& uri, const std::string& metad
 
     // NOUVEAU : Forcer la réouverture même si l'URI est la même (pour Stop)
     if (uriChanged || forceReopen) {
+        ++m_trackRevision;
         m_seekRequested.store(false, std::memory_order_release);  // a seek queued while paused targets the old track
         std::cout << "[AudioEngine] "
                   << (forceReopen ? "Forced reopen" : "URI changed")
@@ -2072,10 +2098,9 @@ void AudioEngine::setCurrentURI(const std::string& uri, const std::string& metad
         m_isDraining = false;
         m_formatChangePending = false;
 
-        // Arrêter le préchargement en cours si existant
-        if (m_preloadRunning.load(std::memory_order_acquire)) {
-            m_preloadRunning.store(false, std::memory_order_release);
-            std::cout << "[AudioEngine] Cancelling ongoing preload" << std::endl;
+        {
+            std::lock_guard<std::mutex> guard(m_preloadMutex);
+            if (auto opening = m_openingPreload.lock()) opening->store(true);
         }
 
         // Si on est en PLAYING, on va automatiquement ouvrir la nouvelle piste
@@ -2134,15 +2159,9 @@ bool AudioEngine::play() {
     m_isDraining = false;
 
     // Preload next track in background if set (for gapless)
-    // Use joinable thread instead of detached to prevent use-after-free
-    if (!m_nextURI.empty() && !m_nextDecoder && !m_preloadRunning.load(std::memory_order_acquire)) {
-        waitForPreloadThread();
-        m_preloadRunning.store(true, std::memory_order_release);
-        m_preloadThread = std::thread([this]() {
-            demoteToHelperThread("Preload Thread");
-            preloadNextTrack();
-            m_preloadRunning.store(false, std::memory_order_release);
-        });
+    // Keep a completion handle so cleanup waits for the worker.
+    if (!m_nextURI.empty() && !m_nextDecoder && !preloadRunning()) {
+        startPreloadThread();
     }
 
     return true;
@@ -2164,6 +2183,10 @@ void AudioEngine::stop() {
         m_pendingNextMetadata.clear();
     }
 
+    {
+        std::lock_guard<std::mutex> guard(m_preloadMutex);
+        if (auto opening = m_openingPreload.lock()) opening->store(true);
+    }
     // Wait for preload thread before cleanup
     waitForPreloadThread();
 
@@ -2317,14 +2340,8 @@ bool AudioEngine::process(size_t samplesNeeded) {
         // ANTICIPATED PRELOAD: Start preloading immediately in background thread
         // This opens the HTTP connection NOW instead of waiting for EOF,
         // preventing buffer underruns during gapless transitions.
-        if (!m_nextURI.empty() && !m_nextDecoder && !m_preloadRunning.load(std::memory_order_acquire)) {
-            waitForPreloadThread();
-            m_preloadRunning.store(true, std::memory_order_release);
-            m_preloadThread = std::thread([this]() {
-                demoteToHelperThread("Preload Thread");
-                preloadNextTrack();
-                m_preloadRunning.store(false, std::memory_order_release);
-            });
+        if (!m_nextURI.empty() && !m_nextDecoder && !preloadRunning()) {
+            startPreloadThread();
             std::cout << "[AudioEngine] Anticipated preload started" << std::endl;
             DEBUG_LOG("[AudioEngine]   next: " << m_nextURI);
             DEBUG_LOG("[AudioEngine]   curr: " << m_currentURI);
@@ -2374,12 +2391,13 @@ bool AudioEngine::process(size_t samplesNeeded) {
     // With anticipated preload, this should rarely trigger (preload already running/done)
     // Skip if format change already detected - avoids reopening the same URL repeatedly
     if (!m_nextDecoder && !m_nextURI.empty() && !m_formatChangePending && m_currentDecoder->isEOF()) {
+        const auto revision = m_trackRevision;
         // Release m_mutex before preload operations.
         // preloadNextTrack() needs m_mutex internally (capture-validate-commit pattern).
         // waitForPreloadThread() must not hold m_mutex because the preload thread needs it.
         lock.unlock();
 
-        if (m_preloadRunning.load(std::memory_order_acquire)) {
+        if (preloadRunning()) {
             // Wait for background preload to complete
             std::cout << "[AudioEngine] EOF reached, waiting for background preload..." << std::endl;
             waitForPreloadThread();
@@ -2390,6 +2408,7 @@ bool AudioEngine::process(size_t samplesNeeded) {
         }
 
         lock.lock();
+        if (m_state.load() != State::PLAYING || revision != m_trackRevision) return false;
     }
 
     // Fatal decoder conditions checked before samplesRead == 0 because an error
@@ -2399,7 +2418,7 @@ bool AudioEngine::process(size_t samplesNeeded) {
         std::cerr << "[AudioEngine] " << reason << std::endl;
         m_silenceCount = 0;
         m_isDraining = false;
-        if (m_preloadRunning.load(std::memory_order_acquire)) {
+        if (preloadRunning()) {
             lock.unlock();
             waitForPreloadThread();
             lock.lock();
@@ -2657,7 +2676,19 @@ bool AudioEngine::preloadNextTrack() {
     // 2. OPEN: Slow network I/O without holding lock
     auto decoder = std::make_unique<AudioDecoder>();
 
-    if (!decoder->open(uriToLoad, /*preload=*/true)) {
+    auto cancel = std::make_shared<std::atomic<bool>>(false);
+    {
+        std::lock_guard<std::mutex> guard(m_preloadMutex);
+        if (m_state.load() == State::STOPPED) return false;
+        m_openingPreload = cancel;
+    }
+    bool opened = decoder->open(uriToLoad, /*preload=*/true, cancel);
+    {
+        std::lock_guard<std::mutex> guard(m_preloadMutex);
+        if (m_openingPreload.lock() == cancel) m_openingPreload.reset();
+    }
+    if (cancel->load()) return false;
+    if (!opened) {
         std::cerr << "[AudioEngine] Failed to preload next track" << std::endl;
         return false;
     }
